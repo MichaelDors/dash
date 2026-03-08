@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=128, height=64, initial-scale=1" />
+  <title>OLED</title>
+  <link rel="stylesheet" href="/oled.css" />
+  <style>
+    body { margin: 0; padding: 0; width: 128px; height: 64px; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+    #root { width: 128px; height: 64px; display: flex; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body class="oled">
+  <div id="root" class="oled-view">
+    <div class="widget-time"><div class="time-main">--:--<span class="seconds">:--</span></div><div class="time-date"><span class="day">-</span> <span class="month">---</span></div></div>
+  </div>
+  <script>
+    (function() {
+      const root = document.getElementById("root");
+      const POLL_MS = 150;
+
+      function renderWidget(widget, motion) {
+        if (!widget) return "";
+        if (widget.type === "time") {
+          return '<section class="widget-time"><div class="time-main">' + (widget.time_main || "--:--") + '<span class="seconds">:' + (widget.seconds || "--") + '</span></div><div class="time-date"><span class="day">' + (widget.day ?? "-") + '</span> <span class="month">' + (widget.month || "---") + '</span></div></section>';
+        }
+        if (widget.type === "click_counter") {
+          return '<section class="widget-counter"><div class="counter-number">' + (widget.count ?? 0) + '</div></section>';
+        }
+        if (widget.type === "timer") {
+          const flashClass = widget.flash ? " flash" : "";
+          return '<section class="widget-timer' + flashClass + '"><div class="timer-badges">' + (widget.running ? "Run" : "Stop") + '</div><div class="timer-value">' + (widget.time_text || "05:00") + '</div></section>';
+        }
+        if (widget.type === "motion_status") {
+          return '<section class="widget-motion"><div class="status-grid"><div class="status-tile"><div class="status-label">Motion</div><div class="status-value">' + (widget.motion_detected ? "Yes" : "No") + '</div></div><div class="status-tile"><div class="status-label">Display</div><div class="status-value">' + (widget.display_state || "ON") + '</div></div><div class="status-tile"><div class="status-label">Idle</div><div class="status-value">' + (widget.idle || "00:00") + '</div></div></div></section>';
+        }
+        return '<section class="widget-time"><div class="time-main">?</div></section>';
+      }
+
+      function fetchState() {
+        fetch("/api/state", { cache: "no-store" })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(state) {
+            if (!state || !state.active_widget) return;
+            root.innerHTML = renderWidget(state.active_widget, state.motion || {});
+          })
+          .catch(function() {});
+      }
+
+      fetchState();
+      setInterval(fetchState, POLL_MS);
+    })();
+  </script>
+</body>
+</html>

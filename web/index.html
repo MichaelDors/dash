@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dash Control Surface</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Dash Display</p>
+        <h1>Live Control Surface</h1>
+      </div>
+      <div class="status-cluster">
+        <span class="badge" id="displayMode">DISPLAY ON</span>
+        <span class="badge badge-soft" id="motionState">MOTION --</span>
+        <span class="stamp" id="lastUpdate">--</span>
+      </div>
+    </header>
+
+    <section class="main-grid">
+      <nav class="widget-nav">
+        <h2>Widgets</h2>
+        <div id="widgetTabs" class="widget-tabs"></div>
+      </nav>
+
+      <article class="widget-panel" id="widgetPanel">
+        <div class="widget-header">
+          <h2 id="widgetName">Loading...</h2>
+          <p id="widgetHint">Waiting for backend state.</p>
+        </div>
+        <div id="widgetBody" class="widget-body"></div>
+      </article>
+    </section>
+
+    <section class="controls">
+      <button data-action="previous">Previous</button>
+      <button data-action="next">Next</button>
+      <button data-action="press" class="accent">Press</button>
+      <button data-action="hold">Hold</button>
+      <button data-action="add_minute">+1 Minute</button>
+      <button data-action="subtract_minute">-1 Minute</button>
+      <button data-action="simulate_motion" class="accent-soft">Sim Motion</button>
+    </section>
+
+    <p class="keyboard-hint">
+      Keyboard: Left/Right switch widgets, Space press, H hold, + / - adjust timer.
+    </p>
+    <p class="keyboard-hint">
+      <a href="/oled" target="_blank" rel="noopener">Preview OLED view (128×64)</a>
+    </p>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
