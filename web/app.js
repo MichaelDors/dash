@@ -119,6 +119,8 @@ function hintForWidget(type) {
       return "Press to start/stop. Use +/- minute controls.";
     case "motion_status":
       return "Shows PIR and inactivity state.";
+    case "version_status":
+      return "Shows local/remote VERSION details.";
     default:
       return "Use controls below to interact.";
   }
@@ -181,6 +183,37 @@ function renderWidget(widget, motion) {
             <div class="status-value">${sensorText}</div>
           </div>
         </div>
+      </section>
+    `;
+  }
+
+  if (widget.type === "version_status") {
+    const local = widget.local ?? "unknown";
+    const remote = widget.remote ?? "n/a";
+    const status = String(widget.status || "unknown").toUpperCase();
+    const branch = widget.branch || "";
+    const repo = widget.repo || "";
+    return `
+      <section class="widget-motion">
+        <div class="status-grid">
+          <div class="status-tile">
+            <div class="status-label">Local</div>
+            <div class="status-value">${local}</div>
+          </div>
+          <div class="status-tile">
+            <div class="status-label">Remote</div>
+            <div class="status-value">${remote}</div>
+          </div>
+          <div class="status-tile">
+            <div class="status-label">Status</div>
+            <div class="status-value">${status}</div>
+          </div>
+          <div class="status-tile">
+            <div class="status-label">Branch</div>
+            <div class="status-value">${branch}</div>
+          </div>
+        </div>
+        <p class="counter-help">${repo ? `Repo: ${repo}` : ""}</p>
       </section>
     `;
   }

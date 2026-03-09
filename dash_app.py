@@ -15,6 +15,15 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 try:
+    # Optional: local launcher module that knows how to read/compare versions.
+    import dash as dash_launcher  # type: ignore[import-untyped]
+
+    DASH_LAUNCHER_AVAILABLE = True
+except Exception:
+    dash_launcher = None  # type: ignore[assignment]
+    DASH_LAUNCHER_AVAILABLE = False
+
+try:
     import RPi.GPIO as GPIO
 
     GPIO_AVAILABLE = True
@@ -429,6 +438,67 @@ class MotionStatusWidget(Widget):
         }
 
 
+class VersionStatusWidget(Widget):
+    def __init__(self) -> None:
+        super().__init__("version_status", "Version Debug")
+        self.repo = os.getenv("GITHUB_REPO", "MichaelDors/dash").strip() or "MichaelDors/dash"
+        self.branch = os.getenv("GITHUB_BRANCH", "main").strip() or "main"
+        self.local_version = "unknown"
+        self.remote_version: Optional[str] = None
+        self.error: Optional[str] = None
+        self.checked_at: Optional[datetime] = None
+        self._compute_versions()
+
+    def _compute_versions(self) -> None:
+        try:
+            # Prefer using the launcher helpers if available so version parsing
+            # and remote fetching logic stays in one place.
+            if DASH_LAUNCHER_AVAILABLE and dash_launcher is not None:
+                self.local_version = dash_launcher.read_local_version()
+                self.remote_version = dash_launcher.fetch_remote_version(self.repo, self.branch)
+                self.checked_at = datetime.now()
+            else:
+                version_file = BASE_DIR / "VERSION"
+                if version_file.exists():
+                    self.local_version = version_file.read_text(encoding="utf-8").strip()
+        except Exception as exc:
+            self.error = str(exc)
+
+    def to_payload(self) -> Dict[str, Any]:
+        remote = self.remote_version
+        status = "unknown"
+        remote_newer = False
+
+        if remote is None:
+            status = "no remote"
+        else:
+            try:
+                if DASH_LAUNCHER_AVAILABLE and dash_launcher is not None:
+                    if dash_launcher.is_newer(remote, self.local_version):
+                        status = "remote newer"
+                        remote_newer = True
+                    else:
+                        status = "up-to-date"
+                else:
+                    status = "remote available"
+            except Exception:
+                status = "compare error"
+
+        return {
+            "id": self.widget_id,
+            "name": self.name,
+            "type": "version_status",
+            "local": self.local_version,
+            "remote": remote,
+            "repo": self.repo,
+            "branch": self.branch,
+            "status": status,
+            "remote_newer": remote_newer,
+            "checked_at": self.checked_at.isoformat(timespec="seconds") if self.checked_at else None,
+            "error": self.error,
+        }
+
+
 class DashboardController:
     """Coordinates widgets, motion state, and hardware/button actions."""
 
@@ -439,6 +509,7 @@ class DashboardController:
             ClickCounterWidget(),
             TimerWidget(),
             MotionStatusWidget(self.motion_manager),
+            VersionStatusWidget(),
         ]
         self.current_widget_index = 0
 
@@ -654,6 +725,18 @@ def _render_oled_widget_html(widget: Dict[str, Any], motion: Dict[str, Any]) -> 
             f'<div class="status-tile"><div class="status-label">Motion</div><div class="status-value">{motion_yes}</div></div>'
             f'<div class="status-tile"><div class="status-label">Display</div><div class="status-value">{display_state}</div></div>'
             f'<div class="status-tile"><div class="status-label">Idle</div><div class="status-value">{idle}</div></div></div></section>'
+        )
+    if wtype == "version_status":
+        local = _escape_html(str(w.get("local") or "unknown"))
+        remote = _escape_html(str(w.get("remote") or "n/a"))
+        status = _escape_html(str(w.get("status") or "unknown"))
+        branch = _escape_html(str(w.get("branch") or ""))
+        return (
+            f'<section class="widget-motion"><div class="status-grid">'
+            f'<div class="status-tile"><div class="status-label">Local</div><div class="status-value">{local}</div></div>'
+            f'<div class="status-tile"><div class="status-label">Remote</div><div class="status-value">{remote}</div></div>'
+            f'<div class="status-tile"><div class="status-label">Status</div><div class="status-value">{status}</div></div>'
+            f'<div class="status-tile"><div class="status-label">Branch</div><div class="status-value">{branch}</div></div></div></section>'
         )
     return '<section class="widget-time"><div class="time-main">?</div></section>'
 
@@ -958,6 +1041,24 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         draw.text((10, 32), f"DISPLAY: {display_state}", fill=1, font=body_font)
         draw.text((10, 44), f"IDLE: {idle}", fill=1, font=body_font)
         draw.text((5, 55), "ROTATE TO CHANGE", fill=1, font=body_font)
+        return img
+
+    if wtype == "version_status":
+        local = str(widget.get("local") or "unknown")
+        remote = str(widget.get("remote") or "n/a")
+        status = str(widget.get("status") or "unknown").upper()
+        branch = str(widget.get("branch") or "")
+
+        title_font = _font(10)
+        body_font = _font(9)
+
+        draw.rectangle((0, 0, 127, 63), outline=1, fill=0)
+        draw.text((18, 5), "VERSION DEBUG", fill=1, font=title_font)
+        draw.text((5, 20), f"L: {local}", fill=1, font=body_font)
+        draw.text((5, 32), f"R: {remote}", fill=1, font=body_font)
+        draw.text((5, 44), f"S: {status}", fill=1, font=body_font)
+        if branch:
+            draw.text((5, 54), f"B: {branch}", fill=1, font=body_font)
         return img
 
     # Fallback: simple "?" screen
