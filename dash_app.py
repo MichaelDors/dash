@@ -819,7 +819,7 @@ def widget_update_loop(controller: DashboardController, stop_event: threading.Ev
 
 
 def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Image"]:
-    """Render the current widget state into a 128x64 monochrome image (Pillow), similar to nanobackup.py."""
+    """Render the current widget state into a 128x64 monochrome image (Pillow), styled like nanobackup.py widgets."""
     if not PIL_AVAILABLE or Image is None or ImageDraw is None or ImageFont is None:
         return None
 
@@ -841,6 +841,36 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                 continue
         return ImageFont.load_default()
 
+    def _text_size(text: str, font: Any) -> tuple[int, int]:
+        # Pillow compat across versions (textsize deprecated in newer releases)
+        try:
+            left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+            return right - left, bottom - top
+        except Exception:
+            try:
+                return draw.textsize(text, font=font)  # type: ignore[attr-defined]
+            except Exception:
+                return (len(text) * 6, 10)
+
+    def _draw_hourglass(x: int, y: int) -> None:
+        # Copied from nanobackup.py's TimerWidget styling
+        draw.line((x + 2, y, x + 8, y), fill=1)
+        draw.line((x + 3, y + 1, x + 7, y + 1), fill=1)
+        draw.line((x + 4, y + 2, x + 6, y + 2), fill=1)
+        draw.line((x + 5, y + 3, x + 5, y + 3), fill=1)
+        draw.line((x + 5, y + 4, x + 5, y + 6), fill=1)
+        draw.line((x + 5, y + 7, x + 5, y + 7), fill=1)
+        draw.line((x + 4, y + 8, x + 6, y + 8), fill=1)
+        draw.line((x + 3, y + 9, x + 7, y + 9), fill=1)
+        draw.line((x + 2, y + 10, x + 8, y + 10), fill=1)
+
+    def _draw_pause_icon(x: int, y: int) -> None:
+        # Copied from nanobackup.py's TimerWidget styling
+        draw.line((x, y, x, y + 8), fill=1)
+        draw.line((x + 1, y, x + 1, y + 8), fill=1)
+        draw.line((x + 4, y, x + 4, y + 8), fill=1)
+        draw.line((x + 5, y, x + 5, y + 8), fill=1)
+
     if wtype == "time":
         time_main = str(widget.get("time_main") or "--:--")
         seconds = f":{widget.get('seconds') or '--'}"
@@ -848,7 +878,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         day_str = str(day) if day is not None else "-"
         month = str(widget.get("month") or "---")
 
-        # Layout inspired by TimeWidget in nanobackup.py
+        # Match nanobackup.py TimeWidget styling/positions
         main_font = _font(30)
         sec_font = _font(12)
         date_day_font = _font(18)
@@ -858,43 +888,55 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         main_time_y = 8
         draw.text((main_time_x, main_time_y), time_main, fill=1, font=main_font)
 
-        main_w, _ = draw.textsize(time_main, font=main_font)
-        seconds_x = max(main_time_x + main_w - 40, 0)
+        # nanobackup uses a width approximation to place seconds
+        main_time_width = len(time_main) * 40
+        seconds_x = main_time_x + main_time_width - 80
         seconds_y = main_time_y + 12
         draw.text((seconds_x, seconds_y), seconds, fill=1, font=sec_font)
 
         date_x = main_time_x
         date_y = 45
         draw.text((date_x, date_y), day_str, fill=1, font=date_day_font)
-        day_w, _ = draw.textsize(day_str, font=date_day_font)
-        month_x = date_x + day_w + 2
+        day_w, _ = _text_size(day_str, date_day_font)
+        month_x = date_x + day_w + 2  # 2px spacing like nanobackup
         month_y = date_y + 5
         draw.text((month_x, month_y), month, fill=1, font=date_month_font)
         return img
 
     if wtype == "click_counter":
+        # Match nanobackup ClickCounterWidget styling (big centered number)
         count_str = str(widget.get("count", 0))
-        font = _font(48)
-        w, h = draw.textsize(count_str, font=font)
-        x = max((128 - w) // 2, 0)
-        y = max((64 - h) // 2, 0)
+        font_size = 48
+        font = _font(font_size)
+
+        # nanobackup approximates width as (font_size/2) per char
+        text_width = len(count_str) * (font_size // 2)
+        text_height = font_size
+        x = (128 - text_width) // 2
+        y = (64 - text_height) // 2
+        x = max(0, min(x, 128 - text_width))
+        y = max(0, min(y, 64 - text_height))
         draw.text((x, y), count_str, fill=1, font=font)
         return img
 
     if wtype == "timer":
+        # Match nanobackup TimerWidget styling (hourglass icon; pause icon when stopped; big time)
         time_text = str(widget.get("time_text") or "05:00")
         running = bool(widget.get("running"))
 
-        font = _font(36)
-        w, h = draw.textsize(time_text, font=font)
-        x = max((128 - w) // 2, 0)
-        y = max((64 - h) // 2, 0)
-        draw.text((x, y), time_text, fill=1, font=font)
+        _draw_hourglass(5, 5)
+        if not running:
+            _draw_pause_icon(110, 5)
 
-        # Small "RUN"/"STOP" indicator
-        small = _font(10)
-        label = "RUN" if running else "STOP"
-        draw.text((4, 4), label, fill=1, font=small)
+        font_size = 36
+        font = _font(font_size)
+        text_width = len(time_text) * (font_size // 2)
+        text_height = font_size
+        x = (128 - text_width) // 2
+        y = (64 - text_height) // 2
+        x = max(0, min(x, 128 - text_width))
+        y = max(0, min(y, 64 - text_height))
+        draw.text((x, y), time_text, fill=1, font=font)
         return img
 
     if wtype == "motion_status":
@@ -902,19 +944,21 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         display_state = str(widget.get("display_state") or "ON").upper()
         idle = str(widget.get("idle") or "00:00")
 
+        # Match nanobackup MotionStatusWidget styling
         title_font = _font(10)
         body_font = _font(9)
 
-        draw.rectangle((0, 0, 127, 63), outline=1, fill=0)
+        draw.rectangle((0, 0, 127, 63), outline=1, fill=0)  # border
         draw.text((15, 5), "MOTION STATUS", fill=1, font=title_font)
-        draw.text((8, 20), f"MOTION: {motion_yes}", fill=1, font=body_font)
-        draw.text((8, 32), f"DISPLAY: {display_state}", fill=1, font=body_font)
-        draw.text((8, 44), f"IDLE: {idle}", fill=1, font=body_font)
+        draw.text((10, 20), f"MOTION: {motion_yes}", fill=1, font=body_font)
+        draw.text((10, 32), f"DISPLAY: {display_state}", fill=1, font=body_font)
+        draw.text((10, 44), f"IDLE: {idle}", fill=1, font=body_font)
+        draw.text((5, 55), "ROTATE TO CHANGE", fill=1, font=body_font)
         return img
 
     # Fallback: simple "?" screen
     fallback_font = _font(20)
-    w, h = draw.textsize("?", font=fallback_font)
+    w, h = _text_size("?", fallback_font)
     x = max((128 - w) // 2, 0)
     y = max((64 - h) // 2, 0)
     draw.text((x, y), "?", fill=1, font=fallback_font)
