@@ -140,6 +140,15 @@ function render(state) {
   widgetName.textContent = active.name || "Widget";
   widgetHint.textContent = hintForWidget(active.type);
   widgetBody.innerHTML = renderWidget(active, motion);
+
+  // Ensure photo upload handler is bound even if 'change' doesn't bubble reliably.
+  if (active.type === "photo") {
+    const input = widgetBody.querySelector(".photo-upload-input");
+    if (input && !input.__dashPhotoBound) {
+      input.addEventListener("change", handlePhotoUpload);
+      input.__dashPhotoBound = true;
+    }
+  }
 }
 
 widgetBody.addEventListener("change", function (event) {
