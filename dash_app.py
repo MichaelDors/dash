@@ -821,7 +821,7 @@ def _oled_display_loop(
     import subprocess
 
     url = f"http://127.0.0.1:{port}/oled"
-    interval = 0.15  # ~6–7 FPS
+    interval = 0.10  # ~10 FPS for snappier updates
     wait_for_server = 8.0
     started = time.time()
 

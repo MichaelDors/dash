@@ -217,8 +217,9 @@ def run_update_check() -> None:
 
 def main() -> None:
     stop_existing_dashboard()
-    show_boot_logo()
     run_update_check()
+    show_boot_logo()
+    time.sleep(3)  # keep boot logo visible
     if not APP_SCRIPT.exists():
         print(f"App script not found: {APP_SCRIPT}", file=sys.stderr)
         print("Add dash_app.py to your repo (https://github.com/MichaelDors/dash) and push, then try again.", file=sys.stderr)
