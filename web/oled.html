@@ -14,6 +14,7 @@
   <div id="root" class="oled-view">
     <div class="widget-time"><div class="time-main">--:--<span class="seconds">:--</span></div><div class="time-date"><span class="day">-</span> <span class="month">---</span></div></div>
   </div>
+  <script>window.__INITIAL_STATE__ = {{INITIAL_STATE}};</script>
   <script>
     (function() {
       const root = document.getElementById("root");
@@ -47,6 +48,9 @@
           .catch(function() {});
       }
 
+      if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.active_widget) {
+        root.innerHTML = renderWidget(window.__INITIAL_STATE__.active_widget, window.__INITIAL_STATE__.motion || {});
+      }
       fetchState();
       setInterval(fetchState, POLL_MS);
     })();
