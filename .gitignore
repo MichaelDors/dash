@@ -1,3 +1,5 @@
 __pycache__/
 *.py[cod]
 nanobackup.py
+bootlogo.af
+bootlogo.af~lock~
