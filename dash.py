@@ -183,11 +183,7 @@ def show_boot_logo() -> None:
             print("Boot logo: image_to_sh1106_pages returned no data.", file=sys.stderr)
             return
 
-        # By default, invert so a black-on-white logo becomes white-on-black on the OLED.
-        invert = os.getenv("DASH_BOOTLOGO_INVERT", "1") == "1"
-        if invert:
-            pages = [[(~b) & 0xFF for b in row] for row in pages]
-
+        # White pixels = on, black pixels = off (native monochrome mapping).
         driver.display_frame(pages)
     except Exception as exc:
         print(f"Boot logo: unexpected error ({exc}).", file=sys.stderr)
@@ -230,9 +226,14 @@ def run_update_check() -> None:
 
 def main() -> None:
     stop_existing_dashboard()
-    run_update_check()
     show_boot_logo()
-    time.sleep(3)  # keep boot logo visible
+    boot_start = time.monotonic()
+    run_update_check()
+    # Ensure the boot logo is visible for at least 3 seconds total.
+    elapsed = time.monotonic() - boot_start
+    remaining = 3.0 - elapsed
+    if remaining > 0:
+        time.sleep(remaining)
     if not APP_SCRIPT.exists():
         print(f"App script not found: {APP_SCRIPT}", file=sys.stderr)
         print("Add dash_app.py to your repo (https://github.com/MichaelDors/dash) and push, then try again.", file=sys.stderr)
