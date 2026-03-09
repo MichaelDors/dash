@@ -93,7 +93,7 @@ MOTION_DEBUG = True
 # --- APP SETTINGS ---
 HTTP_HOST = os.getenv("DASH_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("DASH_PORT", "8080"))
-ALLOW_SYSTEM_POWER_OFF = os.getenv("DASH_ALLOW_POWEROFF", "0") == "1"
+ALLOW_SYSTEM_POWER_OFF = os.getenv("DASH_ALLOW_POWEROFF", "1") == "1"
 OLED_ENABLED = os.getenv("DASH_OLED", "1") == "1"
 SERVER_BIND_MAX_RETRIES = 5
 SERVER_BIND_RETRY_DELAY = 1.0
@@ -582,13 +582,13 @@ class DashboardController:
                 getattr(current, "subtract_minute")()
         self.motion_manager.report_user_activity()
 
-    def button1_hold(self) -> None:
+    def button2_hold(self) -> None:
         if ALLOW_SYSTEM_POWER_OFF:
-            print("Button1 held for power-off. Shutting down system.")
+            print("Button2 held for power-off. Shutting down system.")
             os.system("sudo shutdown -h now")
             return
 
-        print("Button1 held, but power-off is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
+        print("Button2 held, but power-off is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
 
     def simulate_motion(self) -> None:
         self.motion_manager.report_user_activity(motion=True)
@@ -657,16 +657,16 @@ class HardwareControls:
             print(f"Failed to initialize main button: {exc}")
 
         try:
-            self.button1 = Button(BUTTON1_PIN, hold_time=5.0, hold_repeat=False)
+            self.button1 = Button(BUTTON1_PIN)
             self.button1.when_pressed = self.controller.button1_press
-            self.button1.when_held = self.controller.button1_hold
             print("Button1 initialized.")
         except Exception as exc:
             print(f"Failed to initialize button1: {exc}")
 
         try:
-            self.button2 = Button(BUTTON2_PIN, hold_time=1.0, hold_repeat=False)
+            self.button2 = Button(BUTTON2_PIN, hold_time=5.0, hold_repeat=False)
             self.button2.when_pressed = self.controller.button2_press
+            self.button2.when_held = self.controller.button2_hold
             print("Button2 initialized.")
         except Exception as exc:
             print(f"Failed to initialize button2: {exc}")
