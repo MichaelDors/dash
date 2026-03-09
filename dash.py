@@ -184,6 +184,15 @@ def show_boot_logo() -> None:
             _prefix, _sep, b64_data = BOOTLOGO_DATA_URL.partition(",")
             raw = base64.b64decode(b64_data.strip())
             img = Image.open(io.BytesIO(raw))
+            # Normalize to the same 1-bit, 128x64 canvas used by the live widgets
+            img = img.convert("1")
+            if img.size != (128, 64):
+                canvas = Image.new("1", (128, 64), 0)
+                img.thumbnail((128, 64))
+                x = max((128 - img.width) // 2, 0)
+                y = max((64 - img.height) // 2, 0)
+                canvas.paste(img, (x, y))
+                img = canvas
         except Exception as exc:
             print(f"Boot logo: failed to load image ({exc}).", file=sys.stderr)
             return
