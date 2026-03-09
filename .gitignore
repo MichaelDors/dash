@@ -3,3 +3,6 @@ __pycache__/
 nanobackup.py
 bootlogo.af
 bootlogo.af~lock~
+.DS_Store
+*.af
+*.af~lock~
