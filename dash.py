@@ -132,7 +132,7 @@ def stop_existing_dashboard() -> None:
             capture_output=True,
             timeout=5,
         )
-        time.sleep(0.6)  # let OS release port and GPIO
+        time.sleep(2)  # let OS release port and GPIO
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         pass
 
