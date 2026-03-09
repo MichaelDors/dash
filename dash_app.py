@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import threading
 import time
 from datetime import datetime
@@ -51,16 +52,17 @@ except Exception:
     Button = None  # type: ignore[assignment]
     RotaryEncoder = None  # type: ignore[assignment]
 
-# --- PIN DEFINITIONS (BOARD numbering) ---
-CLK_PIN = 5
-DT_PIN = 6
-SW_PIN = 13
-MOTION_PIN = 36
-BUTTON1_PIN = 23
-BUTTON2_PIN = 26
-# Display pins for SH1106 OLED
-OLED_A0_PIN = 22
-OLED_RESN_PIN = 18
+# --- PIN DEFINITIONS ---
+# BCM numbering — used by gpiozero for rotary encoder and buttons
+CLK_PIN = 5       # BCM 5  (physical pin 29)
+DT_PIN = 6        # BCM 6  (physical pin 31)
+SW_PIN = 13       # BCM 13 (physical pin 33)
+BUTTON1_PIN = 23  # BCM 23 (physical pin 16)
+BUTTON2_PIN = 26  # BCM 26 (physical pin 37)
+# BOARD numbering — used by RPi.GPIO for motion sensor and OLED
+MOTION_PIN = 36    # physical pin 36 (BCM 16)
+OLED_A0_PIN = 22   # physical pin 22 (BCM 25)
+OLED_RESN_PIN = 18 # physical pin 18 (BCM 24)
 
 # --- MOTION SETTINGS ---
 MOTION_DIM_DELAY = 30
@@ -73,6 +75,8 @@ HTTP_HOST = os.getenv("DASH_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("DASH_PORT", "8080"))
 ALLOW_SYSTEM_POWER_OFF = os.getenv("DASH_ALLOW_POWEROFF", "0") == "1"
 OLED_ENABLED = os.getenv("DASH_OLED", "1") == "1"
+SERVER_BIND_MAX_RETRIES = 5
+SERVER_BIND_RETRY_DELAY = 1.0
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
@@ -99,7 +103,6 @@ def setup_gpio_pins() -> bool:
 
     try:
         GPIO.setwarnings(False)
-        GPIO.cleanup()
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(MOTION_PIN, GPIO.IN)
         # Display pins for SH1106 (optional; used when OLED is enabled)
@@ -804,7 +807,7 @@ def _oled_display_loop(
 
 
 def run_dashboard() -> None:
-    # Let gpiozero claim its pins before RPi.GPIO to avoid "GPIO busy" errors.
+    # Clean up any previous GPIO state before setup.
     if GPIO_AVAILABLE:
         try:
             GPIO.setwarnings(False)
@@ -813,10 +816,11 @@ def run_dashboard() -> None:
             pass
 
     controller = DashboardController(sensor_available=False)
-    controls = HardwareControls(controller)
-    controls.initialize()
+    # Set up RPi.GPIO BOARD-mode pins first so gpiozero can then claim its BCM pins without conflict.
     sensor_available = setup_gpio_pins()
     controller.motion_manager.sensor_available = sensor_available
+    controls = HardwareControls(controller)
+    controls.initialize()
     controller.start()
 
     oled_driver: Optional[Any] = None
@@ -858,7 +862,24 @@ def run_dashboard() -> None:
     class ReuseAddressServer(ThreadingHTTPServer):
         allow_reuse_address = True
 
-    server = ReuseAddressServer((HTTP_HOST, HTTP_PORT), DashRequestHandler)
+        def server_bind(self) -> None:
+            if hasattr(socket, "SO_REUSEPORT"):
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            super().server_bind()
+
+    _MAX_BIND_RETRIES = SERVER_BIND_MAX_RETRIES
+    _BIND_RETRY_DELAY = SERVER_BIND_RETRY_DELAY
+    server = None
+    for _attempt in range(_MAX_BIND_RETRIES):
+        try:
+            server = ReuseAddressServer((HTTP_HOST, HTTP_PORT), DashRequestHandler)
+            break
+        except OSError as exc:
+            if _attempt < _MAX_BIND_RETRIES - 1:
+                print(f"Port {HTTP_PORT} busy (attempt {_attempt + 1}/{_MAX_BIND_RETRIES}): {exc}; retrying in {_BIND_RETRY_DELAY}s...")
+                time.sleep(_BIND_RETRY_DELAY)
+            else:
+                raise
     stop_event = threading.Event()
 
     def begin_shutdown() -> None:
