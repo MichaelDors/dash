@@ -371,6 +371,43 @@ button.accent-soft {
   font-size: 0.86rem;
 }
 
+.widget-photo {
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  align-content: center;
+}
+
+.photo-bw {
+  max-width: 100%;
+  max-height: 50vh;
+  border-radius: 8px;
+  border: 1px solid rgba(153, 205, 224, 0.16);
+  image-rendering: pixelated;
+}
+
+.photo-upload-label {
+  display: inline-block;
+  border-radius: 11px;
+  border: 1px solid rgba(244, 166, 69, 0.66);
+  background: rgba(244, 166, 69, 0.14);
+  color: var(--text-main);
+  padding: 0.62rem 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.photo-upload-label:hover {
+  transform: translateY(-2px);
+  border-color: rgba(244, 166, 69, 0.9);
+  background: rgba(244, 166, 69, 0.22);
+}
+
+.photo-upload-input {
+  display: none;
+}
+
 @media (max-width: 960px) {
   body {
     overflow: auto;

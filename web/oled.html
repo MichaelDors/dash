@@ -33,6 +33,12 @@
         if (widget.type === "motion_status") {
           return '<section class="widget-motion"><div class="status-grid"><div class="status-tile"><div class="status-label">Motion</div><div class="status-value">' + (widget.motion_detected ? "Yes" : "No") + '</div></div><div class="status-tile"><div class="status-label">Display</div><div class="status-value">' + (widget.display_state || "ON") + '</div></div><div class="status-tile"><div class="status-label">Idle</div><div class="status-value">' + (widget.idle || "00:00") + '</div></div></div></section>';
         }
+        if (widget.type === "photo") {
+          if (widget.has_image && widget.image_base64) {
+            return '<section class="widget-photo"><img src="data:image/png;base64,' + widget.image_base64 + '" alt="BW" style="max-width:128px;max-height:64px;" /></section>';
+          }
+          return '<section class="widget-photo"><div style="font-size:8px;text-align:center;">No photo</div></section>';
+        }
         return '<section class="widget-time"><div class="time-main">?</div></section>';
       }
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
 import os
 
@@ -499,6 +501,61 @@ class VersionStatusWidget(Widget):
         }
 
 
+class PhotoWidget(Widget):
+    """Widget that displays an uploaded photo converted to pure black & white (1-bit)."""
+
+    MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB upload limit
+    MAX_DIMENSION = 4096  # reject images larger than 4096 in either axis
+
+    def __init__(self) -> None:
+        super().__init__("photo", "Photo")
+        self._bw_base64: Optional[str] = None
+        self._lock = threading.Lock()
+
+    def set_image(self, raw_bytes: bytes) -> str:
+        """Accept raw image bytes, convert to pure black & white, store as base64 PNG.
+
+        Returns an empty string on success or an error message.
+        """
+        if not PIL_AVAILABLE or Image is None:
+            return "Pillow is not installed on the server."
+        if len(raw_bytes) > self.MAX_IMAGE_BYTES:
+            return "Image exceeds 5 MB limit."
+        try:
+            img = Image.open(io.BytesIO(raw_bytes))
+            img.verify()  # validate image integrity
+            # Re-open after verify (verify may leave file pointer in bad state)
+            img = Image.open(io.BytesIO(raw_bytes))
+            if img.width > self.MAX_DIMENSION or img.height > self.MAX_DIMENSION:
+                return f"Image too large ({img.width}x{img.height}). Max {self.MAX_DIMENSION}px per side."
+            bw = img.convert("1")  # 1-bit black & white (not greyscale)
+            buf = io.BytesIO()
+            bw.save(buf, format="PNG")
+            encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+            with self._lock:
+                self._bw_base64 = encoded
+            return ""
+        except Exception as exc:
+            return f"Failed to process image: {exc}"
+
+    def on_button_hold_start(self) -> None:
+        with self._lock:
+            self._bw_base64 = None
+        print("Photo widget image cleared.")
+
+    def to_payload(self) -> Dict[str, Any]:
+        with self._lock:
+            has_image = self._bw_base64 is not None
+            image_data = self._bw_base64
+        return {
+            "id": self.widget_id,
+            "name": self.name,
+            "type": "photo",
+            "has_image": has_image,
+            "image_base64": image_data,
+        }
+
+
 class DashboardController:
     """Coordinates widgets, motion state, and hardware/button actions."""
 
@@ -510,6 +567,7 @@ class DashboardController:
             TimerWidget(),
             MotionStatusWidget(self.motion_manager),
             VersionStatusWidget(),
+            PhotoWidget(),
         ]
         self.current_widget_index = 0
 
@@ -738,6 +796,15 @@ def _render_oled_widget_html(widget: Dict[str, Any], motion: Dict[str, Any]) -> 
             f'<div class="status-tile"><div class="status-label">Status</div><div class="status-value">{status}</div></div>'
             f'<div class="status-tile"><div class="status-label">Branch</div><div class="status-value">{branch}</div></div></div></section>'
         )
+    if wtype == "photo":
+        image_b64 = w.get("image_base64")
+        if image_b64:
+            return (
+                '<section class="widget-photo">'
+                f'<img src="data:image/png;base64,{image_b64}" alt="BW Photo" style="max-width:128px;max-height:64px;" />'
+                '</section>'
+            )
+        return '<section class="widget-photo"><div class="photo-placeholder">No photo</div></section>'
     return '<section class="widget-time"><div class="time-main">?</div></section>'
 
 
@@ -772,6 +839,11 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/photo/upload":
+            self._handle_photo_upload()
+            return
+
         if parsed.path != "/api/action":
             self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             return
@@ -817,6 +889,46 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
         handler()
         return True
+
+    def _handle_photo_upload(self) -> None:
+        """Accept a base64-encoded image, convert to BW via the PhotoWidget, return status."""
+        body = self._read_json_body()
+        if body is None:
+            self._send_json({"error": "Invalid JSON body"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        image_b64 = body.get("image")
+        if not image_b64 or not isinstance(image_b64, str):
+            self._send_json({"error": "Missing 'image' field (base64)"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        # Strip optional data-URI prefix (e.g. "data:image/png;base64,...")
+        if "," in image_b64:
+            image_b64 = image_b64.split(",", 1)[1]
+
+        try:
+            raw_bytes = base64.b64decode(image_b64)
+        except Exception:
+            self._send_json({"error": "Invalid base64 data"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        photo_widget: Optional[PhotoWidget] = None
+        with self.controller._lock:
+            for w in self.controller.widgets:
+                if isinstance(w, PhotoWidget):
+                    photo_widget = w
+                    break
+
+        if photo_widget is None:
+            self._send_json({"error": "Photo widget not found"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        err = photo_widget.set_image(raw_bytes)
+        if err:
+            self._send_json({"error": err}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        self._send_json({"ok": True})
 
     def _serve_oled_page(self) -> None:
         """Serve oled.html with widget HTML pre-rendered so wkhtmltoimage gets correct content without waiting for JS."""
@@ -1059,6 +1171,25 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         draw.text((5, 44), f"S: {status}", fill=1, font=body_font)
         if branch:
             draw.text((5, 54), f"B: {branch}", fill=1, font=body_font)
+        return img
+
+    if wtype == "photo":
+        image_b64 = widget.get("image_base64")
+        if image_b64:
+            try:
+                photo_img = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+                photo_img = photo_img.convert("1")
+                photo_img.thumbnail((128, 64))
+                paste_x = (128 - photo_img.width) // 2
+                paste_y = (64 - photo_img.height) // 2
+                img.paste(photo_img, (paste_x, paste_y))
+                return img
+            except Exception:
+                pass
+        # No image uploaded yet – show placeholder text
+        title_font = _font(10)
+        tw, _ = _text_size("NO PHOTO", title_font)
+        draw.text((max((128 - tw) // 2, 0), 26), "NO PHOTO", fill=1, font=title_font)
         return img
 
     # Fallback: simple "?" screen

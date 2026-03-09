@@ -51,6 +51,32 @@ async function sendAction(action) {
   }
 }
 
+async function handlePhotoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async function () {
+    try {
+      const response = await fetch("/api/photo/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: reader.result })
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        console.error("Photo upload failed:", err.error || response.status);
+        return;
+      }
+      fetchState();
+    } catch (error) {
+      console.error("Photo upload error:", error);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 function render(state) {
   updateStamp();
 
@@ -73,6 +99,12 @@ function render(state) {
   widgetHint.textContent = hintForWidget(active.type);
   widgetBody.innerHTML = renderWidget(active, motion);
 }
+
+widgetBody.addEventListener("change", function (event) {
+  if (event.target.classList.contains("photo-upload-input")) {
+    handlePhotoUpload(event);
+  }
+});
 
 function renderTabs(widgets) {
   widgetTabs.innerHTML = "";
@@ -121,6 +153,8 @@ function hintForWidget(type) {
       return "Shows PIR and inactivity state.";
     case "version_status":
       return "Shows local/remote VERSION details.";
+    case "photo":
+      return "Upload a photo to convert to black & white. Hold to clear.";
     default:
       return "Use controls below to interact.";
   }
@@ -214,6 +248,21 @@ function renderWidget(widget, motion) {
           </div>
         </div>
         <p class="counter-help">${repo ? `Repo: ${repo}` : ""}</p>
+      </section>
+    `;
+  }
+
+  if (widget.type === "photo") {
+    const imageHtml = widget.has_image && widget.image_base64
+      ? `<img class="photo-bw" src="data:image/png;base64,${widget.image_base64}" alt="Black & white photo" />`
+      : `<p class="counter-help">No photo uploaded yet.</p>`;
+    return `
+      <section class="widget-photo">
+        ${imageHtml}
+        <label class="photo-upload-label">
+          Upload Photo
+          <input type="file" accept="image/*" class="photo-upload-input" />
+        </label>
       </section>
     `;
   }
