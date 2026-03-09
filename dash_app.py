@@ -888,10 +888,9 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         main_time_y = 8
         draw.text((main_time_x, main_time_y), time_main, fill=1, font=main_font)
 
-        # Approximate seconds position like nanobackup, but clamp to screen so they never go offscreen
-        main_time_width = len(time_main) * 40
-        seconds_x = main_time_x + main_time_width - 80
+        # Push seconds further left (close to the main time)
         sec_w, _ = _text_size(seconds, sec_font)
+        seconds_x = main_time_x + _text_size(time_main, main_font)[0] + 4  # 4px gap after main time
         if seconds_x + sec_w > 128:
             seconds_x = 128 - sec_w
         if seconds_x < 0:
