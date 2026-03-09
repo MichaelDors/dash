@@ -845,6 +845,28 @@ def run_dashboard() -> None:
     server = ThreadingHTTPServer((HTTP_HOST, HTTP_PORT), DashRequestHandler)
     stop_event = threading.Event()
 
+    def begin_shutdown() -> None:
+        if stop_event.is_set():
+            return
+        stop_event.set()
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    def _signal_handler(_signum: int, _frame: Any) -> None:
+        print("Shutdown signal received.")
+        begin_shutdown()
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _signal_handler)
+
+    # Run HTTP server in a thread so it is accepting before the OLED thread hits /oled
+    server_thread = threading.Thread(
+        target=lambda: server.serve_forever(poll_interval=0.2),
+        daemon=False,
+    )
+    server_thread.start()
+    time.sleep(0.8)  # let server enter accept loop before OLED tries to load page
+
     updater = threading.Thread(
         target=widget_update_loop,
         args=(controller, stop_event),
@@ -861,20 +883,6 @@ def run_dashboard() -> None:
         )
         oled_thread.start()
 
-    def begin_shutdown() -> None:
-        if stop_event.is_set():
-            return
-        stop_event.set()
-        threading.Thread(target=server.shutdown, daemon=True).start()
-
-    def _signal_handler(_signum: int, _frame: Any) -> None:
-        print("Shutdown signal received.")
-        begin_shutdown()
-
-    signal.signal(signal.SIGINT, _signal_handler)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, _signal_handler)
-
     print("Web dashboard is running.")
     print(f"Open http://localhost:{HTTP_PORT} on this machine (preview).")
     if HTTP_HOST == "0.0.0.0":
@@ -883,7 +891,7 @@ def run_dashboard() -> None:
         print("OLED is the display output; /oled view is rendered to the hardware.")
 
     try:
-        server.serve_forever(poll_interval=0.2)
+        server_thread.join()
     finally:
         stop_event.set()
         updater.join(timeout=1.0)
