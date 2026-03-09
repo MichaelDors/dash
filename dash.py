@@ -31,6 +31,7 @@ APP_SCRIPT = REPO_DIR / "dash_app.py"
 
 # Files to sync from GitHub (relative paths). Missing files are created.
 REPO_FILES = [
+    "dash.py",
     "dash_app.py",
     "oled_driver.py",
     "VERSION",

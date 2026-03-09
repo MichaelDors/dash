@@ -835,6 +835,16 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             self._send_json(self.controller.snapshot())
             return
 
+        if path == "/favicon.ico":
+            # Avoid noisy 404s in browsers; fall back to the logo if present.
+            if self._try_serve_static("favicon.ico"):
+                return
+            if self._try_serve_static("logo.png"):
+                return
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.end_headers()
+            return
+
         static_rel = path.lstrip("/")
         if static_rel and self._try_serve_static(static_rel):
             return
