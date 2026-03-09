@@ -132,18 +132,22 @@ def show_boot_logo() -> None:
     """
     bootlogo = REPO_DIR / "bootlogo.png"
     if not bootlogo.exists():
+        print("Boot logo: bootlogo.png not found.", file=sys.stderr)
         return
     try:
         import RPi.GPIO as GPIO  # noqa: PLC0415
-    except Exception:
+    except Exception as exc:
+        print(f"Boot logo: RPi.GPIO not available ({exc}).", file=sys.stderr)
         return
     try:
         from oled_driver import SH1106Driver, image_to_sh1106_pages
-    except Exception:
+    except Exception as exc:
+        print(f"Boot logo: oled_driver import failed ({exc}).", file=sys.stderr)
         return
     try:
         import spidev  # type: ignore[import-untyped]
-    except Exception:
+    except Exception as exc:
+        print(f"Boot logo: spidev import failed ({exc}).", file=sys.stderr)
         return
 
     # Same pins as dash_app
@@ -168,16 +172,25 @@ def show_boot_logo() -> None:
         driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
         driver.init_display()
 
-        from PIL import Image  # noqa: PLC0415
+        try:
+            data = bootlogo.read_bytes()
+        except OSError as exc:
+            print(f"Boot logo: failed to read bootlogo.png ({exc}).", file=sys.stderr)
+            return
 
-        img = Image.open(bootlogo).convert("L")
-        # DASH_BOOTLOGO_INVERT=1 if logo is black-on-white (so text appears lit)
-        if os.getenv("DASH_BOOTLOGO_INVERT", "0") == "1":
-            img = img.point(lambda p: 255 - p, mode="L")
-        pages = image_to_sh1106_pages(img.convert("RGB"))
+        pages = image_to_sh1106_pages(data)
+        if not pages:
+            print("Boot logo: image_to_sh1106_pages returned no data.", file=sys.stderr)
+            return
+
+        # By default, invert so a black-on-white logo becomes white-on-black on the OLED.
+        invert = os.getenv("DASH_BOOTLOGO_INVERT", "1") == "1"
+        if invert:
+            pages = [[(~b) & 0xFF for b in row] for row in pages]
+
         driver.display_frame(pages)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"Boot logo: unexpected error ({exc}).", file=sys.stderr)
     finally:
         if spi is not None:
             try:
