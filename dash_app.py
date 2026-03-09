@@ -600,6 +600,54 @@ class HardwareControls:
                 pass
 
 
+def _escape_html(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _render_oled_widget_html(widget: Dict[str, Any], motion: Dict[str, Any]) -> str:
+    """Server-side render of active widget HTML (mirrors oled.html renderWidget) so wkhtmltoimage gets content without JS."""
+    w = widget
+    wtype = (w.get("type") or "").lower()
+    if wtype == "time":
+        time_main = _escape_html(str(w.get("time_main") or "--:--"))
+        seconds = _escape_html(str(w.get("seconds") or "--"))
+        day = w.get("day")
+        day_str = str(day) if day is not None else "-"
+        month = _escape_html(str(w.get("month") or "---"))
+        return (
+            f'<section class="widget-time"><div class="time-main">'
+            f"{time_main}<span class=\"seconds\">:{seconds}</span></div>"
+            f'<div class="time-date"><span class="day">{_escape_html(day_str)}</span> <span class="month">{month}</span></div></section>'
+        )
+    if wtype == "click_counter":
+        count = w.get("count", 0)
+        return f'<section class="widget-counter"><div class="counter-number">{_escape_html(str(count))}</div></section>'
+    if wtype == "timer":
+        flash = " flash" if w.get("flash") else ""
+        running = "Run" if w.get("running") else "Stop"
+        time_text = _escape_html(str(w.get("time_text") or "05:00"))
+        return (
+            f'<section class="widget-timer{flash}"><div class="timer-badges">{_escape_html(running)}</div>'
+            f'<div class="timer-value">{time_text}</div></section>'
+        )
+    if wtype == "motion_status":
+        motion_yes = "Yes" if w.get("motion_detected") else "No"
+        display_state = _escape_html(str(w.get("display_state") or "ON"))
+        idle = _escape_html(str(w.get("idle") or "00:00"))
+        return (
+            f'<section class="widget-motion"><div class="status-grid">'
+            f'<div class="status-tile"><div class="status-label">Motion</div><div class="status-value">{motion_yes}</div></div>'
+            f'<div class="status-tile"><div class="status-label">Display</div><div class="status-value">{display_state}</div></div>'
+            f'<div class="status-tile"><div class="status-label">Idle</div><div class="status-value">{idle}</div></div></div></section>'
+        )
+    return '<section class="widget-time"><div class="time-main">?</div></section>'
+
+
 class DashRequestHandler(BaseHTTPRequestHandler):
     controller: DashboardController
     static_root: Path
@@ -678,7 +726,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         return True
 
     def _serve_oled_page(self) -> None:
-        """Serve oled.html with current state injected so wkhtmltoimage gets correct first frame."""
+        """Serve oled.html with widget HTML pre-rendered so wkhtmltoimage gets correct content without waiting for JS."""
         path = self.static_root / "oled.html"
         if not path.exists():
             self._send_json(
@@ -695,7 +743,12 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             )
             return
         state = self.controller.snapshot()
+        widget_html = _render_oled_widget_html(
+            state.get("active_widget") or {},
+            state.get("motion") or {},
+        )
         state_json = json.dumps(state).replace("</script>", "<\\/script>")
+        body = body.replace("{{WIDGET_HTML}}", widget_html)
         body = body.replace("{{INITIAL_STATE}}", state_json)
         payload = body.encode("utf-8")
         self.send_response(HTTPStatus.OK)
