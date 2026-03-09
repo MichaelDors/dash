@@ -53,6 +53,16 @@ except Exception:
     Button = None  # type: ignore[assignment]
     RotaryEncoder = None  # type: ignore[assignment]
 
+try:
+    from PIL import Image, ImageDraw, ImageFont
+
+    PIL_AVAILABLE = True
+except Exception:
+    PIL_AVAILABLE = False
+    Image = None  # type: ignore[assignment]
+    ImageDraw = None  # type: ignore[assignment]
+    ImageFont = None  # type: ignore[assignment]
+
 # --- PIN DEFINITIONS ---
 # Same as nanobackup.py: RPi.GPIO uses BOARD for motion/display only; gpiozero uses these (BCM) for encoder/buttons
 CLK_PIN = 5       # encoder CLK (physical 29)
@@ -808,93 +818,141 @@ def widget_update_loop(controller: DashboardController, stop_event: threading.Ev
         time.sleep(0.1)
 
 
+def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Image"]:
+    """Render the current widget state into a 128x64 monochrome image (Pillow), similar to nanobackup.py."""
+    if not PIL_AVAILABLE or Image is None or ImageDraw is None or ImageFont is None:
+        return None
+
+    img = Image.new("1", (128, 64), 0)  # black background
+    draw = ImageDraw.Draw(img)
+
+    widget = state.get("active_widget") or {}
+    wtype = str(widget.get("type") or "").lower()
+
+    def _font(size: int) -> Any:
+        # Try DejaVuSans on Linux, then Arial on macOS, then default
+        for path in (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Arial.ttf",
+        ):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    if wtype == "time":
+        time_main = str(widget.get("time_main") or "--:--")
+        seconds = f":{widget.get('seconds') or '--'}"
+        day = widget.get("day")
+        day_str = str(day) if day is not None else "-"
+        month = str(widget.get("month") or "---")
+
+        # Layout inspired by TimeWidget in nanobackup.py
+        main_font = _font(30)
+        sec_font = _font(12)
+        date_day_font = _font(18)
+        date_month_font = _font(12)
+
+        main_time_x = 0
+        main_time_y = 8
+        draw.text((main_time_x, main_time_y), time_main, fill=1, font=main_font)
+
+        main_w, _ = draw.textsize(time_main, font=main_font)
+        seconds_x = max(main_time_x + main_w - 40, 0)
+        seconds_y = main_time_y + 12
+        draw.text((seconds_x, seconds_y), seconds, fill=1, font=sec_font)
+
+        date_x = main_time_x
+        date_y = 45
+        draw.text((date_x, date_y), day_str, fill=1, font=date_day_font)
+        day_w, _ = draw.textsize(day_str, font=date_day_font)
+        month_x = date_x + day_w + 2
+        month_y = date_y + 5
+        draw.text((month_x, month_y), month, fill=1, font=date_month_font)
+        return img
+
+    if wtype == "click_counter":
+        count_str = str(widget.get("count", 0))
+        font = _font(48)
+        w, h = draw.textsize(count_str, font=font)
+        x = max((128 - w) // 2, 0)
+        y = max((64 - h) // 2, 0)
+        draw.text((x, y), count_str, fill=1, font=font)
+        return img
+
+    if wtype == "timer":
+        time_text = str(widget.get("time_text") or "05:00")
+        running = bool(widget.get("running"))
+
+        font = _font(36)
+        w, h = draw.textsize(time_text, font=font)
+        x = max((128 - w) // 2, 0)
+        y = max((64 - h) // 2, 0)
+        draw.text((x, y), time_text, fill=1, font=font)
+
+        # Small "RUN"/"STOP" indicator
+        small = _font(10)
+        label = "RUN" if running else "STOP"
+        draw.text((4, 4), label, fill=1, font=small)
+        return img
+
+    if wtype == "motion_status":
+        motion_yes = "YES" if widget.get("motion_detected") else "NO"
+        display_state = str(widget.get("display_state") or "ON").upper()
+        idle = str(widget.get("idle") or "00:00")
+
+        title_font = _font(10)
+        body_font = _font(9)
+
+        draw.rectangle((0, 0, 127, 63), outline=1, fill=0)
+        draw.text((15, 5), "MOTION STATUS", fill=1, font=title_font)
+        draw.text((8, 20), f"MOTION: {motion_yes}", fill=1, font=body_font)
+        draw.text((8, 32), f"DISPLAY: {display_state}", fill=1, font=body_font)
+        draw.text((8, 44), f"IDLE: {idle}", fill=1, font=body_font)
+        return img
+
+    # Fallback: simple "?" screen
+    fallback_font = _font(20)
+    w, h = draw.textsize("?", font=fallback_font)
+    x = max((128 - w) // 2, 0)
+    y = max((64 - h) // 2, 0)
+    draw.text((x, y), "?", fill=1, font=fallback_font)
+    return img
+
+
 def _oled_display_loop(
     controller: DashboardController,
     oled_driver: Any,
     stop_event: threading.Event,
     port: int,
 ) -> None:
-    """Use wkhtmltoimage to render /oled page to 128x64, then push to SH1106."""
+    """
+    Render widgets directly to a 128x64 buffer with Pillow (nanobackup-style)
+    and push frames to the SH1106, while keeping the web /oled preview running
+    for browser use.
+    """
     if image_to_sh1106_pages is None or oled_driver is None:
         return
+    if not PIL_AVAILABLE or Image is None:
+        print("OLED display: Pillow not available; hardware rendering disabled.")
+        return
 
-    import subprocess
+    interval = 0.1  # ~10 FPS
 
-    url = f"http://127.0.0.1:{port}/oled"
-    interval = 0.10  # ~10 FPS for snappier updates
-    wait_for_server = 8.0
-    started = time.time()
-
-    # Give the HTTP server time to bind and accept (server thread starts just before this thread)
-    time.sleep(1.8)
-
-    # Wait for server to be up
-    while not stop_event.is_set():
-        try:
-            result = subprocess.run(
-                [
-                    "wkhtmltoimage",
-                    "--width", "128",
-                    "--height", "64",
-                    "--disable-smart-width",
-                    "--quality", "90",
-                    "--format", "png",
-                    url,
-                    "-",  # stdout
-                ],
-                capture_output=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout:
-                break
-        except (FileNotFoundError, OSError) as exc:
-            print(f"wkhtmltoimage not found or failed; OLED display thread skipped: {exc}")
-            print("Install with: sudo apt install wkhtmltopdf")
-            return
-        except subprocess.TimeoutExpired:
-            pass
-        if time.time() - started > wait_for_server:
-            print("OLED display: could not load OLED page (server not ready?).")
-            return
-        time.sleep(0.5)
-
-    first_frame_ok = False
-    last_fail_log = 0.0
     while not stop_event.is_set():
         motion = controller.motion_manager.get_status()
         if motion.get("display_off"):
             time.sleep(interval)
             continue
         try:
-            result = subprocess.run(
-                [
-                    "wkhtmltoimage",
-                    "--width", "128",
-                    "--height", "64",
-                    "--disable-smart-width",
-                    "--quality", "90",
-                    "--format", "png",
-                    url,
-                    "-",
-                ],
-                capture_output=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout and image_to_sh1106_pages:
-                pages = image_to_sh1106_pages(result.stdout)
-                oled_driver.display_frame(pages)
-                if not first_frame_ok:
-                    first_frame_ok = True
-                    print("OLED display: first frame rendered successfully.")
-            else:
-                now = time.time()
-                if now - last_fail_log >= 10.0:
-                    last_fail_log = now
-                    err = result.stderr.decode("utf-8", errors="replace").strip() if result.stderr else ""
-                    print(f"OLED display: wkhtmltoimage failed (code={result.returncode}, no output? {not result.stdout}) {err[:200]}")
-        except subprocess.TimeoutExpired:
-            if MOTION_DEBUG:
-                print("OLED display loop: wkhtmltoimage timeout")
+            state = controller.snapshot()
+            img = _oled_render_image_from_state(state)
+            if img is None:
+                time.sleep(interval)
+                continue
+            pages = image_to_sh1106_pages(img)
+            oled_driver.display_frame(pages)
         except Exception as exc:
             if MOTION_DEBUG:
                 print(f"OLED display loop: {exc}")
