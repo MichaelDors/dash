@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+
+# Use lgpio backend so gpiozero does not conflict with RPi.GPIO (avoids "GPIO busy" when
+# RPi.GPIO is used first for motion/OLED pins in BOARD mode).
+os.environ.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
 import signal
 import socket
 import threading
@@ -774,6 +778,8 @@ def _oled_display_loop(
             return
         time.sleep(0.5)
 
+    first_frame_ok = False
+    last_fail_log = 0.0
     while not stop_event.is_set():
         motion = controller.motion_manager.get_status()
         if motion.get("display_off"):
@@ -797,6 +803,15 @@ def _oled_display_loop(
             if result.returncode == 0 and result.stdout and image_to_sh1106_pages:
                 pages = image_to_sh1106_pages(result.stdout)
                 oled_driver.display_frame(pages)
+                if not first_frame_ok:
+                    first_frame_ok = True
+                    print("OLED display: first frame rendered successfully.")
+            else:
+                now = time.time()
+                if now - last_fail_log >= 10.0:
+                    last_fail_log = now
+                    err = result.stderr.decode("utf-8", errors="replace").strip() if result.stderr else ""
+                    print(f"OLED display: wkhtmltoimage failed (code={result.returncode}, no output? {not result.stdout}) {err[:200]}")
         except subprocess.TimeoutExpired:
             if MOTION_DEBUG:
                 print("OLED display loop: wkhtmltoimage timeout")
