@@ -52,6 +52,7 @@ async function sendAction(action) {
 }
 
 let photoUploadStatus = "";
+const STATUS_CLEAR_MS = 5000;
 
 async function handlePhotoUpload(event) {
   const file = event.target.files[0];
@@ -94,7 +95,7 @@ async function handlePhotoUpload(event) {
         const err = await response.json();
         photoUploadStatus = "Upload failed: " + (err.error || response.status);
         console.error("Photo upload failed:", err.error || response.status);
-        setTimeout(function () { photoUploadStatus = ""; }, 5000);
+        setTimeout(function () { photoUploadStatus = ""; }, STATUS_CLEAR_MS);
         return;
       }
       photoUploadStatus = "";
@@ -102,7 +103,7 @@ async function handlePhotoUpload(event) {
     } catch (error) {
       photoUploadStatus = "Upload error: " + error.message;
       console.error("Photo upload error:", error);
-      setTimeout(function () { photoUploadStatus = ""; }, 5000);
+      setTimeout(function () { photoUploadStatus = ""; }, STATUS_CLEAR_MS);
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -112,7 +113,7 @@ async function handlePhotoUpload(event) {
     URL.revokeObjectURL(url);
     photoUploadStatus = "Unable to load image. Format may not be supported by your browser.";
     console.error("Photo load error: could not decode image");
-    setTimeout(function () { photoUploadStatus = ""; }, 5000);
+    setTimeout(function () { photoUploadStatus = ""; }, STATUS_CLEAR_MS);
   };
 
   img.src = url;
