@@ -888,9 +888,14 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         main_time_y = 8
         draw.text((main_time_x, main_time_y), time_main, fill=1, font=main_font)
 
-        # nanobackup uses a width approximation to place seconds
+        # Approximate seconds position like nanobackup, but clamp to screen so they never go offscreen
         main_time_width = len(time_main) * 40
         seconds_x = main_time_x + main_time_width - 80
+        sec_w, _ = _text_size(seconds, sec_font)
+        if seconds_x + sec_w > 128:
+            seconds_x = 128 - sec_w
+        if seconds_x < 0:
+            seconds_x = 0
         seconds_y = main_time_y + 12
         draw.text((seconds_x, seconds_y), seconds, fill=1, font=sec_font)
 
@@ -1040,6 +1045,20 @@ def run_dashboard() -> None:
 
             oled_driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
             oled_driver.init_display()
+
+            # Optional boot logo at OLED startup (uses same path as runtime rendering)
+            try:
+                bootlogo_path = BASE_DIR / "bootlogo.png"
+                if bootlogo_path.exists():
+                    data = bootlogo_path.read_bytes()
+                    pages = image_to_sh1106_pages(data)
+                    if pages:
+                        oled_driver.display_frame(pages)
+                        time.sleep(2.0)
+            except Exception as exc:
+                if MOTION_DEBUG:
+                    print(f"OLED boot logo failed: {exc}")
+
             controller.motion_manager.set_display_driver(
                 turn_off=oled_driver.turn_off,
                 turn_on=oled_driver.turn_on,
