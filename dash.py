@@ -39,6 +39,9 @@ REPO_FILES = [
     "web/oled.css",
     "web/app.js",
     "web/styles.css",
+    "web/logo.png",
+    "web/displayserif.ttf",
+    "web/primarytext.otf",
 ]
 
 # Embedded boot logo (PNG) as base64 data URL. White pixels = on, black pixels = off.

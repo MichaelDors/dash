@@ -835,6 +835,10 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             self._send_json(self.controller.snapshot())
             return
 
+        static_rel = path.lstrip("/")
+        if static_rel and self._try_serve_static(static_rel):
+            return
+
         self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
@@ -979,6 +983,56 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(payload)
+
+    def _try_serve_static(self, rel_path: str) -> bool:
+        """
+        Serve any file that exists in WEB_DIR, with basic extension-based content types.
+        Prevents directory traversal and avoids hardcoding every new asset route.
+        """
+        try:
+            rel = Path(rel_path)
+        except Exception:
+            return False
+        if rel.is_absolute() or ".." in rel.parts:
+            return False
+
+        file_path = (self.static_root / rel).resolve()
+        try:
+            static_root = self.static_root.resolve()
+        except Exception:
+            static_root = self.static_root
+        if static_root not in file_path.parents and file_path != static_root:
+            return False
+        if not file_path.exists() or not file_path.is_file():
+            return False
+
+        suffix = file_path.suffix.lower()
+        content_type = {
+            ".html": "text/html; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
+            ".js": "application/javascript; charset=utf-8",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".svg": "image/svg+xml",
+            ".ico": "image/x-icon",
+            ".ttf": "font/ttf",
+            ".otf": "font/otf",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+            ".json": "application/json; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
+        }.get(suffix, "application/octet-stream")
+
+        payload = file_path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+        return True
 
     def _read_json_body(self) -> Optional[Dict[str, Any]]:
         try:
