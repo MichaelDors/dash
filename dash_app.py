@@ -45,27 +45,22 @@ except Exception:
     GPIO = _MockGPIO()  # type: ignore[assignment]
 
 try:
-    from gpiozero import Button, DigitalInputDevice, DigitalOutputDevice, RotaryEncoder
+    from gpiozero import Button, RotaryEncoder
 
     GPIOZERO_AVAILABLE = True
 except Exception:
     GPIOZERO_AVAILABLE = False
     Button = None  # type: ignore[assignment]
-    DigitalInputDevice = None  # type: ignore[assignment]
-    DigitalOutputDevice = None  # type: ignore[assignment]
     RotaryEncoder = None  # type: ignore[assignment]
 
 # --- PIN DEFINITIONS ---
-# BCM numbering — used by gpiozero for encoder, buttons, motion, and OLED
-CLK_PIN = 5       # BCM 5  (physical pin 29)
-DT_PIN = 6        # BCM 6  (physical pin 31)
-SW_PIN = 13       # BCM 13 (physical pin 33)
-BUTTON1_PIN = 23  # BCM 23 (physical pin 16)
-BUTTON2_PIN = 26  # BCM 26 (physical pin 37)
-MOTION_BCM = 16   # physical pin 36
-OLED_A0_BCM = 25  # physical pin 22
-OLED_RESN_BCM = 24  # physical pin 18
-# BOARD numbering — only when RPi.GPIO is used (no gpiozero)
+# Same as nanobackup.py: RPi.GPIO uses BOARD for motion/display only; gpiozero uses these (BCM) for encoder/buttons
+CLK_PIN = 5       # encoder CLK (physical 29)
+DT_PIN = 6        # encoder DT (physical 31)
+SW_PIN = 13       # main button (physical 33)
+BUTTON1_PIN = 23  # button1 (physical 16)
+BUTTON2_PIN = 26  # button2 (physical 37)
+# BOARD numbering — RPi.GPIO only (motion + display); do not set up encoder/button pins with GPIO
 MOTION_PIN = 36    # physical pin 36
 OLED_A0_PIN = 22   # physical pin 22
 OLED_RESN_PIN = 18 # physical pin 18
@@ -131,8 +126,6 @@ class MotionSensorManager:
         self.motion_detected = False
         self.display_dimmed = False
         self.display_off = False
-        self._read_motion: Optional[Any] = None  # callable () -> bool when using gpiozero
-
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -206,9 +199,7 @@ class MotionSensorManager:
 
             if self.sensor_available:
                 try:
-                    if self._read_motion is not None:
-                        sensor_motion = bool(self._read_motion())
-                    elif GPIO_AVAILABLE:
+                    if GPIO_AVAILABLE:
                         sensor_motion = bool(GPIO.input(MOTION_PIN))
                     else:
                         sensor_motion = False
@@ -858,47 +849,29 @@ def _oled_display_loop(
 
 
 def run_dashboard() -> None:
-    # Only touch RPi.GPIO when we are not using gpiozero (avoids "GPIO busy" conflict).
+    # Same order as nanobackup.py: RPi.GPIO first (motion + display pins only), then gpiozero for encoder/buttons
     used_rpi_gpio = False
-    if GPIO_AVAILABLE and not GPIOZERO_AVAILABLE:
+    if GPIO_AVAILABLE:
         try:
             GPIO.setwarnings(False)
             GPIO.cleanup()
-            used_rpi_gpio = True
         except Exception:
             pass
+        sensor_available = setup_gpio_pins()
+        used_rpi_gpio = sensor_available
+    else:
+        sensor_available = False
 
     controller = DashboardController(sensor_available=False)
-    motion_device: Optional[Any] = None
-    oled_a0_device: Optional[Any] = None
-    oled_resn_device: Optional[Any] = None
-
-    if GPIOZERO_AVAILABLE:
-        try:
-            motion_device = DigitalInputDevice(MOTION_BCM)
-            controller.motion_manager.sensor_available = True
-            controller.motion_manager._read_motion = lambda: bool(motion_device.value)
-            print("Motion sensor (gpiozero) initialized.")
-        except Exception as exc:
-            print(f"Motion sensor init failed: {exc}")
-        controls = HardwareControls(controller)
-        controls.initialize()
-    else:
-        if GPIO_AVAILABLE:
-            used_rpi_gpio = True
-            sensor_available = setup_gpio_pins()
-        else:
-            sensor_available = False
-        controller.motion_manager.sensor_available = sensor_available
-        controls = HardwareControls(controller)
-        controls.initialize()
-
+    controller.motion_manager.sensor_available = sensor_available
+    controls = HardwareControls(controller)
+    controls.initialize()
     controller.start()
 
     oled_driver: Optional[Any] = None
     spi: Optional[Any] = None
 
-    if OLED_ENABLED and SH1106Driver is not None and image_to_sh1106_pages is not None:
+    if OLED_ENABLED and GPIO_AVAILABLE and SH1106Driver is not None and image_to_sh1106_pages is not None:
         try:
             import spidev  # type: ignore[import-untyped]
 
@@ -907,29 +880,10 @@ def run_dashboard() -> None:
             spi.max_speed_hz = 1000000
             spi.mode = 0b00
 
-            if GPIOZERO_AVAILABLE and DigitalOutputDevice is not None:
-                oled_a0_device = DigitalOutputDevice(OLED_A0_BCM, initial_value=True)
-                oled_resn_device = DigitalOutputDevice(OLED_RESN_BCM, initial_value=True)
+            def _gpio_output(pin: int, value: int) -> None:
+                GPIO.output(pin, value)
 
-                def _gpio_output(pin: int, value: int) -> None:
-                    if pin == OLED_A0_PIN and oled_a0_device is not None:
-                        oled_a0_device.value = value
-                    elif pin == OLED_RESN_PIN and oled_resn_device is not None:
-                        oled_resn_device.value = value
-
-                oled_driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
-            elif GPIO_AVAILABLE:
-                used_rpi_gpio = True
-                if not controller.motion_manager.sensor_available:
-                    setup_gpio_pins()
-
-                def _gpio_output(pin: int, value: int) -> None:
-                    GPIO.output(pin, value)
-
-                oled_driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
-            else:
-                raise RuntimeError("No GPIO backend available for OLED")
-
+            oled_driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
             oled_driver.init_display()
             controller.motion_manager.set_display_driver(
                 turn_off=oled_driver.turn_off,
@@ -1038,12 +992,6 @@ def run_dashboard() -> None:
         controls.cleanup()
         controller.stop()
         server.server_close()
-        for dev in [motion_device, oled_a0_device, oled_resn_device]:
-            if dev is not None:
-                try:
-                    dev.close()
-                except Exception:
-                    pass
         if used_rpi_gpio and GPIO_AVAILABLE:
             try:
                 GPIO.cleanup()
