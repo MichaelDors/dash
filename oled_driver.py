@@ -120,8 +120,8 @@ class SH1106Driver:
         self._send_command(0xD3)
         self._send_command(0x00)
         self._send_command(0x40)
-        self._send_command(0x8D)
-        self._send_command(0x14)
+        self._send_command(0xAD)  # DC-DC control (SH1106)
+        self._send_command(0x8B)  # DC-DC ON
         self._send_command(0xA0)
         self._send_command(0xC0)
         self._send_command(0xDA)
@@ -136,6 +136,7 @@ class SH1106Driver:
         self._send_command(0xA6)
         self.clear_display()
         self._send_command(0xAF)  # Display ON
+        time.sleep(0.15)  # Let DC-DC stabilize before writing frame data
 
     def display_frame(self, page_data: List[List[int]]) -> None:
         """Send 8 pages of 128 bytes each to the display."""
