@@ -98,6 +98,8 @@ def setup_gpio_pins() -> bool:
         return False
 
     try:
+        GPIO.setwarnings(False)
+        GPIO.cleanup()
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(MOTION_PIN, GPIO.IN)
         # Display pins for SH1106 (optional; used when OLED is enabled)
@@ -799,11 +801,19 @@ def _oled_display_loop(
 
 
 def run_dashboard() -> None:
-    sensor_available = setup_gpio_pins()
+    # Let gpiozero claim its pins before RPi.GPIO to avoid "GPIO busy" errors.
+    if GPIO_AVAILABLE:
+        try:
+            GPIO.setwarnings(False)
+            GPIO.cleanup()
+        except Exception:
+            pass
 
-    controller = DashboardController(sensor_available=sensor_available)
+    controller = DashboardController(sensor_available=False)
     controls = HardwareControls(controller)
     controls.initialize()
+    sensor_available = setup_gpio_pins()
+    controller.motion_manager.sensor_available = sensor_available
     controller.start()
 
     oled_driver: Optional[Any] = None
@@ -842,7 +852,10 @@ def run_dashboard() -> None:
     DashRequestHandler.controller = controller
     DashRequestHandler.static_root = WEB_DIR
 
-    server = ThreadingHTTPServer((HTTP_HOST, HTTP_PORT), DashRequestHandler)
+    class ReuseAddressServer(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    server = ReuseAddressServer((HTTP_HOST, HTTP_PORT), DashRequestHandler)
     stop_event = threading.Event()
 
     def begin_shutdown() -> None:
