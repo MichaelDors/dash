@@ -16,6 +16,7 @@ No git needed on the Pi.
 from __future__ import annotations
 
 import base64
+import io
 import os
 import re
 import subprocess
@@ -151,6 +152,11 @@ def show_boot_logo() -> None:
     except Exception as exc:
         print(f"Boot logo: spidev import failed ({exc}).", file=sys.stderr)
         return
+    try:
+        from PIL import Image  # noqa: PLC0415
+    except Exception as exc:
+        print(f"Boot logo: Pillow not available ({exc}).", file=sys.stderr)
+        return
 
     # Same pins as dash_app
     OLED_A0_PIN = 22
@@ -176,12 +182,13 @@ def show_boot_logo() -> None:
 
         try:
             _prefix, _sep, b64_data = BOOTLOGO_DATA_URL.partition(",")
-            data = base64.b64decode(b64_data.strip())
+            raw = base64.b64decode(b64_data.strip())
+            img = Image.open(io.BytesIO(raw))
         except Exception as exc:
-            print(f"Boot logo: failed to decode base64 data ({exc}).", file=sys.stderr)
+            print(f"Boot logo: failed to load image ({exc}).", file=sys.stderr)
             return
 
-        pages = image_to_sh1106_pages(data)
+        pages = image_to_sh1106_pages(img)
         if not pages:
             print("Boot logo: image_to_sh1106_pages returned no data.", file=sys.stderr)
             return
