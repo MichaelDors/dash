@@ -51,30 +51,71 @@ async function sendAction(action) {
   }
 }
 
+let photoUploadStatus = "";
+
 async function handlePhotoUpload(event) {
   const file = event.target.files[0];
   if (!file) {
     return;
   }
-  const reader = new FileReader();
-  reader.onload = async function () {
+
+  photoUploadStatus = "Uploading and converting\u2026";
+
+  const MAX_DIM = 1024;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+
+  img.onload = async function () {
     try {
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        const scale = MAX_DIM / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+
       const response = await fetch("/api/photo/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: reader.result })
+        body: JSON.stringify({ image: dataUrl })
       });
       if (!response.ok) {
         const err = await response.json();
+        photoUploadStatus = "Upload failed: " + (err.error || response.status);
         console.error("Photo upload failed:", err.error || response.status);
+        setTimeout(function () { photoUploadStatus = ""; }, 5000);
         return;
       }
+      photoUploadStatus = "";
       fetchState();
     } catch (error) {
+      photoUploadStatus = "Upload error: " + error.message;
       console.error("Photo upload error:", error);
+      setTimeout(function () { photoUploadStatus = ""; }, 5000);
+    } finally {
+      URL.revokeObjectURL(url);
     }
   };
-  reader.readAsDataURL(file);
+
+  img.onerror = function () {
+    URL.revokeObjectURL(url);
+    photoUploadStatus = "Unable to load image. Format may not be supported by your browser.";
+    console.error("Photo load error: could not decode image");
+    setTimeout(function () { photoUploadStatus = ""; }, 5000);
+  };
+
+  img.src = url;
 }
 
 function render(state) {
@@ -256,9 +297,14 @@ function renderWidget(widget, motion) {
     const imageHtml = widget.has_image && widget.image_base64
       ? `<img class="photo-bw" src="data:image/png;base64,${widget.image_base64}" alt="Black & white photo" />`
       : `<p class="counter-help">No photo uploaded yet.</p>`;
+    let statusHtml = "";
+    if (photoUploadStatus) {
+      statusHtml = `<p class="counter-help photo-upload-status">${photoUploadStatus}</p>`;
+    }
     return `
       <section class="widget-photo">
         ${imageHtml}
+        ${statusHtml}
         <label class="photo-upload-label">
           Upload Photo
           <input type="file" accept="image/*" class="photo-upload-input" />
