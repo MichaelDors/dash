@@ -31,6 +31,7 @@ APP_SCRIPT = REPO_DIR / "dash_app.py"
 REPO_FILES = [
     "dash_app.py",
     "oled_driver.py",
+    "bootlogo.png",
     "VERSION",
     "web/index.html",
     "web/oled.html",
@@ -124,6 +125,67 @@ def need_sync(repo: str, branch: str) -> tuple[bool, str | None]:
     return False, None
 
 
+def show_boot_logo() -> None:
+    """
+    Show bootlogo.png on the OLED during loading. No web server — minimal SPI/GPIO only.
+    White pixels = on, black = off. Silently skips if display or logo unavailable.
+    """
+    bootlogo = REPO_DIR / "bootlogo.png"
+    if not bootlogo.exists():
+        return
+    try:
+        import RPi.GPIO as GPIO  # noqa: PLC0415
+    except Exception:
+        return
+    try:
+        from oled_driver import SH1106Driver, image_to_sh1106_pages
+    except Exception:
+        return
+    try:
+        import spidev  # type: ignore[import-untyped]
+    except Exception:
+        return
+
+    # Same pins as dash_app
+    OLED_A0_PIN = 22
+    OLED_RESN_PIN = 18
+
+    spi = None
+    try:
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setup(OLED_A0_PIN, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(OLED_RESN_PIN, GPIO.OUT, initial=GPIO.HIGH)
+
+        spi = spidev.SpiDev()
+        spi.open(0, 0)
+        spi.max_speed_hz = 1000000
+        spi.mode = 0b00
+
+        def _gpio_output(pin: int, value: int) -> None:
+            GPIO.output(pin, value)
+
+        driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
+        driver.init_display()
+
+        from PIL import Image  # noqa: PLC0415
+
+        img = Image.open(bootlogo).convert("L")
+        # DASH_BOOTLOGO_INVERT=1 if logo is black-on-white (so text appears lit)
+        if os.getenv("DASH_BOOTLOGO_INVERT", "0") == "1":
+            img = img.point(lambda p: 255 - p, mode="L")
+        pages = image_to_sh1106_pages(img.convert("RGB"))
+        driver.display_frame(pages)
+    except Exception:
+        pass
+    finally:
+        if spi is not None:
+            try:
+                spi.close()
+            except Exception:
+                pass
+
+
 def stop_existing_dashboard() -> None:
     """Stop any already-running dash_app.py so the new process can bind the port."""
     try:
@@ -154,12 +216,13 @@ def run_update_check() -> None:
 
 
 def main() -> None:
+    stop_existing_dashboard()
+    show_boot_logo()
     run_update_check()
     if not APP_SCRIPT.exists():
         print(f"App script not found: {APP_SCRIPT}", file=sys.stderr)
         print("Add dash_app.py to your repo (https://github.com/MichaelDors/dash) and push, then try again.", file=sys.stderr)
         sys.exit(1)
-    stop_existing_dashboard()
     os.chdir(REPO_DIR)
     os.execv(sys.executable, [sys.executable, str(APP_SCRIPT)] + sys.argv[1:])
 
