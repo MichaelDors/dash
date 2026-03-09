@@ -735,8 +735,11 @@ def _oled_display_loop(
 
     url = f"http://127.0.0.1:{port}/oled"
     interval = 0.15  # ~6–7 FPS
-    wait_for_server = 5.0
+    wait_for_server = 8.0
     started = time.time()
+
+    # Give the HTTP server time to bind and accept (server thread starts just before this thread)
+    time.sleep(1.8)
 
     # Wait for server to be up
     while not stop_event.is_set():

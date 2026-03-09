@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -122,6 +124,19 @@ def need_sync(repo: str, branch: str) -> tuple[bool, str | None]:
     return False, None
 
 
+def stop_existing_dashboard() -> None:
+    """Stop any already-running dash_app.py so the new process can bind the port."""
+    try:
+        subprocess.run(
+            ["pkill", "-f", "dash_app.py"],
+            capture_output=True,
+            timeout=5,
+        )
+        time.sleep(0.6)  # let OS release port and GPIO
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+
 def run_update_check() -> None:
     repo = os.getenv("GITHUB_REPO", "MichaelDors/dash").strip()
     branch = os.environ.get("GITHUB_BRANCH", "main").strip()
@@ -144,6 +159,7 @@ def main() -> None:
         print(f"App script not found: {APP_SCRIPT}", file=sys.stderr)
         print("Add dash_app.py to your repo (https://github.com/MichaelDors/dash) and push, then try again.", file=sys.stderr)
         sys.exit(1)
+    stop_existing_dashboard()
     os.chdir(REPO_DIR)
     os.execv(sys.executable, [sys.executable, str(APP_SCRIPT)] + sys.argv[1:])
 
