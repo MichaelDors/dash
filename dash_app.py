@@ -1045,19 +1045,6 @@ def run_dashboard() -> None:
             oled_driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
             oled_driver.init_display()
 
-            # Optional boot logo at OLED startup (uses same path as runtime rendering)
-            try:
-                bootlogo_path = BASE_DIR / "bootlogo.png"
-                if bootlogo_path.exists():
-                    data = bootlogo_path.read_bytes()
-                    pages = image_to_sh1106_pages(data)
-                    if pages:
-                        oled_driver.display_frame(pages)
-                        time.sleep(2.0)
-            except Exception as exc:
-                if MOTION_DEBUG:
-                    print(f"OLED boot logo failed: {exc}")
-
             controller.motion_manager.set_display_driver(
                 turn_off=oled_driver.turn_off,
                 turn_on=oled_driver.turn_on,
