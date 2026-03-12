@@ -56,6 +56,8 @@ async function sendAction(action) {
 
 let photoUploadStatus = "";
 const STATUS_CLEAR_MS = 5000;
+let weatherLocationStatus = "";
+const WEATHER_STATUS_CLEAR_MS = 5000;
 
 async function handlePhotoUpload(event) {
   const file = event.target.files[0];
@@ -122,6 +124,54 @@ async function handlePhotoUpload(event) {
   img.src = url;
 }
 
+async function setWeatherLocation(query) {
+  const trimmed = String(query || "").trim();
+  if (!trimmed) {
+    weatherLocationStatus = "Enter a location to continue.";
+    setTimeout(function () { weatherLocationStatus = ""; }, WEATHER_STATUS_CLEAR_MS);
+    if (latestState) {
+      render(latestState);
+    }
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/weather/location", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ location: trimmed })
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      weatherLocationStatus = payload.error || `Error: HTTP ${response.status}`;
+      setTimeout(function () { weatherLocationStatus = ""; }, WEATHER_STATUS_CLEAR_MS);
+      if (latestState) {
+        render(latestState);
+      }
+      return;
+    }
+
+    weatherLocationStatus = "";
+    latestState = payload;
+    render(latestState);
+  } catch (error) {
+    weatherLocationStatus = "Unable to update location.";
+    setTimeout(function () { weatherLocationStatus = ""; }, WEATHER_STATUS_CLEAR_MS);
+    console.error(error);
+  }
+}
+
+function handleWeatherLocationSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const input = form.querySelector(".weather-location-input");
+  if (!input) {
+    return;
+  }
+  setWeatherLocation(input.value);
+}
+
 function render(state) {
   updateStamp();
 
@@ -165,6 +215,18 @@ function render(state) {
     if (input && !input.__dashPhotoBound) {
       input.addEventListener("change", handlePhotoUpload);
       input.__dashPhotoBound = true;
+    }
+  }
+
+  if (active.type === "weather") {
+    const form = widgetBody.querySelector(".weather-form");
+    if (form && !form.__dashWeatherBound) {
+      form.addEventListener("submit", handleWeatherLocationSubmit);
+      form.__dashWeatherBound = true;
+    }
+    const input = widgetBody.querySelector(".weather-location-input");
+    if (input) {
+      input.value = active.location_query || "";
     }
   }
 }
@@ -240,6 +302,8 @@ function hintForWidget(type) {
       return "Press to start/stop. Use +/- minute controls.";
     case "motion_status":
       return "Shows PIR and inactivity state.";
+    case "weather":
+      return "Enter a location to fetch current weather.";
     case "version_status":
       return "Shows local/remote VERSION details.";
     case "photo":
@@ -344,6 +408,42 @@ function renderWidget(widget, motion) {
     `;
   }
 
+  if (widget.type === "weather") {
+    const temp = widget.temperature_f == null ? "--" : Math.round(widget.temperature_f);
+    const feels = widget.apparent_f == null ? "--" : Math.round(widget.apparent_f);
+    const wind = widget.wind_mph == null ? "--" : Math.round(widget.wind_mph);
+    const needsLocation = Boolean(widget.needs_location);
+    const condition = needsLocation ? "Waiting for location" : (widget.condition || "—");
+    const locationLabel = needsLocation ? "Location not set" : (widget.location || widget.location_query || "Weather");
+    let updatedText = "";
+    if (widget.last_updated && !needsLocation) {
+      const parts = String(widget.last_updated).split("T");
+      updatedText = parts.length > 1 ? `Updated ${parts[1].slice(0, 5)}` : `Updated ${parts[0]}`;
+    }
+    const status = weatherLocationStatus || widget.error || "";
+    return `
+      <section class="widget-weather">
+        <div class="weather-main">
+          <div class="weather-temp">${temp}°F</div>
+          <div class="weather-meta">
+            <div class="weather-condition">${condition}</div>
+            <div class="weather-feels">Feels like ${feels}°F</div>
+            <div class="weather-wind">Wind ${wind} mph</div>
+          </div>
+        </div>
+        <div class="weather-location">
+          <span class="weather-location-label">${locationLabel}</span>
+          <span class="weather-updated">${updatedText}</span>
+        </div>
+        <form class="weather-form">
+          <input type="text" class="weather-location-input" placeholder="City, State or ZIP" />
+          <button type="submit" class="weather-location-button">Set</button>
+        </form>
+        ${status ? `<p class="weather-status">${status}</p>` : ""}
+      </section>
+    `;
+  }
+
   if (widget.type === "version_status") {
     const local = widget.local ?? "unknown";
     const remote = widget.remote ?? "n/a";
@@ -439,6 +539,10 @@ if (holdButton) {
 
 window.addEventListener("keydown", (event) => {
   if (event.repeat) {
+    return;
+  }
+  const target = event.target;
+  if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
     return;
   }
 

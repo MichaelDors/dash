@@ -15,7 +15,9 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 try:
     # Optional: local launcher module that knows how to read/compare versions.
@@ -444,6 +446,236 @@ class MotionStatusWidget(Widget):
         }
 
 
+WEATHER_CODE_LABELS: dict[int, str] = {
+    0: "Clear",
+    1: "Mostly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Rime fog",
+    51: "Drizzle light",
+    53: "Drizzle",
+    55: "Drizzle heavy",
+    56: "Freezing drizzle",
+    57: "Freezing drizzle heavy",
+    61: "Rain light",
+    63: "Rain",
+    65: "Rain heavy",
+    66: "Freezing rain",
+    67: "Freezing rain heavy",
+    71: "Snow light",
+    73: "Snow",
+    75: "Snow heavy",
+    77: "Snow grains",
+    80: "Rain showers",
+    81: "Rain showers heavy",
+    82: "Rain showers violent",
+    85: "Snow showers",
+    86: "Snow showers heavy",
+    95: "Thunderstorm",
+    96: "Thunderstorm hail",
+    99: "Thunderstorm hail heavy",
+}
+
+
+def _weather_code_label(code: Optional[int]) -> str:
+    if code is None:
+        return "Unknown"
+    try:
+        return WEATHER_CODE_LABELS.get(int(code), "Unknown")
+    except (TypeError, ValueError):
+        return "Unknown"
+
+
+class WeatherWidget(Widget):
+    """Weather widget powered by the free Open-Meteo API (no API key required)."""
+
+    GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+    FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+    USER_AGENT = "Dash-Weather/1.0"
+    FETCH_INTERVAL = 10 * 60
+    BACKOFF_SECONDS = 120
+    MAX_QUERY_LEN = 80
+
+    def __init__(self) -> None:
+        super().__init__("weather", "Weather")
+        default_query = os.getenv("DASH_WEATHER_LOCATION", "").strip()
+        self.location_query: Optional[str] = default_query or None
+        self.location_label: Optional[str] = None
+        self.latitude: Optional[float] = None
+        self.longitude: Optional[float] = None
+        self.timezone: str = "auto"
+
+        self.temperature_f: Optional[float] = None
+        self.apparent_f: Optional[float] = None
+        self.wind_mph: Optional[float] = None
+        self.weather_code: Optional[int] = None
+        self.is_day: Optional[bool] = None
+        self.last_updated: Optional[str] = None
+        self.last_error: Optional[str] = None
+
+        self._geocode_query: Optional[str] = None
+        self._next_fetch_ts: float = 0.0
+
+    def set_location(self, query: str) -> Optional[str]:
+        cleaned = " ".join((query or "").strip().split())
+        if not cleaned:
+            self.location_query = None
+            self.location_label = None
+            self.latitude = None
+            self.longitude = None
+            self._geocode_query = None
+            self._clear_weather()
+            self.last_error = None
+            self._next_fetch_ts = 0.0
+            return None
+        if len(cleaned) > self.MAX_QUERY_LEN:
+            return f"Location must be {self.MAX_QUERY_LEN} characters or fewer."
+
+        self.location_query = cleaned
+        self.location_label = None
+        self.latitude = None
+        self.longitude = None
+        self._geocode_query = None
+        self._clear_weather()
+        self.last_error = None
+        self._next_fetch_ts = 0.0
+        return None
+
+    def update(self, now: float) -> None:
+        if not self.location_query:
+            return
+        if now < self._next_fetch_ts:
+            return
+        try:
+            if self._geocode_query != self.location_query or self.latitude is None or self.longitude is None:
+                self._geocode_location()
+            self._fetch_weather()
+            self.last_error = None
+            self._next_fetch_ts = now + self.FETCH_INTERVAL
+        except Exception as exc:
+            self.last_error = str(exc)
+            self._next_fetch_ts = now + self.BACKOFF_SECONDS
+
+    def to_payload(self) -> Dict[str, Any]:
+        condition = _weather_code_label(self.weather_code)
+        return {
+            "id": self.widget_id,
+            "name": self.name,
+            "type": "weather",
+            "location_query": self.location_query,
+            "location": self.location_label or self.location_query,
+            "temperature_f": self.temperature_f,
+            "apparent_f": self.apparent_f,
+            "wind_mph": self.wind_mph,
+            "weather_code": self.weather_code,
+            "condition": condition,
+            "is_day": self.is_day,
+            "last_updated": self.last_updated,
+            "error": self.last_error,
+            "needs_location": self.location_query is None,
+        }
+
+    def _clear_weather(self) -> None:
+        self.temperature_f = None
+        self.apparent_f = None
+        self.wind_mph = None
+        self.weather_code = None
+        self.is_day = None
+        self.last_updated = None
+
+    def _geocode_location(self) -> None:
+        if not self.location_query:
+            raise ValueError("Location not set.")
+
+        params = {
+            "name": self.location_query,
+            "count": 1,
+            "format": "json",
+        }
+        data = self._fetch_json(self.GEOCODE_URL, params, timeout=6.0)
+        results = data.get("results") or []
+        if not results:
+            raise ValueError("Location not found.")
+
+        result = results[0] or {}
+        self.latitude = self._to_float(result.get("latitude"))
+        self.longitude = self._to_float(result.get("longitude"))
+        if self.latitude is None or self.longitude is None:
+            raise ValueError("Location lookup failed.")
+
+        self.timezone = str(result.get("timezone") or "auto")
+        self.location_label = self._format_location_label(result)
+        self._geocode_query = self.location_query
+
+    def _fetch_weather(self) -> None:
+        if self.latitude is None or self.longitude is None:
+            raise ValueError("Location coordinates missing.")
+
+        params = {
+            "latitude": f"{self.latitude:.4f}",
+            "longitude": f"{self.longitude:.4f}",
+            "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
+            "temperature_unit": "fahrenheit",
+            "wind_speed_unit": "mph",
+            "timezone": "auto",
+        }
+        data = self._fetch_json(self.FORECAST_URL, params, timeout=8.0)
+        current = data.get("current") or {}
+        if not current:
+            raise ValueError("No current weather data.")
+
+        self.temperature_f = self._to_float(current.get("temperature_2m"))
+        self.apparent_f = self._to_float(current.get("apparent_temperature"))
+        self.wind_mph = self._to_float(current.get("wind_speed_10m"))
+        self.weather_code = self._to_int(current.get("weather_code"))
+        self.is_day = bool(current.get("is_day")) if current.get("is_day") is not None else None
+        self.last_updated = str(current.get("time") or "")
+
+    def _fetch_json(self, base_url: str, params: Dict[str, Any], timeout: float) -> Dict[str, Any]:
+        query = urlencode({k: v for k, v in params.items() if v is not None})
+        url = f"{base_url}?{query}"
+        req = Request(url, headers={"User-Agent": self.USER_AGENT})
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                payload = resp.read()
+        except HTTPError as exc:
+            raise ValueError(f"Weather API error: HTTP {exc.code}") from exc
+        except (URLError, OSError) as exc:
+            raise ValueError("Weather API request failed.") from exc
+
+        try:
+            data = json.loads(payload.decode("utf-8"))
+        except ValueError as exc:
+            raise ValueError("Weather API response invalid.") from exc
+
+        if isinstance(data, dict) and data.get("error"):
+            reason = data.get("reason") or "Unknown error."
+            raise ValueError(str(reason))
+        if not isinstance(data, dict):
+            raise ValueError("Weather API response invalid.")
+        return data
+
+    def _format_location_label(self, result: Dict[str, Any]) -> Optional[str]:
+        name = str(result.get("name") or "").strip()
+        admin1 = str(result.get("admin1") or "").strip()
+        country = str(result.get("country_code") or result.get("country") or "").strip()
+        parts = [p for p in (name, admin1, country) if p]
+        return ", ".join(parts) if parts else None
+
+    def _to_float(self, value: Any) -> Optional[float]:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _to_int(self, value: Any) -> Optional[int]:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
+
 class VersionStatusWidget(Widget):
     def __init__(self) -> None:
         super().__init__("version_status", "Version Debug")
@@ -760,6 +992,7 @@ class DashboardController:
         self._last_update_time: Optional[float] = None
         self.widgets: List[Widget] = [
             TimeWidget(),
+            WeatherWidget(),
             ClickCounterWidget(),
             TimerWidget(),
             MotionStatusWidget(self.motion_manager),
@@ -1173,6 +1406,24 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             f'<div class="status-tile"><div class="status-label">Display</div><div class="status-value">{display_state}</div></div>'
             f'<div class="status-tile"><div class="status-label">Idle</div><div class="status-value">{idle}</div></div></div></section>'
         )
+    if wtype == "weather":
+        if w.get("needs_location"):
+            return '<section class="widget-weather"><div class="weather-temp">SET LOCATION</div></section>'
+        if w.get("error") and not w.get("temperature_f"):
+            return '<section class="widget-weather"><div class="weather-temp">WEATHER ERROR</div></section>'
+        location = _escape_html(str(w.get("location") or w.get("location_query") or "Weather"))
+        temp_val = w.get("temperature_f")
+        temp_text = "--°F"
+        if isinstance(temp_val, (int, float)):
+            temp_text = f"{round(temp_val)}°F"
+        condition = _escape_html(str(w.get("condition") or ""))
+        return (
+            '<section class="widget-weather">'
+            f'<div class="weather-location">{location}</div>'
+            f'<div class="weather-temp">{temp_text}</div>'
+            f'<div class="weather-meta">{condition}</div>'
+            '</section>'
+        )
     if wtype == "version_status":
         local = _escape_html(str(w.get("local") or "unknown"))
         remote = _escape_html(str(w.get("remote") or "n/a"))
@@ -1252,6 +1503,10 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/photo/upload":
             self._handle_photo_upload()
+            return
+
+        if parsed.path == "/api/weather/location":
+            self._handle_weather_location()
             return
 
         if parsed.path != "/api/action":
@@ -1341,6 +1596,42 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"ok": True})
+
+    def _handle_weather_location(self) -> None:
+        """Accept a user-entered location string and update the WeatherWidget."""
+        body = self._read_json_body()
+        if body is None:
+            self._send_json({"error": "Invalid JSON body"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        location = body.get("location")
+        if location is None:
+            location = body.get("query")
+        if not isinstance(location, str):
+            self._send_json({"error": "Missing 'location' field"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        weather_widget: Optional[WeatherWidget] = None
+        with self.controller._lock:
+            for w in self.controller.widgets:
+                if isinstance(w, WeatherWidget):
+                    weather_widget = w
+                    break
+
+            if weather_widget is None:
+                self._send_json(
+                    {"error": "Weather widget not found"},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+
+            err = weather_widget.set_location(location)
+
+        if err:
+            self._send_json({"error": err}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        self._send_json(self.controller.snapshot())
 
     def _serve_oled_page(self) -> None:
         """Serve oled.html with widget HTML pre-rendered so wkhtmltoimage gets correct content without waiting for JS."""
@@ -1658,6 +1949,44 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         draw.text((10, 32), f"DISPLAY: {display_state}", fill=1, font=body_font)
         draw.text((10, 44), f"IDLE: {idle}", fill=1, font=body_font)
         draw.text((5, 55), "ROTATE TO CHANGE", fill=1, font=body_font)
+        return img
+
+    if wtype == "weather":
+        if widget.get("needs_location"):
+            title_font = _font(10)
+            tw, _ = _text_size("SET LOCATION", title_font)
+            draw.text((max((128 - tw) // 2, 0), 26), "SET LOCATION", fill=1, font=title_font)
+            return img
+        if widget.get("error") and not widget.get("temperature_f"):
+            title_font = _font(10)
+            tw, _ = _text_size("WEATHER ERR", title_font)
+            draw.text((max((128 - tw) // 2, 0), 26), "WEATHER ERR", fill=1, font=title_font)
+            return img
+
+        location = str(widget.get("location") or widget.get("location_query") or "")
+        location = location.split(",")[0].strip()[:12] or "WEATHER"
+        temp_val = widget.get("temperature_f")
+        temp_text = "--°F"
+        try:
+            if temp_val is not None:
+                temp_text = f"{round(float(temp_val))}°F"
+        except (TypeError, ValueError):
+            pass
+        condition = str(widget.get("condition") or "")
+
+        title_font = _font(9)
+        temp_font = _font(28)
+        meta_font = _font(8)
+
+        tw, _ = _text_size(location, title_font)
+        draw.text((max((128 - tw) // 2, 0), 2), location.upper(), fill=1, font=title_font)
+
+        temp_w, _ = _text_size(temp_text, temp_font)
+        draw.text((max((128 - temp_w) // 2, 0), 18), temp_text, fill=1, font=temp_font)
+
+        condition = condition[:18]
+        cw, _ = _text_size(condition, meta_font)
+        draw.text((max((128 - cw) // 2, 0), 52), condition, fill=1, font=meta_font)
         return img
 
     if wtype == "version_status":

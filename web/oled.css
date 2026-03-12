@@ -113,6 +113,33 @@ body.oled {
   font-weight: 700;
 }
 
+.oled-view .widget-weather {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.oled-view .weather-location {
+  font-size: 7px;
+  opacity: 0.9;
+}
+
+.oled-view .weather-temp {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.oled-view .weather-meta {
+  font-size: 7px;
+  opacity: 0.9;
+}
+
 .oled-view .counter-help,
 .oled-view .timer-help {
   display: none;

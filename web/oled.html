@@ -33,6 +33,18 @@
         if (widget.type === "motion_status") {
           return '<section class="widget-motion"><div class="status-grid"><div class="status-tile"><div class="status-label">Motion</div><div class="status-value">' + (widget.motion_detected ? "Yes" : "No") + '</div></div><div class="status-tile"><div class="status-label">Display</div><div class="status-value">' + (widget.display_state || "ON") + '</div></div><div class="status-tile"><div class="status-label">Idle</div><div class="status-value">' + (widget.idle || "00:00") + '</div></div></div></section>';
         }
+        if (widget.type === "weather") {
+          if (widget.needs_location) {
+            return '<section class="widget-weather"><div class="weather-temp">SET LOCATION</div></section>';
+          }
+          if (widget.error && widget.temperature_f == null) {
+            return '<section class="widget-weather"><div class="weather-temp">WEATHER ERR</div></section>';
+          }
+          const location = (widget.location || widget.location_query || "Weather");
+          const temp = widget.temperature_f == null ? "--" : Math.round(widget.temperature_f);
+          const condition = widget.condition || "";
+          return '<section class="widget-weather"><div class="weather-location">' + location + '</div><div class="weather-temp">' + temp + '°F</div><div class="weather-meta">' + condition + '</div></section>';
+        }
         if (widget.type === "photo") {
           if (widget.has_image && widget.image_base64) {
             return '<section class="widget-photo"><img src="data:image/png;base64,' + widget.image_base64 + '" alt="BW" style="max-width:128px;max-height:64px;" /></section>';
