@@ -39,21 +39,61 @@
           }
           return '<section class="widget-photo"><div style="font-size:8px;text-align:center;">No photo</div></section>';
         }
+        if (widget.type === "app_launcher") {
+          return '<section class="widget-counter"><div style="font-size:9px;text-align:center;line-height:1.2;">PRESS DIAL<br/>TO START</div></section>';
+        }
         return '<section class="widget-time"><div class="time-main">?</div></section>';
+      }
+
+      function renderApp(app, exitState) {
+        if (!app) return "";
+        if (app.type === "pong") {
+          const field = app.field || { width: 128, height: 64 };
+          const ball = app.ball || { x: 0, y: 0, size: 2 };
+          const player = app.player || { x: 0, y: 0, width: 2, height: 12 };
+          const cpu = app.cpu || { x: 0, y: 0, width: 2, height: 12 };
+          const score = app.score || { player: 0, cpu: 0 };
+          const exitProgressRaw = Number(exitState.progress || 0);
+          const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+          const pct = (value, total) => ((value / total) * 100).toFixed(2) + "%";
+          return (
+            '<section class="app-pong">' +
+            '<div class="pong-score">' + score.player + ' : ' + score.cpu + '</div>' +
+            '<div class="pong-field" style="--exit-progress:' + exitProgress + ';">' +
+            '<div class="pong-divider"></div>' +
+            '<div class="pong-paddle player" style="left:' + pct(player.x, field.width) + '; top:' + pct(player.y, field.height) + '; width:' + pct(player.width, field.width) + '; height:' + pct(player.height, field.height) + ';"></div>' +
+            '<div class="pong-paddle cpu" style="left:' + pct(cpu.x, field.width) + '; top:' + pct(cpu.y, field.height) + '; width:' + pct(cpu.width, field.width) + '; height:' + pct(cpu.height, field.height) + ';"></div>' +
+            '<div class="pong-ball" style="left:' + pct(ball.x, field.width) + '; top:' + pct(ball.y, field.height) + '; width:' + pct(ball.size, field.width) + '; height:' + pct(ball.size, field.height) + ';"></div>' +
+            '<div class="pong-exit"></div>' +
+            '</div>' +
+            '</section>'
+          );
+        }
+        return '<section class="widget-time"><div class="time-main">APP</div></section>';
+      }
+
+      function render(state) {
+        if (!state) return;
+        if (state.mode === "app" && state.active_app) {
+          root.innerHTML = renderApp(state.active_app, state.app_exit || {});
+          return;
+        }
+        if (state.active_widget) {
+          root.innerHTML = renderWidget(state.active_widget, state.motion || {});
+        }
       }
 
       function fetchState() {
         fetch("/api/state", { cache: "no-store" })
           .then(function(r) { return r.ok ? r.json() : null; })
           .then(function(state) {
-            if (!state || !state.active_widget) return;
-            root.innerHTML = renderWidget(state.active_widget, state.motion || {});
+            render(state);
           })
           .catch(function() {});
       }
 
-      if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.active_widget) {
-        root.innerHTML = renderWidget(window.__INITIAL_STATE__.active_widget, window.__INITIAL_STATE__.motion || {});
+      if (window.__INITIAL_STATE__) {
+        render(window.__INITIAL_STATE__);
       }
       fetchState();
       setInterval(fetchState, POLL_MS);

@@ -220,6 +220,25 @@ p {
   transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
+.widget-tab.app {
+  border-color: rgba(0, 157, 177, 0.25);
+  background: rgba(0, 157, 177, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.widget-tag {
+  border-radius: 999px;
+  border: 1px solid rgba(0, 157, 177, 0.4);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-brand);
+}
+
 .widget-tab:hover {
   transform: translateX(3px);
   border-color: rgba(0, 157, 177, 0.5);
@@ -229,6 +248,11 @@ p {
 .widget-tab.active {
   border-color: var(--color-brand);
   background: rgba(0, 157, 177, 0.06);
+}
+
+.app-mode .widget-nav {
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 .widget-panel {
@@ -443,6 +467,107 @@ p {
   display: none;
 }
 
+/* Widget: app launcher */
+
+.widget-app-launch {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.app-launch-title {
+  font-family: "Display Serif", "Primary Text", system-ui, serif;
+  text-transform: uppercase;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+  letter-spacing: 0.08em;
+}
+
+.app-launch-hint,
+.app-launch-sub {
+  color: var(--color-ink-soft);
+}
+
+.app-launch-sub {
+  font-size: 0.82rem;
+}
+
+/* App: Pong */
+
+.widget-body.app-mode {
+  padding: 1rem 1.2rem;
+  align-content: stretch;
+}
+
+.app-pong {
+  display: grid;
+  gap: 0.8rem;
+  height: 100%;
+}
+
+.pong-score {
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.pong-field {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  background: radial-gradient(circle at 30% 30%, rgba(0, 157, 177, 0.08), transparent 55%), #0f1517;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.pong-divider {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  width: 2px;
+  height: 84%;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.5),
+    rgba(255, 255, 255, 0.5) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  opacity: 0.5;
+}
+
+.pong-paddle,
+.pong-ball {
+  position: absolute;
+  background: #fdfaf6;
+  border-radius: 4px;
+}
+
+.pong-ball {
+  background: var(--color-brand);
+  box-shadow: 0 0 12px rgba(0, 157, 177, 0.4);
+}
+
+.pong-exit {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: calc(var(--exit-progress) * 100%);
+  background: rgba(0, 157, 177, 0.22);
+  transition: height 120ms linear;
+  pointer-events: none;
+}
+
+.pong-hint {
+  color: var(--color-ink-soft);
+  font-size: 0.82rem;
+}
+
 /* Controls */
 
 .controls {
@@ -472,6 +597,14 @@ button:hover {
   border-color: var(--color-brand);
   background: #f6f2ec;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+button:disabled,
+button.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  box-shadow: none;
 }
 
 button.accent {
@@ -541,4 +674,3 @@ a:hover {
     height: 32px;
   }
 }
-

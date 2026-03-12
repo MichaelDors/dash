@@ -9,6 +9,9 @@ const widgetTabs = document.getElementById("widgetTabs");
 const displayMode = document.getElementById("displayMode");
 const motionState = document.getElementById("motionState");
 const lastUpdate = document.getElementById("lastUpdate");
+const controlButtons = Array.from(document.querySelectorAll("[data-action]"));
+const holdButton = document.querySelector("[data-action='hold']");
+let holdKeyActive = false;
 
 function updateStamp() {
   const now = new Date();
@@ -124,11 +127,26 @@ function render(state) {
 
   const motion = state.motion || {};
   const active = state.active_widget || null;
+  const mode = state.mode || "widgets";
+  const activeApp = state.active_app || null;
+  const appExit = state.app_exit || {};
 
   displayMode.textContent = `DISPLAY ${String(state.display_mode || "on").toUpperCase()}`;
   motionState.textContent = motion.motion_detected ? "MOTION YES" : "MOTION NO";
 
-  renderTabs(state.widgets || []);
+  document.body.classList.toggle("app-mode", mode === "app");
+  renderTabs(state.widgets || [], mode);
+  updateControls(mode);
+
+  if (mode === "app" && activeApp) {
+    widgetName.textContent = activeApp.name || "App";
+    widgetHint.textContent = "Hold dial for 3 seconds to exit.";
+    widgetBody.classList.add("app-mode");
+    widgetBody.innerHTML = renderApp(activeApp, appExit);
+    return;
+  }
+
+  widgetBody.classList.remove("app-mode");
 
   if (!active) {
     widgetName.textContent = "No widget";
@@ -151,42 +169,62 @@ function render(state) {
   }
 }
 
+function updateControls(mode) {
+  const appMode = mode === "app";
+  controlButtons.forEach((button) => {
+    const action = button.dataset.action;
+    const disable = appMode && action !== "hold" && action !== "simulate_motion";
+    button.disabled = disable;
+    button.classList.toggle("disabled", disable);
+  });
+}
+
 widgetBody.addEventListener("change", function (event) {
   if (event.target.classList.contains("photo-upload-input")) {
     handlePhotoUpload(event);
   }
 });
 
-function renderTabs(widgets) {
+function renderTabs(widgets, mode) {
   widgetTabs.innerHTML = "";
+  const appMode = mode === "app";
 
   widgets.forEach((widget) => {
     const button = document.createElement("button");
-    button.className = `widget-tab${widget.active ? " active" : ""}`;
+    button.className = `widget-tab${widget.active ? " active" : ""}${widget.kind === "app" ? " app" : ""}`;
     button.type = "button";
     button.textContent = widget.name;
+    if (widget.kind === "app") {
+      const tag = document.createElement("span");
+      tag.className = "widget-tag";
+      tag.textContent = "APP";
+      button.appendChild(tag);
+    }
+    button.disabled = appMode;
 
-    button.addEventListener("click", () => {
-      if (!latestState || !Array.isArray(latestState.widgets)) {
-        return;
-      }
+    if (!appMode) {
+      button.addEventListener("click", () => {
+        if (!latestState || !Array.isArray(latestState.widgets)) {
+          return;
+        }
 
-      const currentIndex = latestState.widgets.findIndex((item) => item.active);
-      const targetIndex = latestState.widgets.findIndex((item) => item.id === widget.id);
-      if (currentIndex === -1 || targetIndex === -1 || currentIndex === targetIndex) {
-        return;
-      }
+        const currentIndex = latestState.widgets.findIndex((item) => item.active);
+        const targetIndex = latestState.widgets.findIndex((item) => item.id === widget.id);
+        if (currentIndex === -1 || targetIndex === -1 || currentIndex === targetIndex) {
+          return;
+        }
 
-      const total = latestState.widgets.length;
-      const forward = (targetIndex - currentIndex + total) % total;
-      const backward = (currentIndex - targetIndex + total) % total;
-      const direction = forward <= backward ? "next" : "previous";
-      const count = Math.min(forward, backward);
+        const total = latestState.widgets.length;
+        const forward = (targetIndex - currentIndex + total) % total;
+        const backward = (currentIndex - targetIndex + total) % total;
+        const direction = forward <= backward ? "next" : "previous";
+        const count = Math.min(forward, backward);
 
-      for (let i = 0; i < count; i += 1) {
-        sendAction(direction);
-      }
-    });
+        for (let i = 0; i < count; i += 1) {
+          sendAction(direction);
+        }
+      });
+    }
 
     widgetTabs.appendChild(button);
   });
@@ -206,9 +244,43 @@ function hintForWidget(type) {
       return "Shows local/remote VERSION details.";
     case "photo":
       return "Upload a photo to convert to black & white. Hold to clear.";
+    case "app_launcher":
+      return "Press dial to launch. Hold dial 3s to exit the app.";
     default:
       return "Use controls below to interact.";
   }
+}
+
+function renderApp(app, exitState) {
+  if (app.type === "pong") {
+    return renderPong(app, exitState);
+  }
+  return `<p class="counter-help">Unsupported app type: ${app.type}</p>`;
+}
+
+function renderPong(app, exitState) {
+  const field = app.field || { width: 128, height: 64 };
+  const ball = app.ball || { x: 0, y: 0, size: 2 };
+  const player = app.player || { x: 0, y: 0, width: 2, height: 12 };
+  const cpu = app.cpu || { x: 0, y: 0, width: 2, height: 12 };
+  const score = app.score || { player: 0, cpu: 0 };
+  const exitProgressRaw = Number(exitState.progress || 0);
+  const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+  const pct = (value, total) => `${(value / total) * 100}%`;
+
+  return `
+    <section class="app-pong">
+      <div class="pong-score">You ${score.player} : ${score.cpu} CPU</div>
+      <div class="pong-field" style="--exit-progress:${exitProgress};">
+        <div class="pong-divider"></div>
+        <div class="pong-paddle player" style="left:${pct(player.x, field.width)}; top:${pct(player.y, field.height)}; width:${pct(player.width, field.width)}; height:${pct(player.height, field.height)};"></div>
+        <div class="pong-paddle cpu" style="left:${pct(cpu.x, field.width)}; top:${pct(cpu.y, field.height)}; width:${pct(cpu.width, field.width)}; height:${pct(cpu.height, field.height)};"></div>
+        <div class="pong-ball" style="left:${pct(ball.x, field.width)}; top:${pct(ball.y, field.height)}; width:${pct(ball.size, field.width)}; height:${pct(ball.size, field.height)};"></div>
+        <div class="pong-exit"></div>
+      </div>
+      <p class="pong-hint">Turn the dial to move. Hold the dial for 3 seconds to exit.</p>
+    </section>
+  `;
 }
 
 function renderWidget(widget, motion) {
@@ -225,7 +297,7 @@ function renderWidget(widget, motion) {
     return `
       <section class="widget-counter">
         <div class="counter-number">${widget.count}</div>
-        <p class="counter-help">Encoder press increments. Hold resets to 0.</p>
+        <p class="counter-help">Dial press increments. Hold resets to 0.</p>
       </section>
     `;
   }
@@ -323,14 +395,47 @@ function renderWidget(widget, motion) {
     `;
   }
 
+  if (widget.type === "app_launcher") {
+    const appName = widget.app_name || widget.name || "App";
+    return `
+      <section class="widget-app-launch">
+        <div class="app-launch-title">${appName}</div>
+        <p class="app-launch-hint">Press the dial to start.</p>
+        <p class="app-launch-sub">Hold the dial for 3 seconds to exit.</p>
+      </section>
+    `;
+  }
+
   return `<p class="counter-help">Unsupported widget type: ${widget.type}</p>`;
 }
 
-document.querySelectorAll("[data-action]").forEach((button) => {
+controlButtons.forEach((button) => {
+  if (button === holdButton) {
+    return;
+  }
   button.addEventListener("click", () => {
     sendAction(button.dataset.action);
   });
 });
+
+if (holdButton) {
+  const endHold = () => sendAction("dial_hold_end");
+  holdButton.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    holdButton.setPointerCapture(event.pointerId);
+    sendAction("dial_hold_start");
+  });
+  holdButton.addEventListener("pointerup", (event) => {
+    if (holdButton.hasPointerCapture(event.pointerId)) {
+      holdButton.releasePointerCapture(event.pointerId);
+    }
+    endHold();
+  });
+  holdButton.addEventListener("pointerleave", endHold);
+  holdButton.addEventListener("pointercancel", endHold);
+}
 
 window.addEventListener("keydown", (event) => {
   if (event.repeat) {
@@ -356,7 +461,10 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key.toLowerCase() === "h") {
-    sendAction("hold");
+    if (!holdKeyActive) {
+      holdKeyActive = true;
+      sendAction("dial_hold_start");
+    }
     event.preventDefault();
     return;
   }
@@ -369,6 +477,14 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "-" || event.key === "_") {
     sendAction("subtract_minute");
+    event.preventDefault();
+  }
+});
+
+window.addEventListener("keyup", (event) => {
+  if (event.key.toLowerCase() === "h" && holdKeyActive) {
+    holdKeyActive = false;
+    sendAction("dial_hold_end");
     event.preventDefault();
   }
 });

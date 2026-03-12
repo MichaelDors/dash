@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import os
+import random
 
 import signal
 import socket
@@ -97,6 +98,9 @@ HTTP_HOST = os.getenv("DASH_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("DASH_PORT", "8080"))
 ALLOW_SYSTEM_POWER_OFF = os.getenv("DASH_ALLOW_POWEROFF", "1") == "1"
 OLED_ENABLED = os.getenv("DASH_OLED", "1") == "1"
+DIAL_HOLD_WIDGET_SECONDS = 1.0
+DIAL_HOLD_EXIT_SECONDS = 3.0
+DIAL_EXIT_UNFILL_SECONDS = 0.6
 SERVER_BIND_MAX_RETRIES = 5
 SERVER_BIND_RETRY_DELAY = 1.0
 
@@ -556,11 +560,204 @@ class PhotoWidget(Widget):
         }
 
 
+class App:
+    """Base class for full-screen apps that can take over the dial."""
+
+    def __init__(self, app_id: str, name: str):
+        self.app_id = app_id
+        self.name = name
+
+    def reset(self) -> None:
+        return
+
+    def update(self, _now: float, _dt: float) -> None:
+        return
+
+    def on_encoder(self, _delta: int) -> None:
+        return
+
+    def to_payload(self) -> Dict[str, Any]:
+        return {
+            "id": self.app_id,
+            "name": self.name,
+            "type": "app",
+        }
+
+
+class PongApp(App):
+    """Simple Pong clone for the 128x64 display."""
+
+    FIELD_WIDTH = 128
+    FIELD_HEIGHT = 64
+    PADDLE_HEIGHT = 14
+    PADDLE_WIDTH = 2
+    BALL_SIZE = 2
+    PLAYER_X = 4
+    CPU_X = FIELD_WIDTH - PADDLE_WIDTH - 4
+    PLAYER_STEP = 3
+    BALL_SPEED = 46.0
+    CPU_SPEED = 34.0
+    SERVE_PAUSE = 0.4
+
+    def __init__(self) -> None:
+        super().__init__("pong", "Pong")
+        self.player_y = 0.0
+        self.cpu_y = 0.0
+        self.ball_x = 0.0
+        self.ball_y = 0.0
+        self.ball_vx = self.BALL_SPEED
+        self.ball_vy = self.BALL_SPEED * 0.6
+        self.score_player = 0
+        self.score_cpu = 0
+        self._serve_until = 0.0
+        self.reset()
+
+    def reset(self) -> None:
+        self.score_player = 0
+        self.score_cpu = 0
+        self._reset_round(time.time(), direction=random.choice([-1, 1]))
+
+    def _reset_round(self, now: float, direction: int) -> None:
+        self.player_y = (self.FIELD_HEIGHT - self.PADDLE_HEIGHT) / 2
+        self.cpu_y = (self.FIELD_HEIGHT - self.PADDLE_HEIGHT) / 2
+        self.ball_x = (self.FIELD_WIDTH - self.BALL_SIZE) / 2
+        self.ball_y = (self.FIELD_HEIGHT - self.BALL_SIZE) / 2
+        self.ball_vx = self.BALL_SPEED * (1 if direction >= 0 else -1)
+        self.ball_vy = self.BALL_SPEED * random.choice([-0.6, 0.6])
+        self._serve_until = now + self.SERVE_PAUSE
+
+    def on_encoder(self, delta: int) -> None:
+        self.player_y = min(
+            max(0.0, self.player_y + delta * self.PLAYER_STEP),
+            self.FIELD_HEIGHT - self.PADDLE_HEIGHT,
+        )
+
+    def update(self, now: float, dt: float) -> None:
+        if now < self._serve_until:
+            return
+
+        # Simple CPU tracking
+        ball_center = self.ball_y + self.BALL_SIZE / 2
+        target = ball_center - self.PADDLE_HEIGHT / 2
+        if self.ball_vx < 0:
+            target = (self.FIELD_HEIGHT - self.PADDLE_HEIGHT) / 2
+        max_move = self.CPU_SPEED * dt
+        if self.cpu_y < target:
+            self.cpu_y = min(self.cpu_y + max_move, target)
+        else:
+            self.cpu_y = max(self.cpu_y - max_move, target)
+        self.cpu_y = min(max(self.cpu_y, 0.0), self.FIELD_HEIGHT - self.PADDLE_HEIGHT)
+
+        # Move ball
+        self.ball_x += self.ball_vx * dt
+        self.ball_y += self.ball_vy * dt
+
+        if self.ball_y <= 0:
+            self.ball_y = 0
+            self.ball_vy = abs(self.ball_vy)
+        elif self.ball_y + self.BALL_SIZE >= self.FIELD_HEIGHT:
+            self.ball_y = self.FIELD_HEIGHT - self.BALL_SIZE
+            self.ball_vy = -abs(self.ball_vy)
+
+        # Paddle collisions
+        if self.ball_vx < 0 and self._intersects_paddle(self.PLAYER_X, self.player_y):
+            self.ball_x = self.PLAYER_X + self.PADDLE_WIDTH + 0.1
+            self.ball_vx = abs(self.ball_vx)
+            self._apply_deflection(self.player_y)
+        elif self.ball_vx > 0 and self._intersects_paddle(self.CPU_X, self.cpu_y):
+            self.ball_x = self.CPU_X - self.BALL_SIZE - 0.1
+            self.ball_vx = -abs(self.ball_vx)
+            self._apply_deflection(self.cpu_y)
+
+        # Scoring
+        if self.ball_x + self.BALL_SIZE < 0:
+            self.score_cpu += 1
+            self._reset_round(now, direction=1)
+        elif self.ball_x > self.FIELD_WIDTH:
+            self.score_player += 1
+            self._reset_round(now, direction=-1)
+
+    def _intersects_paddle(self, paddle_x: int, paddle_y: float) -> bool:
+        return (
+            self.ball_x < paddle_x + self.PADDLE_WIDTH
+            and self.ball_x + self.BALL_SIZE > paddle_x
+            and self.ball_y < paddle_y + self.PADDLE_HEIGHT
+            and self.ball_y + self.BALL_SIZE > paddle_y
+        )
+
+    def _apply_deflection(self, paddle_y: float) -> None:
+        paddle_center = paddle_y + self.PADDLE_HEIGHT / 2
+        ball_center = self.ball_y + self.BALL_SIZE / 2
+        offset = (ball_center - paddle_center) / (self.PADDLE_HEIGHT / 2)
+        offset = max(-1.0, min(1.0, offset))
+        self.ball_vy = offset * self.BALL_SPEED
+
+    def to_payload(self) -> Dict[str, Any]:
+        return {
+            "id": self.app_id,
+            "name": self.name,
+            "type": "pong",
+            "field": {
+                "width": self.FIELD_WIDTH,
+                "height": self.FIELD_HEIGHT,
+            },
+            "ball": {
+                "x": int(self.ball_x),
+                "y": int(self.ball_y),
+                "size": self.BALL_SIZE,
+            },
+            "player": {
+                "x": self.PLAYER_X,
+                "y": int(self.player_y),
+                "width": self.PADDLE_WIDTH,
+                "height": self.PADDLE_HEIGHT,
+            },
+            "cpu": {
+                "x": self.CPU_X,
+                "y": int(self.cpu_y),
+                "width": self.PADDLE_WIDTH,
+                "height": self.PADDLE_HEIGHT,
+            },
+            "score": {
+                "player": self.score_player,
+                "cpu": self.score_cpu,
+            },
+        }
+
+
+class AppLauncherWidget(Widget):
+    """Widget that launches a full-screen app."""
+
+    def __init__(self, app: App):
+        super().__init__(f"app_{app.app_id}", app.name)
+        self.app_id = app.app_id
+        self.app_name = app.name
+
+    def to_payload(self) -> Dict[str, Any]:
+        return {
+            "id": self.widget_id,
+            "name": self.name,
+            "type": "app_launcher",
+            "app_id": self.app_id,
+            "app_name": self.app_name,
+        }
+
+
 class DashboardController:
     """Coordinates widgets, motion state, and hardware/button actions."""
 
     def __init__(self, sensor_available: bool):
         self.motion_manager = MotionSensorManager(sensor_available)
+        self.apps: List[App] = [
+            PongApp(),
+        ]
+        self._app_by_id = {app.app_id: app for app in self.apps}
+        self.active_app: Optional[App] = None
+        self._dial_pressed_at: Optional[float] = None
+        self._dial_exit_hold_active = False
+        self._dial_exit_progress = 0.0
+        self._dial_ignore_release = False
+        self._last_update_time: Optional[float] = None
         self.widgets: List[Widget] = [
             TimeWidget(),
             ClickCounterWidget(),
@@ -568,6 +765,7 @@ class DashboardController:
             MotionStatusWidget(self.motion_manager),
             VersionStatusWidget(),
             PhotoWidget(),
+            *[AppLauncherWidget(app) for app in self.apps],
         ]
         self.current_widget_index = 0
 
@@ -585,11 +783,24 @@ class DashboardController:
 
     def update_widgets(self) -> None:
         now = time.time()
+        dt = 0.1
+        if self._last_update_time is not None:
+            dt = max(0.0, now - self._last_update_time)
+        self._last_update_time = now
         with self._lock:
             for widget in self.widgets:
                 widget.update(now)
+            if self.active_app is not None:
+                self.active_app.update(now, dt)
+                self._update_exit_hold_locked(now, dt)
+            else:
+                self._dial_exit_progress = 0.0
+                self._dial_exit_hold_active = False
 
     def next_widget(self) -> None:
+        if self.active_app is not None:
+            self.motion_manager.report_user_activity()
+            return
         with self._lock:
             self.current_widget_index = (self.current_widget_index + 1) % len(self.widgets)
             current = self.widgets[self.current_widget_index]
@@ -597,26 +808,145 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def previous_widget(self) -> None:
+        if self.active_app is not None:
+            self.motion_manager.report_user_activity()
+            return
         with self._lock:
             self.current_widget_index = (self.current_widget_index - 1) % len(self.widgets)
             current = self.widgets[self.current_widget_index]
             print(f"Switched to widget: {current.name}")
         self.motion_manager.report_user_activity()
 
-    def main_button_press(self) -> None:
+    def dial_rotate(self, delta: int) -> None:
         with self._lock:
-            current = self.widgets[self.current_widget_index]
-            if current.should_process_button_press():
-                current.on_button_press()
+            if self.active_app is not None:
+                self.active_app.on_encoder(delta)
+                app_mode = True
+            else:
+                app_mode = False
+        if app_mode:
+            self.motion_manager.report_user_activity()
+            return
+        if delta > 0:
+            self.next_widget()
+        else:
+            self.previous_widget()
+
+    def dial_rotate_clockwise(self) -> None:
+        self.dial_rotate(1)
+
+    def dial_rotate_counterclockwise(self) -> None:
+        self.dial_rotate(-1)
+
+    def dial_press_short(self) -> None:
+        with self._lock:
+            if self.active_app is not None:
+                return
+            self._handle_short_press_locked()
         self.motion_manager.report_user_activity()
 
+    def dial_press_start(self) -> None:
+        with self._lock:
+            self._dial_pressed_at = time.time()
+            self._dial_ignore_release = False
+            if self.active_app is not None:
+                self._dial_exit_hold_active = True
+        self.motion_manager.report_user_activity()
+
+    def dial_press_end(self) -> None:
+        now = time.time()
+        with self._lock:
+            if self._dial_ignore_release:
+                self._dial_ignore_release = False
+                self._dial_pressed_at = None
+                self._dial_exit_hold_active = False
+                return
+            start = self._dial_pressed_at
+            if start is None:
+                return
+            self._dial_pressed_at = None
+            duration = now - start if start is not None else 0.0
+            if self.active_app is not None:
+                self._dial_exit_hold_active = False
+                return
+            if duration >= DIAL_HOLD_WIDGET_SECONDS:
+                current = self.widgets[self.current_widget_index]
+                current.on_button_hold_start()
+            else:
+                self._handle_short_press_locked()
+        self.motion_manager.report_user_activity()
+
+    def main_button_press(self) -> None:
+        self.dial_press_short()
+
     def main_button_hold(self) -> None:
+        if self.active_app is not None:
+            return
         with self._lock:
             current = self.widgets[self.current_widget_index]
             current.on_button_hold_start()
         self.motion_manager.report_user_activity()
 
+    def launch_app(self, app_id: str) -> None:
+        with self._lock:
+            self._launch_app_locked(app_id)
+        self.motion_manager.report_user_activity()
+
+    def exit_app(self) -> None:
+        with self._lock:
+            self._exit_app_locked(ignore_release=False)
+        self.motion_manager.report_user_activity()
+
+    def _launch_app_locked(self, app_id: str) -> None:
+        app = self._app_by_id.get(app_id)
+        if app is None:
+            return
+        self.active_app = app
+        app.reset()
+        self._dial_exit_progress = 0.0
+        self._dial_exit_hold_active = False
+        self._dial_pressed_at = None
+        self._dial_ignore_release = False
+        print(f"Launched app: {app.name}")
+
+    def _exit_app_locked(self, ignore_release: bool) -> None:
+        if self.active_app is None:
+            return
+        print(f"Exiting app: {self.active_app.name}")
+        self.active_app = None
+        self._dial_exit_progress = 0.0
+        self._dial_exit_hold_active = False
+        self._dial_pressed_at = None
+        if ignore_release:
+            self._dial_ignore_release = True
+
+    def _handle_short_press_locked(self) -> None:
+        current = self.widgets[self.current_widget_index]
+        if isinstance(current, AppLauncherWidget):
+            self._launch_app_locked(current.app_id)
+            return
+        if current.should_process_button_press():
+            current.on_button_press()
+
+    def _update_exit_hold_locked(self, now: float, dt: float) -> None:
+        if self.active_app is None:
+            self._dial_exit_progress = 0.0
+            self._dial_exit_hold_active = False
+            return
+        if self._dial_exit_hold_active and self._dial_pressed_at is not None:
+            progress = (now - self._dial_pressed_at) / max(DIAL_HOLD_EXIT_SECONDS, 0.01)
+            self._dial_exit_progress = min(1.0, max(0.0, progress))
+            if self._dial_exit_progress >= 1.0:
+                self._exit_app_locked(ignore_release=True)
+            return
+        if self._dial_exit_progress > 0.0:
+            decay = dt / max(DIAL_EXIT_UNFILL_SECONDS, 0.01)
+            self._dial_exit_progress = max(0.0, self._dial_exit_progress - decay)
+
     def button1_press(self) -> None:
+        if self.active_app is not None:
+            self.motion_manager.report_user_activity()
+            return
         now = time.time()
         if now - self.button1_last_press < self.button_cooldown:
             return
@@ -629,6 +959,9 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def button2_press(self) -> None:
+        if self.active_app is not None:
+            self.motion_manager.report_user_activity()
+            return
         now = time.time()
         if now - self.button2_last_press < self.button_cooldown:
             return
@@ -662,10 +995,16 @@ class DashboardController:
                     "id": widget.widget_id,
                     "name": widget.name,
                     "active": idx == self.current_widget_index,
+                    "kind": "app" if isinstance(widget, AppLauncherWidget) else "widget",
                 }
                 for idx, widget in enumerate(self.widgets)
             ]
             active_payload = active_widget.to_payload()
+            active_app_payload = self.active_app.to_payload() if self.active_app is not None else None
+            app_exit = {
+                "progress": self._dial_exit_progress,
+                "active": self._dial_exit_hold_active,
+            }
 
         motion = self.motion_manager.get_status()
         display_mode = "on"
@@ -677,8 +1016,11 @@ class DashboardController:
         return {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "display_mode": display_mode,
+            "mode": "app" if active_app_payload is not None else "widgets",
             "widgets": widget_tabs,
             "active_widget": active_payload,
+            "active_app": active_app_payload,
+            "app_exit": app_exit,
             "motion": motion,
         }
 
@@ -700,16 +1042,16 @@ class HardwareControls:
 
         try:
             self.encoder = RotaryEncoder(CLK_PIN, DT_PIN, max_steps=0)
-            self.encoder.when_rotated_clockwise = self.controller.next_widget
-            self.encoder.when_rotated_counter_clockwise = self.controller.previous_widget
+            self.encoder.when_rotated_clockwise = self.controller.dial_rotate_clockwise
+            self.encoder.when_rotated_counter_clockwise = self.controller.dial_rotate_counterclockwise
             print("Rotary encoder initialized.")
         except Exception as exc:
             print(f"Failed to initialize rotary encoder: {exc}")
 
         try:
-            self.main_button = Button(SW_PIN, hold_time=1.0, hold_repeat=False)
-            self.main_button.when_pressed = self.controller.main_button_press
-            self.main_button.when_held = self.controller.main_button_hold
+            self.main_button = Button(SW_PIN, hold_time=DIAL_HOLD_EXIT_SECONDS, hold_repeat=False)
+            self.main_button.when_pressed = self.controller.dial_press_start
+            self.main_button.when_released = self.controller.dial_press_end
             print("Main button initialized.")
         except Exception as exc:
             print(f"Failed to initialize main button: {exc}")
@@ -748,9 +1090,56 @@ def _escape_html(s: str) -> str:
     )
 
 
-def _render_oled_widget_html(widget: Dict[str, Any], motion: Dict[str, Any]) -> str:
-    """Server-side render of active widget HTML (mirrors oled.html renderWidget) so wkhtmltoimage gets content without JS."""
-    w = widget
+def _render_oled_widget_html(state: Dict[str, Any]) -> str:
+    """Server-side render of active widget/app HTML (mirrors oled.html render functions)."""
+    mode = (state.get("mode") or "widgets").lower()
+    if mode == "app":
+        app = state.get("active_app") or {}
+        app_type = (app.get("type") or "").lower()
+        if app_type == "pong":
+            field = app.get("field") or {}
+            width = float(field.get("width") or 128)
+            height = float(field.get("height") or 64)
+            ball = app.get("ball") or {}
+            player = app.get("player") or {}
+            cpu = app.get("cpu") or {}
+            score = app.get("score") or {}
+            exit_state = state.get("app_exit") or {}
+            exit_progress = float(exit_state.get("progress") or 0.0)
+
+            def _pct(val: float, total: float) -> str:
+                if total <= 0:
+                    return "0%"
+                return f"{(val / total) * 100:.2f}%"
+
+            ball_x = float(ball.get("x") or 0)
+            ball_y = float(ball.get("y") or 0)
+            ball_size = float(ball.get("size") or 2)
+            player_x = float(player.get("x") or 0)
+            player_y = float(player.get("y") or 0)
+            player_w = float(player.get("width") or 2)
+            player_h = float(player.get("height") or 12)
+            cpu_x = float(cpu.get("x") or 0)
+            cpu_y = float(cpu.get("y") or 0)
+            cpu_w = float(cpu.get("width") or 2)
+            cpu_h = float(cpu.get("height") or 12)
+            score_player = _escape_html(str(score.get("player") or 0))
+            score_cpu = _escape_html(str(score.get("cpu") or 0))
+            return (
+                '<section class="app-pong">'
+                f'<div class="pong-score">{score_player} : {score_cpu}</div>'
+                f'<div class="pong-field" style="--exit-progress:{exit_progress:.3f};">'
+                '<div class="pong-divider"></div>'
+                f'<div class="pong-paddle player" style="left:{_pct(player_x, width)}; top:{_pct(player_y, height)}; width:{_pct(player_w, width)}; height:{_pct(player_h, height)};"></div>'
+                f'<div class="pong-paddle cpu" style="left:{_pct(cpu_x, width)}; top:{_pct(cpu_y, height)}; width:{_pct(cpu_w, width)}; height:{_pct(cpu_h, height)};"></div>'
+                f'<div class="pong-ball" style="left:{_pct(ball_x, width)}; top:{_pct(ball_y, height)}; width:{_pct(ball_size, width)}; height:{_pct(ball_size, height)};"></div>'
+                '<div class="pong-exit"></div>'
+                '</div>'
+                '</section>'
+            )
+        return '<section class="widget-time"><div class="time-main">APP</div></section>'
+
+    w = state.get("active_widget") or {}
     wtype = (w.get("type") or "").lower()
     if wtype == "time":
         time_main = _escape_html(str(w.get("time_main") or "--:--"))
@@ -805,6 +1194,13 @@ def _render_oled_widget_html(widget: Dict[str, Any], motion: Dict[str, Any]) -> 
                 '</section>'
             )
         return '<section class="widget-photo"><div class="photo-placeholder">No photo</div></section>'
+    if wtype == "app_launcher":
+        app_name = _escape_html(str(w.get("app_name") or w.get("name") or "APP"))
+        return (
+            '<section class="widget-counter">'
+            f'<div style="font-size:9px;text-align:center;line-height:1.2;">{app_name}<br/>PRESS DIAL</div>'
+            '</section>'
+        )
     return '<section class="widget-time"><div class="time-main">?</div></section>'
 
 
@@ -889,8 +1285,10 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             "next": self.controller.next_widget,
             "previous": self.controller.previous_widget,
             "prev": self.controller.previous_widget,
-            "press": self.controller.main_button_press,
+            "press": self.controller.dial_press_short,
             "hold": self.controller.main_button_hold,
+            "dial_hold_start": self.controller.dial_press_start,
+            "dial_hold_end": self.controller.dial_press_end,
             "add_minute": self.controller.button1_press,
             "subtract_minute": self.controller.button2_press,
             "activity": self.controller.register_activity,
@@ -962,10 +1360,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             )
             return
         state = self.controller.snapshot()
-        widget_html = _render_oled_widget_html(
-            state.get("active_widget") or {},
-            state.get("motion") or {},
-        )
+        widget_html = _render_oled_widget_html(state)
         state_json = json.dumps(state).replace("</script>", "<\\/script>")
         body = body.replace("{{WIDGET_HTML}}", widget_html)
         body = body.replace("{{INITIAL_STATE}}", state_json)
@@ -1130,6 +1525,52 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         draw.line((x + 4, y, x + 4, y + 8), fill=1)
         draw.line((x + 5, y, x + 5, y + 8), fill=1)
 
+    mode = (state.get("mode") or "widgets").lower()
+    if mode == "app":
+        app = state.get("active_app") or {}
+        app_type = str(app.get("type") or "").lower()
+        if app_type == "pong":
+            field = app.get("field") or {}
+            width = int(field.get("width") or 128)
+            height = int(field.get("height") or 64)
+            ball = app.get("ball") or {}
+            player = app.get("player") or {}
+            cpu = app.get("cpu") or {}
+            score = app.get("score") or {}
+            exit_state = state.get("app_exit") or {}
+
+            score_text = f"{score.get('player', 0)}:{score.get('cpu', 0)}"
+            score_font = _font(10)
+            score_w, _ = _text_size(score_text, score_font)
+            draw.text((max((128 - score_w) // 2, 0), 0), score_text, fill=1, font=score_font)
+
+            for y in range(0, 64, 4):
+                draw.line((64, y, 64, min(y + 1, 63)), fill=1)
+
+            px = int(player.get("x") or 0)
+            py = int(player.get("y") or 0)
+            pw = int(player.get("width") or 2)
+            ph = int(player.get("height") or 12)
+            cx = int(cpu.get("x") or (width - 4))
+            cy = int(cpu.get("y") or 0)
+            cw = int(cpu.get("width") or 2)
+            ch = int(cpu.get("height") or 12)
+            bx = int(ball.get("x") or 0)
+            by = int(ball.get("y") or 0)
+            bs = int(ball.get("size") or 2)
+
+            draw.rectangle((px, py, px + pw - 1, py + ph - 1), fill=1)
+            draw.rectangle((cx, cy, cx + cw - 1, cy + ch - 1), fill=1)
+            draw.rectangle((bx, by, bx + bs - 1, by + bs - 1), fill=1)
+
+            progress = float(exit_state.get("progress") or 0.0)
+            if progress > 0.0:
+                fill_height = int(64 * min(max(progress, 0.0), 1.0))
+                if fill_height > 0:
+                    draw.rectangle((0, 64 - fill_height, 127, 63), fill=1)
+
+            return img
+
     if wtype == "time":
         time_main = str(widget.get("time_main") or "--:--")
         seconds = f":{widget.get('seconds') or '--'}"
@@ -1254,6 +1695,17 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         title_font = _font(10)
         tw, _ = _text_size("NO PHOTO", title_font)
         draw.text((max((128 - tw) // 2, 0), 26), "NO PHOTO", fill=1, font=title_font)
+        return img
+
+    if wtype == "app_launcher":
+        title_font = _font(10)
+        name = str(widget.get("app_name") or widget.get("name") or "APP")
+        tw, _ = _text_size(name, title_font)
+        draw.text((max((128 - tw) // 2, 0), 18), name.upper(), fill=1, font=title_font)
+        hint_font = _font(8)
+        hint = "PRESS DIAL"
+        hw, _ = _text_size(hint, hint_font)
+        draw.text((max((128 - hw) // 2, 0), 34), hint, fill=1, font=hint_font)
         return img
 
     # Fallback: simple "?" screen
