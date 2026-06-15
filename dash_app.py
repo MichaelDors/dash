@@ -2649,10 +2649,10 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             artist_font = _font(10)
             time_font = _font(8)
             
-            def get_offset(text_w: int, speed: float = 25.0, pause: float = 3.0) -> int:
-                if text_w <= 128:
-                    return max((128 - text_w) // 2, 0)
-                sr = text_w - 128 + 20
+            def get_offset(text_w: int, max_w: int, speed: float = 25.0, pause: float = 3.0) -> int:
+                if text_w <= max_w:
+                    return 0
+                sr = text_w - max_w + 10
                 t_move = sr / speed
                 cycle = 2 * t_move + 2 * pause
                 p = time.time() % cycle
@@ -2661,26 +2661,30 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                 if p < 2 * pause + t_move: return int(sr)
                 return int(sr - (p - 2 * pause - t_move) * speed)
                 
-            tw, _ = _text_size(track_name, track_font)
-            tx = 10 - get_offset(tw) if tw > 128 else get_offset(tw)
-            draw.text((tx, 5), track_name, fill=1, font=track_font)
-            
-            aw, _ = _text_size(artist_name, artist_font)
-            ax = 10 - get_offset(aw, speed=20.0) if aw > 128 else get_offset(aw)
-            draw.text((ax, 22), artist_name, fill=1, font=artist_font)
-            
             now = datetime.now()
             hour_12 = now.hour % 12 or 12
             sys_time = f"{hour_12}:{now.minute:02d}"
             sys_time_w, sys_time_h = _text_size(sys_time, track_font)
             time_x = 128 - sys_time_w - 2
             time_y = 5
+
+            tw, _ = _text_size(track_name, track_font)
+            track_max_w = time_x - 6
+            tx = 2 - get_offset(tw, track_max_w)
+            draw.text((tx, 5), track_name, fill=1, font=track_font)
+            
+            aw, _ = _text_size(artist_name, artist_font)
+            artist_max_w = 124
+            ax = 2 - get_offset(aw, artist_max_w, speed=20.0)
+            draw.text((ax, 22), artist_name, fill=1, font=artist_font)
+            
+            # Mask out the time area so track name doesn't overlap it when scrolling
             draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
             draw.text((time_x, time_y), sys_time, fill=1, font=track_font)
 
-            y_offset = 48
-            radius = 4
-            bar_height = 16
+            y_offset = 52
+            radius = 6
+            bar_height = 18
             
             mask = Image.new("1", (128, 64), 0)
             mask_draw = ImageDraw.Draw(mask)
@@ -2894,20 +2898,76 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             track_name = str(preview.get("track_name") or "Waiting for track...")
             artist_name = str(preview.get("artist_name") or "")
             authenticated = bool(preview.get("authenticated"))
+            progress = float(preview.get("progress_ms") or 0)
+            duration = float(preview.get("duration_ms") or 1)
+            pct = min(1.0, max(0.0, progress / duration))
+            progress_text = str(preview.get("progress_text") or _format_duration_ms(preview.get("progress_ms")))
+            duration_text = str(preview.get("duration_text") or _format_duration_ms(preview.get("duration_ms")))
 
-            title_font = _font(11)
-            sub_font = _font(9)
-            tw, _ = _text_size(track_name, title_font)
-            tx = max((128 - min(tw, 128)) // 2, 0)
-            draw.text((tx, 6), track_name, fill=1, font=title_font)
-            aw, _ = _text_size(artist_name, sub_font)
-            ax = max((128 - min(aw, 128)) // 2, 0)
-            draw.text((ax, 22), artist_name, fill=1, font=sub_font)
+            track_font = _font(12)
+            artist_font = _font(10)
+            time_font = _font(8)
+
+            def get_offset(text_w: int, max_w: int, speed: float = 25.0, pause: float = 3.0) -> int:
+                if text_w <= max_w:
+                    return 0
+                sr = text_w - max_w + 10
+                t_move = sr / speed
+                cycle = 2 * t_move + 2 * pause
+                p = time.time() % cycle
+                if p < pause: return 0
+                if p < pause + t_move: return int((p - pause) * speed)
+                if p < 2 * pause + t_move: return int(sr)
+                return int(sr - (p - 2 * pause - t_move) * speed)
+
+            time_w = 40 # approximate width for time display
+            tw, _ = _text_size(track_name, track_font)
+            track_max_w = 128 - time_w - 6
+            tx = 2 - get_offset(tw, track_max_w)
+            draw.text((tx, 5), track_name, fill=1, font=track_font)
+            
+            aw, _ = _text_size(artist_name, artist_font)
+            artist_max_w = 124
+            ax = 2 - get_offset(aw, artist_max_w, speed=20.0)
+            draw.text((ax, 22), artist_name, fill=1, font=artist_font)
             
             hint_font = _font(8)
             hint = "CONNECT IN WEB UI" if not authenticated else "PRESS DIAL TO OPEN"
             hw, _ = _text_size(hint, hint_font)
-            draw.text((max((128 - hw) // 2, 0), 45), hint, fill=1, font=hint_font)
+            draw.text((2, 38), hint, fill=1, font=hint_font)
+
+            # Draw progress bar
+            y_offset = 52
+            radius = 6
+            bar_height = 18
+            
+            mask = Image.new("1", (128, 64), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.rounded_rectangle((0, y_offset, 127, y_offset + bar_height - 1), radius=radius, fill=1)
+
+            fill_img = Image.new("1", (128, 64), 0)
+            fill_draw = ImageDraw.Draw(fill_img)
+            fill_w = int(128 * pct)
+            if fill_w > 0:
+                fill_draw.rectangle((0, y_offset, fill_w - 1, y_offset + bar_height - 1), fill=1)
+
+            actual_fill = ImageChops.logical_and(fill_img, mask)
+
+            text_img = Image.new("1", (128, 64), 0)
+            text_draw = ImageDraw.Draw(text_img)
+            text_draw.text((4, y_offset + 3), progress_text, fill=1, font=time_font)
+
+            dw, _ = _text_size(duration_text, time_font)
+            text_draw.text((128 - 4 - dw, y_offset + 3), duration_text, fill=1, font=time_font)
+
+            combined_progress = ImageChops.logical_xor(actual_fill, text_img)
+
+            outline_img = Image.new("1", (128, 64), 0)
+            outline_draw = ImageDraw.Draw(outline_img)
+            outline_draw.rounded_rectangle((0, y_offset, 127, y_offset + bar_height - 1), radius=radius, outline=1, fill=0)
+
+            img.paste(outline_img, (0, 0), outline_img)
+            img.paste(combined_progress, (0, 0), combined_progress)
             return img
 
         title_font = _font(10)
