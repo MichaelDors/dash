@@ -2030,19 +2030,16 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             track_name = _escape_html(str(app.get("track_name") or "Waiting for track..."))
             artist_name = _escape_html(str(app.get("artist_name") or ""))
             is_playing = "Playing" if app.get("is_playing") else "Paused"
-            progress = float(app.get("progress_ms") or 0)
-            duration = float(app.get("duration_ms") or 1)
-            pct = min(100.0, max(0.0, (progress / duration) * 100))
-            progress_text = _escape_html(str(app.get("progress_text") or _format_duration_ms(progress)))
-            duration_text = _escape_html(str(app.get("duration_text") or _format_duration_ms(duration)))
             exit_state = state.get("app_exit") or {}
             exit_progress = float(exit_state.get("progress") or 0.0)
+            
+            from datetime import datetime
+            time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
             
             return (
                 '<section class="app-spotify" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; padding-left:4px; box-sizing:border-box;">'
                 f'<div style="position:absolute; right:4px; top:4px; text-align:right;">'
-                f'<div style="font-size:0.58rem; text-align:right;">{progress_text}</div>'
-                f'<div style="font-size:0.58rem; color:#aaa; text-align:right;">{duration_text}</div>'
+                f'<div style="font-size:0.58rem; text-align:right;">{time_str}</div>'
                 f'</div>'
                 f'<div style="width:calc(100% - 35px); overflow:hidden; text-align:left;">'
                 f'<h2 class="{"marquee-container" if len(track_name) > 13 else ""}" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">{track_name}</h2>'
@@ -2051,8 +2048,6 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
                 f'<p class="{"marquee-container" if len(artist_name) > 22 else ""}" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">{artist_name}</p>'
                 f'</div>'
                 f'<p style="margin-top:0.2rem; font-size:0.65rem; text-align:left;">{is_playing}</p>'
-                f'<div style="position:absolute; left:0; bottom:0; width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">'
-                f'<div style="width:{pct}%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>'
                 f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
                 '</section>'
             )
@@ -2139,17 +2134,15 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             track_name = _escape_html(str(preview.get("track_name") or "Waiting for track..."))
             artist_name = _escape_html(str(preview.get("artist_name") or ""))
             authenticated = bool(preview.get("authenticated"))
-            progress = float(preview.get("progress_ms") or 0)
-            duration = float(preview.get("duration_ms") or 1)
-            pct = min(100.0, max(0.0, (progress / duration) * 100))
             status_text = "Connect in web UI" if not authenticated else "PRESS DIAL TO OPEN"
-            progress_text = _escape_html(str(preview.get("progress_text") or _format_duration_ms(progress)))
-            duration_text = _escape_html(str(preview.get("duration_text") or _format_duration_ms(duration)))
+            
+            from datetime import datetime
+            time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
+            
             return (
                 '<section class="app-spotify" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; padding-left:4px; box-sizing:border-box;">'
                 f'<div style="position:absolute; right:4px; top:4px; text-align:right;">'
-                f'<div style="font-size:0.58rem; text-align:right;">{progress_text}</div>'
-                f'<div style="font-size:0.58rem; color:#aaa; text-align:right;">{duration_text}</div>'
+                f'<div style="font-size:0.58rem; text-align:right;">{time_str}</div>'
                 f'</div>'
                 f'<div style="width:calc(100% - 35px); overflow:hidden; text-align:left;">'
                 f'<h2 class="{"marquee-container" if len(track_name) > 13 else ""}" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">{track_name}</h2>'
@@ -2158,8 +2151,6 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
                 f'<p class="{"marquee-container" if len(artist_name) > 22 else ""}" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">{artist_name}</p>'
                 f'</div>'
                 f'<p style="margin-top:0.35rem; font-size:0.62rem; text-align:left;">{_escape_html(status_text)}</p>'
-                f'<div style="position:absolute; left:0; bottom:0; width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">'
-                f'<div style="width:{pct}%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>'
                 '</section>'
             )
         return (
