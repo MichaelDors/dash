@@ -68,12 +68,13 @@ except Exception:
     RotaryEncoder = None  # type: ignore[assignment]
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageChops, ImageDraw, ImageFont
 
     PIL_AVAILABLE = True
 except Exception:
     PIL_AVAILABLE = False
     Image = None  # type: ignore[assignment]
+    ImageChops = None  # type: ignore[assignment]
     ImageDraw = None  # type: ignore[assignment]
     ImageFont = None  # type: ignore[assignment]
 
@@ -2251,6 +2252,8 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             "subtract_minute": self.controller.button2_press,
             "activity": self.controller.register_activity,
             "simulate_motion": self.controller.simulate_motion,
+            "shutdown": self.controller._execute_power_off_locked,
+            "restart": self.controller._execute_restart_locked,
         }
 
         handler = actions.get(action)
@@ -2575,11 +2578,13 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             duration_text = str(app.get("duration_text") or _format_duration_ms(app.get("duration_ms")))
             progress = float(app.get("progress_ms") or 0)
             duration = float(app.get("duration_ms") or 1)
+            is_playing = bool(app.get("is_playing", False))
             pct = min(1.0, max(0.0, progress / duration))
             exit_state = state.get("app_exit") or {}
             
             track_font = _font(12)
             artist_font = _font(10)
+            time_font = _font(8)
             
             def get_offset(text_w: int, speed: float = 25.0, pause: float = 3.0) -> int:
                 if text_w <= 128:
@@ -2601,15 +2606,53 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             ax = 10 - get_offset(aw, speed=20.0) if aw > 128 else get_offset(aw)
             draw.text((ax, 22), artist_name, fill=1, font=artist_font)
             
-            bar_y = 40
-            draw.rectangle((10, bar_y, 118, bar_y + 4), outline=1, fill=0)
-            fill_w = int(108 * pct)
+            now = datetime.now()
+            hour_12 = now.hour % 12 or 12
+            sys_time = f"{hour_12}:{now.minute:02d}"
+            sys_time_w, sys_time_h = _text_size(sys_time, track_font)
+            time_x = 128 - sys_time_w - 2
+            time_y = 5
+            draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
+            draw.text((time_x, time_y), sys_time, fill=1, font=track_font)
+
+            y_offset = 48
+            radius = 4
+            bar_height = 16
+            
+            mask = Image.new("1", (128, 64), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.rounded_rectangle((0, y_offset, 127, y_offset + bar_height - 1), radius=radius, fill=1)
+
+            fill_img = Image.new("1", (128, 64), 0)
+            fill_draw = ImageDraw.Draw(fill_img)
+            fill_w = int(128 * pct)
             if fill_w > 0:
-                draw.rectangle((10, bar_y, 10 + fill_w, bar_y + 4), fill=1)
-            time_font = _font(8)
-            draw.text((3, 54), progress_text, fill=1, font=time_font)
-            time_w, _ = _text_size(duration_text, time_font)
-            draw.text((max(127 - time_w, 0), 54), duration_text, fill=1, font=time_font)
+                fill_draw.rectangle((0, y_offset, fill_w - 1, y_offset + bar_height - 1), fill=1)
+
+            actual_fill = ImageChops.logical_and(fill_img, mask)
+
+            text_img = Image.new("1", (128, 64), 0)
+            text_draw = ImageDraw.Draw(text_img)
+            text_draw.text((4, y_offset + 3), progress_text, fill=1, font=time_font)
+
+            if not is_playing:
+                pw, _ = _text_size(progress_text, time_font)
+                px = 4 + pw + 4
+                py = y_offset + 5
+                text_draw.rectangle((px, py, px+1, py+6), fill=1)
+                text_draw.rectangle((px+3, py, px+4, py+6), fill=1)
+
+            dw, _ = _text_size(duration_text, time_font)
+            text_draw.text((128 - 4 - dw, y_offset + 3), duration_text, fill=1, font=time_font)
+
+            combined_progress = ImageChops.logical_xor(actual_fill, text_img)
+
+            outline_img = Image.new("1", (128, 64), 0)
+            outline_draw = ImageDraw.Draw(outline_img)
+            outline_draw.rounded_rectangle((0, y_offset, 127, y_offset + bar_height - 1), radius=radius, outline=1, fill=0)
+
+            img.paste(outline_img, (0, 0), outline_img)
+            img.paste(combined_progress, (0, 0), combined_progress)
                 
             progress_exit = float(exit_state.get("progress") or 0.0)
             if progress_exit > 0.0:
@@ -2787,10 +2830,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             preview = widget.get("preview") or {}
             track_name = str(preview.get("track_name") or "Waiting for track...")
             artist_name = str(preview.get("artist_name") or "")
-            progress = float(preview.get("progress_ms") or 0)
-            duration = float(preview.get("duration_ms") or 1)
             authenticated = bool(preview.get("authenticated"))
-            pct = min(1.0, max(0.0, progress / duration))
 
             title_font = _font(11)
             sub_font = _font(9)
@@ -2800,14 +2840,11 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             aw, _ = _text_size(artist_name, sub_font)
             ax = max((128 - min(aw, 128)) // 2, 0)
             draw.text((ax, 22), artist_name, fill=1, font=sub_font)
-            draw.rectangle((10, 40, 118, 44), outline=1, fill=0)
-            fill_w = int(108 * pct)
-            if fill_w > 0:
-                draw.rectangle((10, 40, 10 + fill_w, 44), fill=1)
+            
             hint_font = _font(8)
             hint = "CONNECT IN WEB UI" if not authenticated else "PRESS DIAL TO OPEN"
             hw, _ = _text_size(hint, hint_font)
-            draw.text((max((128 - hw) // 2, 0), 52), hint, fill=1, font=hint_font)
+            draw.text((max((128 - hw) // 2, 0), 45), hint, fill=1, font=hint_font)
             return img
 
         title_font = _font(10)

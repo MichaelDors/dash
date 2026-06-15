@@ -68,11 +68,19 @@ def parse_version(s: str) -> tuple[int, ...]:
 def fetch_remote_version(repo: str, branch: str) -> str | None:
     url = f"https://raw.githubusercontent.com/{repo}/{branch}/VERSION"
     req = Request(url, headers={"User-Agent": "Dash-Launcher/1.0"})
-    try:
-        with urlopen(req, timeout=10) as resp:
-            return resp.read().decode("utf-8").strip()
-    except (URLError, HTTPError, OSError):
-        return None
+    
+    # After a soft reboot, the network may take a few seconds to come up.
+    # We retry multiple times before giving up.
+    for attempt in range(5):
+        try:
+            with urlopen(req, timeout=10) as resp:
+                return resp.read().decode("utf-8").strip()
+        except (URLError, HTTPError, OSError):
+            if attempt < 4:
+                time.sleep(2)
+            else:
+                return None
+    return None
 
 
 def read_local_version() -> str:
