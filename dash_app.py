@@ -1138,19 +1138,27 @@ class SpotifyClient:
         if json_body is not None:
             data = json.dumps(json_body).encode()
             headers["Content-Type"] = "application/json"
+        elif method in ("POST", "PUT"):
+            headers["Content-Length"] = "0"
+            data = b""
             
         req = Request(url, data=data, headers=headers, method=method)
         try:
             with urlopen(req, timeout=5) as resp:
-                if resp.status == 204:
+                if resp.status in (202, 204):
                     return {}
-                body = resp.read()
+                body = resp.read().decode('utf-8').strip()
                 if not body:
                     return {}
-                return json.loads(body.decode())
+                try:
+                    return json.loads(body)
+                except Exception as e:
+                    print(f"Spotify API JSON decode error: {e} for body: '{body}'")
+                    return {}
         except HTTPError as e:
-            if e.code != 204:
-                print(f"Spotify API HTTP Error: {e.code} for {url}")
+            if e.code in (202, 204):
+                return {}
+            print(f"Spotify API HTTP Error: {e.code} for {url}")
             return None
         except Exception as e:
             print(f"Spotify API Error: {e} for {url}")
@@ -1216,7 +1224,7 @@ class SpotifyApp(App):
         if not self.client.is_authenticated():
             return
 
-        if now - self.last_fetch_time > 5.0 and self._scrub_target is None:
+        if now - self.last_fetch_time > 2.0 and self._scrub_target is None:
             self._fetch_now()
             self.last_fetch_time = now
             
@@ -1227,7 +1235,7 @@ class SpotifyApp(App):
             self.progress_ms = target
             self.last_fetch_time = now
 
-        if self.is_playing and self._scrub_target is None and now - self.last_fetch_time < 5.0:
+        if self.is_playing and self._scrub_target is None and now - self.last_fetch_time < 2.0:
             self.progress_ms = min(self.duration_ms, self.progress_ms + int(dt * 1000))
 
     def on_encoder(self, delta: int) -> None:
@@ -1289,6 +1297,9 @@ class DashboardController:
         self._power_off_hold_active = False
         self._power_off_progress = 0.0
         self._power_off_pressed_at: Optional[float] = None
+        self._restart_hold_active = False
+        self._restart_progress = 0.0
+        self._restart_pressed_at: Optional[float] = None
         self._last_update_time: Optional[float] = None
         self.widgets: List[Widget] = [
             TimeWidget(),
@@ -1330,6 +1341,7 @@ class DashboardController:
                 self._dial_exit_progress = 0.0
                 self._dial_exit_hold_active = False
             self._update_power_off_locked(now, dt)
+            self._update_restart_locked(now, dt)
 
     def next_widget(self) -> None:
         if self.active_app is not None:
@@ -1499,6 +1511,36 @@ class DashboardController:
         else:
             print("Button2 held, but power-off is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
 
+    def _update_restart_locked(self, now: float, dt: float) -> None:
+        if self._restart_hold_active and self._restart_pressed_at is not None:
+            progress = (now - self._restart_pressed_at) / max(5.0, 0.01)
+            self._restart_progress = min(1.0, max(0.0, progress))
+            if self._restart_progress >= 1.0:
+                self._execute_restart_locked()
+            return
+        
+        if self._restart_progress > 0.0:
+            decay = dt / max(0.5, 0.01)
+            self._restart_progress = max(0.0, self._restart_progress - decay)
+
+    def _execute_restart_locked(self) -> None:
+        self._restart_hold_active = False
+        if ALLOW_SYSTEM_POWER_OFF:
+            print("Button1 held for restart. Rebooting system.")
+            os.system("sudo reboot")
+        else:
+            print("Button1 held, but restart is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
+
+    def button1_press_start(self) -> None:
+        with self._lock:
+            self._restart_pressed_at = time.time()
+            self._restart_hold_active = True
+        self.button1_press()
+
+    def button1_press_end(self) -> None:
+        with self._lock:
+            self._restart_hold_active = False
+            self._restart_pressed_at = None
 
     def button1_press(self) -> None:
         with self._lock:
@@ -1573,6 +1615,10 @@ class DashboardController:
                 "progress": self._power_off_progress,
                 "active": self._power_off_hold_active,
             }
+            restart = {
+                "progress": self._restart_progress,
+                "active": self._restart_hold_active,
+            }
 
         motion = self.motion_manager.get_status()
         display_mode = "on"
@@ -1590,6 +1636,7 @@ class DashboardController:
             "active_app": active_app_payload,
             "app_exit": app_exit,
             "power_off": power_off,
+            "restart": restart,
             "motion": motion,
         }
 
@@ -1647,7 +1694,8 @@ class HardwareControls:
 
         try:
             self.button1 = Button(BUTTON1_PIN)
-            self.button1.when_pressed = self.controller.button1_press
+            self.button1.when_pressed = self.controller.button1_press_start
+            self.button1.when_released = self.controller.button1_press_end
             print("Button1 initialized.")
         except Exception as exc:
             print(f"Failed to initialize button1: {exc}")
@@ -2543,6 +2591,19 @@ def _oled_display_loop(
             if img is None:
                 time.sleep(interval)
                 continue
+            
+            po_progress = float(state.get("power_off", {}).get("progress") or 0.0)
+            if po_progress > 0.0:
+                fill_width = int(128 * min(max(po_progress, 0.0), 1.0))
+                if fill_width > 0:
+                    ImageDraw.Draw(img).rectangle((0, 0, fill_width - 1, 63), fill=1)
+                    
+            rs_progress = float(state.get("restart", {}).get("progress") or 0.0)
+            if rs_progress > 0.0:
+                fill_width = int(128 * min(max(rs_progress, 0.0), 1.0))
+                if fill_width > 0:
+                    ImageDraw.Draw(img).rectangle((0, 0, fill_width - 1, 63), fill=1)
+
             pages = image_to_sh1106_pages(img)
             oled_driver.display_frame(pages)
         except Exception as exc:

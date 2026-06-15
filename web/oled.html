@@ -97,6 +97,11 @@
         if (powerOffRaw > 0) {
             html += '<div class="power-off-exit" style="--power-off-progress:' + Math.max(0, Math.min(1, powerOffRaw)) + ';"></div>';
         }
+
+        const restartRaw = Number((state.restart || {}).progress || 0);
+        if (restartRaw > 0) {
+            html += '<div class="power-off-exit" style="--power-off-progress:' + Math.max(0, Math.min(1, restartRaw)) + ';"></div>';
+        }
         
         if (html) {
             root.innerHTML = html;
