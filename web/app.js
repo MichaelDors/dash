@@ -355,14 +355,14 @@ function renderSpotify(app, exitState) {
     </div>`;
 
   return `
-    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; overflow: hidden; padding-left: 10px; box-sizing: border-box;">
+    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; padding-left: 10px; box-sizing: border-box;">
       ${auth}
       ${timeHtml}
       ${trackHtml}
       ${artistHtml}
       <p style="margin-top: 0.5rem; font-size: 0.8rem;">${isPlaying}</p>
-      <div style="position:absolute; left:0; bottom:-6px; width:100%; height:12px; background:rgba(255,255,255,0.2); border-radius:6px;">
-        <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:6px;"></div>
+      <div style="position:absolute; left:0; bottom:0; width:100%; height:8px; background:rgba(255,255,255,0.2); border-radius:8px 8px 0 0;">
+        <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:8px 8px 0 0;"></div>
       </div>
       <div class="pong-exit"></div>
     </section>
@@ -574,13 +574,13 @@ function renderWidget(widget, motion) {
         </div>`;
 
       return `
-        <section class="app-spotify" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; overflow: hidden; padding-left: 10px; box-sizing: border-box;">
+        <section class="app-spotify" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; padding-left: 10px; box-sizing: border-box;">
           ${timeHtml}
           ${trackHtml}
           ${artistHtml}
           <p style="margin-top:0.5rem; font-size:0.75rem;">${hint}</p>
-          <div style="position:absolute; left:0; bottom:-6px; width:100%; height:12px; background:rgba(255,255,255,0.2); border-radius:6px;">
-            <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:6px;"></div>
+          <div style="position:absolute; left:0; bottom:0; width:100%; height:8px; background:rgba(255,255,255,0.2); border-radius:8px 8px 0 0;">
+            <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:8px 8px 0 0;"></div>
           </div>
         </section>
       `;

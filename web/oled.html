@@ -60,11 +60,22 @@
             const duration = Number(preview.duration_ms || 1);
             const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
             const hint = preview.authenticated ? "PRESS DIAL TO OPEN" : "CONNECT IN WEB UI";
-            return '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">' +
-              '<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + track + '</h2>' +
-              '<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + artist + '</p>' +
-              '<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:' + pct + '%; height:100%; background:#fff;"></div></div>' +
-              '<p style="margin-top:0.35rem; font-size:0.62rem;">' + hint + '</p>' +
+            const progressText = preview.progress_text || formatDuration(progress);
+            const durationText = preview.duration_text || formatDuration(duration);
+            return '<section class="app-spotify" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; padding-left:4px; box-sizing:border-box;">' +
+              '<div style="position:absolute; right:4px; top:4px; text-align:right;">' +
+              '<div style="font-size:0.58rem; text-align:right;">' + progressText + '</div>' +
+              '<div style="font-size:0.58rem; color:#aaa; text-align:right;">' + durationText + '</div>' +
+              '</div>' +
+              '<div style="width:calc(100% - 35px); overflow:hidden; text-align:left;">' +
+              '<h2 class="' + (track.length > 13 ? 'marquee-container' : '') + '" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">' + track + '</h2>' +
+              '</div>' +
+              '<div style="width:100%; overflow:hidden; text-align:left;">' +
+              '<p class="' + (artist.length > 22 ? 'marquee-container' : '') + '" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">' + artist + '</p>' +
+              '</div>' +
+              '<p style="margin-top:0.35rem; font-size:0.62rem; text-align:left;">' + hint + '</p>' +
+              '<div style="position:absolute; left:0; bottom:0; width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">' +
+              '<div style="width:' + pct + '%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>' +
               '</section>';
           }
           return '<section class="widget-counter"><div style="font-size:9px;text-align:center;line-height:1.2;">PRESS DIAL<br/>TO START</div></section>';
@@ -85,13 +96,20 @@
           const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
           const exitProgressRaw = Number(exitState.progress || 0);
           const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
-          return '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">' +
-            '<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + track + '</h2>' +
-            '<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + artist + '</p>' +
-            '<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:' + pct + '%; height:100%; background:#fff;"></div></div>' +
-            '<p style="margin-top:0.25rem; font-size:0.65rem;">' + status + '</p>' +
-            '<div style="position:absolute; left:4px; bottom:2px; font-size:0.58rem;">' + progressText + '</div>' +
-            '<div style="position:absolute; right:4px; bottom:2px; font-size:0.58rem;">' + durationText + '</div>' +
+          return '<section class="app-spotify" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; padding-left:4px; box-sizing:border-box;">' +
+            '<div style="position:absolute; right:4px; top:4px; text-align:right;">' +
+            '<div style="font-size:0.58rem; text-align:right;">' + progressText + '</div>' +
+            '<div style="font-size:0.58rem; color:#aaa; text-align:right;">' + durationText + '</div>' +
+            '</div>' +
+            '<div style="width:calc(100% - 35px); overflow:hidden; text-align:left;">' +
+            '<h2 class="' + (track.length > 13 ? 'marquee-container' : '') + '" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">' + track + '</h2>' +
+            '</div>' +
+            '<div style="width:100%; overflow:hidden; text-align:left;">' +
+            '<p class="' + (artist.length > 22 ? 'marquee-container' : '') + '" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">' + artist + '</p>' +
+            '</div>' +
+            '<p style="margin-top:0.2rem; font-size:0.65rem; text-align:left;">' + status + '</p>' +
+            '<div style="position:absolute; left:0; bottom:0; width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">' +
+            '<div style="width:' + pct + '%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>' +
             '<div class="pong-exit" style="height:' + (exitProgress * 100) + '%"></div>' +
             '</section>';
         }
