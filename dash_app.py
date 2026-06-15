@@ -1549,8 +1549,9 @@ class DashboardController:
 
     def button1_press_start(self) -> None:
         with self._lock:
-            self._restart_pressed_at = time.time()
-            self._restart_hold_active = True
+            if self.active_app is None:
+                self._restart_pressed_at = time.time()
+                self._restart_hold_active = True
         self.button1_press()
 
     def button1_press_end(self) -> None:
@@ -1577,8 +1578,9 @@ class DashboardController:
 
     def button2_press_start(self) -> None:
         with self._lock:
-            self._power_off_pressed_at = time.time()
-            self._power_off_hold_active = True
+            if self.active_app is None:
+                self._power_off_pressed_at = time.time()
+                self._power_off_hold_active = True
         self.button2_press()
 
     def button2_press_end(self) -> None:
