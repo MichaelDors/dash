@@ -171,6 +171,11 @@ function handleGlobalWeatherSubmit(event) {
   setWeatherLocation(input.value);
 }
 
+const globalWeatherForm = document.getElementById("globalWeatherForm");
+if (globalWeatherForm) {
+  globalWeatherForm.addEventListener("submit", handleGlobalWeatherSubmit);
+}
+
 function render(state) {
   updateStamp();
 
@@ -334,25 +339,31 @@ function renderSpotify(app, exitState) {
   const exitProgressRaw = Number(exitState.progress || 0);
   const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
 
-  const trackHtml = trackName.length > 18 
-    ? `<div style="width: 100%; overflow: hidden;"><div class="marquee-container" style="--marquee-width: 100%;">${trackName}</div></div>`
-    : `<h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${trackName}</h2>`;
+  const trackHtml = `
+    <div style="width: calc(100% - 60px); overflow: hidden;">
+      <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
+    </div>`;
 
-  const artistHtml = artistName.length > 22
-    ? `<div style="width: 100%; overflow: hidden;"><div class="marquee-container" style="--marquee-width: 100%; font-size: 0.9rem; color: var(--text-muted);">${artistName}</div></div>`
-    : `<p style="margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${artistName}</p>`;
+  const artistHtml = `
+    <div style="width: 100%; overflow: hidden;">
+      <p class="${artistName.length > 25 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">${artistName}</p>
+    </div>`;
+
+  const timeHtml = `<div style="position:absolute; right: 8px; top: 8px; text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+      <span style="font-size:0.7rem;">${progressText}</span>
+      <span style="font-size:0.7rem; color:var(--text-muted);">${durationText}</span>
+    </div>`;
 
   return `
-    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
+    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; overflow: hidden; padding-left: 10px; box-sizing: border-box;">
       ${auth}
+      ${timeHtml}
       ${trackHtml}
       ${artistHtml}
-      <div style="margin-top: 0.5rem; width: 80%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden;">
-        <div style="width: ${pct}%; height: 100%; background: var(--accent-color);"></div>
-      </div>
       <p style="margin-top: 0.5rem; font-size: 0.8rem;">${isPlaying}</p>
-      <span style="position:absolute; left:8px; bottom:6px; font-size:0.7rem;">${progressText}</span>
-      <span style="position:absolute; right:8px; bottom:6px; font-size:0.7rem;">${durationText}</span>
+      <div style="position:absolute; left:0; bottom:-6px; width:100%; height:12px; background:rgba(255,255,255,0.2); border-radius:6px;">
+        <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:6px;"></div>
+      </div>
       <div class="pong-exit"></div>
     </section>
   `;
@@ -545,14 +556,32 @@ function renderWidget(widget, motion) {
       const duration = Number(preview.duration_ms || 1);
       const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
       const hint = preview.authenticated ? "Press dial to open" : "Connect in web UI";
+      const progressText = preview.progress_text || formatDuration(progress);
+      const durationText = preview.duration_text || formatDuration(duration);
+      const timeHtml = `<div style="position:absolute; right: 8px; top: 8px; text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size:0.7rem;">${progressText}</span>
+          <span style="font-size:0.7rem; color:var(--text-muted);">${durationText}</span>
+        </div>`;
+      
+      const trackHtml = `
+        <div style="width: calc(100% - 60px); overflow: hidden;">
+          <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
+        </div>`;
+      
+      const artistHtml = `
+        <div style="width: 100%; overflow: hidden;">
+          <p class="${artistName.length > 25 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">${artistName}</p>
+        </div>`;
+
       return `
-        <section class="app-spotify" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
-          <h2 style="margin:0; font-size:1.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${trackName}</h2>
-          <p style="margin:0.2rem 0; font-size:0.9rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${artistName}</p>
-          <div style="margin-top:0.5rem; width:80%; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; overflow:hidden;">
-            <div style="width:${pct}%; height:100%; background:var(--accent-color);"></div>
-          </div>
+        <section class="app-spotify" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; overflow: hidden; padding-left: 10px; box-sizing: border-box;">
+          ${timeHtml}
+          ${trackHtml}
+          ${artistHtml}
           <p style="margin-top:0.5rem; font-size:0.75rem;">${hint}</p>
+          <div style="position:absolute; left:0; bottom:-6px; width:100%; height:12px; background:rgba(255,255,255,0.2); border-radius:6px;">
+            <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:6px;"></div>
+          </div>
         </section>
       `;
     }

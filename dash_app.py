@@ -1249,8 +1249,10 @@ class SpotifyApp(App):
         self._last_btn2_time: float = 0
         self._last_dial_time: float = 0
         self._last_user_action_time: float = 0
+        self._playback_stopped_time: float = time.time()
         self._fetch_in_flight = False
         self._playback_started_event = False
+        self._playback_stopped_event = False
 
     def reset(self) -> None:
         self.track_name = ""
@@ -1260,6 +1262,8 @@ class SpotifyApp(App):
         self.duration_ms = 0
         self._scrub_target = None
         self.last_fetch_time = 0
+        self._last_user_action_time = time.time()
+        self._playback_stopped_time = time.time()
         self._fetch_now()
 
     def _fetch_now(self) -> None:
@@ -1294,6 +1298,9 @@ class SpotifyApp(App):
 
                 if not previous_playing and self.is_playing:
                     self._playback_started_event = True
+                if previous_playing and not self.is_playing:
+                    self._playback_stopped_event = True
+                    self._playback_stopped_time = now
                 self.last_fetch_time = now
             finally:
                 self._fetch_in_flight = False
@@ -1332,6 +1339,11 @@ class SpotifyApp(App):
         self._playback_started_event = False
         return started
 
+    def consume_playback_stopped_event(self) -> bool:
+        stopped = self._playback_stopped_event
+        self._playback_stopped_event = False
+        return stopped
+
     def on_encoder(self, delta: int) -> None:
         if self.duration_ms == 0:
             return
@@ -1353,6 +1365,7 @@ class SpotifyApp(App):
         if self.is_playing:
             threading.Thread(target=self.client.pause, daemon=True).start()
             self.is_playing = False
+            self._playback_stopped_time = now
         else:
             threading.Thread(target=self.client.play, daemon=True).start()
             self.is_playing = True
@@ -1414,6 +1427,8 @@ class DashboardController:
         self._dial_exit_progress = 0.0
         self._dial_ignore_release = False
         self._power_off_hold_active = False
+        self._spotify_widget_auto_opened = False
+        self._previous_widget_index: Optional[int] = None
         self._power_off_progress = 0.0
         self._power_off_pressed_at: Optional[float] = None
         self._restart_hold_active = False
@@ -1485,13 +1500,26 @@ class DashboardController:
             if self.active_app is not None:
                 self.active_app.update(now, dt)
                 self._update_exit_hold_locked(now, dt)
+                if isinstance(self.active_app, SpotifyApp) and not self.active_app.is_playing:
+                    idle_time = now - max(getattr(self.active_app, "_playback_stopped_time", 0), getattr(self.active_app, "_last_user_action_time", 0))
+                    if idle_time > 300.0:
+                        self._exit_app_locked(ignore_release=False)
+                        time_widget_index = next((idx for idx, w in enumerate(self.widgets) if isinstance(w, TimeWidget)), 0)
+                        self.current_widget_index = time_widget_index
             else:
                 if self.spotify_app is not None:
                     self.spotify_app.update_background(now, dt)
                     if self.spotify_app.consume_playback_started_event() and self._should_auto_switch_to_spotify_locked(now):
                         spotify_widget_index = self._find_spotify_widget_index_locked()
-                        if spotify_widget_index is not None:
+                        if spotify_widget_index is not None and self.current_widget_index != spotify_widget_index:
+                            self._previous_widget_index = self.current_widget_index
                             self.current_widget_index = spotify_widget_index
+                            self._spotify_widget_auto_opened = True
+                    stopped = self.spotify_app.consume_playback_stopped_event()
+                    if stopped and self._spotify_widget_auto_opened:
+                        if self._previous_widget_index is not None:
+                            self.current_widget_index = self._previous_widget_index
+                        self._spotify_widget_auto_opened = False
                 self._dial_exit_progress = 0.0
                 self._dial_exit_hold_active = False
             self._update_power_off_locked(now, dt)
@@ -1520,6 +1548,7 @@ class DashboardController:
     def _record_user_interaction(self) -> None:
         with self._lock:
             self._last_interaction_time = time.time()
+            self._spotify_widget_auto_opened = False
 
     def next_widget(self) -> None:
         if self.active_app is not None:
@@ -2001,13 +2030,20 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             exit_progress = float(exit_state.get("progress") or 0.0)
             
             return (
-                '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">'
-                f'<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">{track_name}</h2>'
-                f'<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">{artist_name}</p>'
-                f'<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:{pct}%; height:100%; background:#fff;"></div></div>'
-                f'<p style="margin-top:0.25rem; font-size:0.65rem;">{is_playing}</p>'
-                f'<div style="position:absolute; left:4px; bottom:2px; font-size:0.58rem;">{progress_text}</div>'
-                f'<div style="position:absolute; right:4px; bottom:2px; font-size:0.58rem;">{duration_text}</div>'
+                '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; height:100%; text-align:left; overflow:hidden; padding-left:4px; box-sizing:border-box;">'
+                f'<div style="position:absolute; right:4px; top:4px; text-align:right;">'
+                f'<div style="font-size:0.58rem;">{progress_text}</div>'
+                f'<div style="font-size:0.58rem; color:#aaa;">{duration_text}</div>'
+                f'</div>'
+                f'<div style="width:calc(100% - 35px); overflow:hidden;">'
+                f'<h2 class="{"marquee-container" if len(track_name) > 13 else ""}" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap;">{track_name}</h2>'
+                f'</div>'
+                f'<div style="width:100%; overflow:hidden;">'
+                f'<p class="{"marquee-container" if len(artist_name) > 22 else ""}" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap;">{artist_name}</p>'
+                f'</div>'
+                f'<p style="margin-top:0.2rem; font-size:0.65rem;">{is_playing}</p>'
+                f'<div style="position:absolute; left:0; bottom:-4px; width:100%; height:8px; background:rgba(255,255,255,0.2); border-radius:4px;">'
+                f'<div style="width:{pct}%; height:100%; background:#fff; border-radius:4px;"></div></div>'
                 f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
                 '</section>'
             )
@@ -2098,11 +2134,22 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             duration = float(preview.get("duration_ms") or 1)
             pct = min(100.0, max(0.0, (progress / duration) * 100))
             status_text = "Connect in web UI" if not authenticated else "PRESS DIAL TO OPEN"
+            progress_text = _escape_html(str(preview.get("progress_text") or _format_duration_ms(progress)))
+            duration_text = _escape_html(str(preview.get("duration_text") or _format_duration_ms(duration)))
             return (
-                '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">'
-                f'<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">{track_name}</h2>'
-                f'<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">{artist_name}</p>'
-                f'<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:{pct}%; height:100%; background:#fff;"></div></div>'
+                '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; height:100%; text-align:left; overflow:hidden; padding-left:4px; box-sizing:border-box;">'
+                f'<div style="position:absolute; right:4px; top:4px; text-align:right;">'
+                f'<div style="font-size:0.58rem;">{progress_text}</div>'
+                f'<div style="font-size:0.58rem; color:#aaa;">{duration_text}</div>'
+                f'</div>'
+                f'<div style="width:calc(100% - 35px); overflow:hidden;">'
+                f'<h2 class="{"marquee-container" if len(track_name) > 13 else ""}" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap;">{track_name}</h2>'
+                f'</div>'
+                f'<div style="width:100%; overflow:hidden;">'
+                f'<p class="{"marquee-container" if len(artist_name) > 22 else ""}" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap;">{artist_name}</p>'
+                f'</div>'
+                f'<div style="position:absolute; left:0; bottom:-4px; width:100%; height:8px; background:rgba(255,255,255,0.2); border-radius:4px;">'
+                f'<div style="width:{pct}%; height:100%; background:#fff; border-radius:4px;"></div></div>'
                 f'<p style="margin-top:0.35rem; font-size:0.62rem;">{_escape_html(status_text)}</p>'
                 '</section>'
             )
