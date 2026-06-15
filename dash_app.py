@@ -1560,7 +1560,9 @@ class HardwareControls:
 
     def __init__(self, controller: DashboardController):
         self.controller = controller
-        self.encoder: Optional[Any] = None
+        self.encoder_clk: Optional[Any] = None
+        self.encoder_dt: Optional[Any] = None
+        self._last_enc_time: float = 0.0
         self.main_button: Optional[Any] = None
         self.button1: Optional[Any] = None
         self.button2: Optional[Any] = None
@@ -1571,10 +1573,28 @@ class HardwareControls:
             return
 
         try:
-            self.encoder = RotaryEncoder(CLK_PIN, DT_PIN, max_steps=0)
-            self.encoder.when_rotated_clockwise = self.controller.dial_rotate_clockwise
-            self.encoder.when_rotated_counter_clockwise = self.controller.dial_rotate_counterclockwise
-            print("Rotary encoder initialized.")
+            self.encoder_clk = Button(CLK_PIN, pull_up=True)
+            self.encoder_dt = Button(DT_PIN, pull_up=True)
+            self._last_enc_time = 0.0
+
+            def _enc_cb():
+                import time
+                now = time.time()
+                # 20ms debounce to prevent bouncing issues
+                if now - self._last_enc_time < 0.02:
+                    return
+                self._last_enc_time = now
+                
+                # For standard KY-040:
+                # Clockwise: CLK goes low first, so DT is still high (not active)
+                # Counter-clockwise: DT goes low first, so DT is already low (active)
+                if not self.encoder_dt.is_active:
+                    self.controller.dial_rotate_clockwise()
+                else:
+                    self.controller.dial_rotate_counterclockwise()
+
+            self.encoder_clk.when_pressed = _enc_cb
+            print("Rotary encoder initialized (custom Button mode).")
         except Exception as exc:
             print(f"Failed to initialize rotary encoder: {exc}")
 
@@ -1602,7 +1622,7 @@ class HardwareControls:
             print(f"Failed to initialize button2: {exc}")
 
     def cleanup(self) -> None:
-        for device in [self.encoder, self.main_button, self.button1, self.button2]:
+        for device in [self.encoder_clk, self.encoder_dt, self.main_button, self.button1, self.button2]:
             if device is None:
                 continue
             try:
