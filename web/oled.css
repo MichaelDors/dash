@@ -200,3 +200,15 @@ body.oled {
   background: #fff;
   opacity: 0.9;
 }
+
+.oled-view .power-off-exit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: calc(var(--power-off-progress) * 100%);
+  background: #fff;
+  opacity: 0.9;
+  z-index: 100;
+  pointer-events: none;
+}

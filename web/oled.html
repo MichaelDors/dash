@@ -86,12 +86,20 @@
 
       function render(state) {
         if (!state) return;
+        let html = "";
         if (state.mode === "app" && state.active_app) {
-          root.innerHTML = renderApp(state.active_app, state.app_exit || {});
-          return;
+          html = renderApp(state.active_app, state.app_exit || {});
+        } else if (state.active_widget) {
+          html = renderWidget(state.active_widget, state.motion || {});
         }
-        if (state.active_widget) {
-          root.innerHTML = renderWidget(state.active_widget, state.motion || {});
+        
+        const powerOffRaw = Number((state.power_off || {}).progress || 0);
+        if (powerOffRaw > 0) {
+            html += '<div class="power-off-exit" style="--power-off-progress:' + Math.max(0, Math.min(1, powerOffRaw)) + ';"></div>';
+        }
+        
+        if (html) {
+            root.innerHTML = html;
         }
       }
 

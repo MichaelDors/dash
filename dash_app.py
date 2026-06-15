@@ -1280,6 +1280,9 @@ class DashboardController:
         self._dial_exit_hold_active = False
         self._dial_exit_progress = 0.0
         self._dial_ignore_release = False
+        self._power_off_hold_active = False
+        self._power_off_progress = 0.0
+        self._power_off_pressed_at: Optional[float] = None
         self._last_update_time: Optional[float] = None
         self.widgets: List[Widget] = [
             TimeWidget(),
@@ -1320,6 +1323,7 @@ class DashboardController:
             else:
                 self._dial_exit_progress = 0.0
                 self._dial_exit_hold_active = False
+            self._update_power_off_locked(now, dt)
 
     def next_widget(self) -> None:
         if self.active_app is not None:
@@ -1469,6 +1473,27 @@ class DashboardController:
             decay = dt / max(DIAL_EXIT_UNFILL_SECONDS, 0.01)
             self._dial_exit_progress = max(0.0, self._dial_exit_progress - decay)
 
+    def _update_power_off_locked(self, now: float, dt: float) -> None:
+        if self._power_off_hold_active and self._power_off_pressed_at is not None:
+            progress = (now - self._power_off_pressed_at) / max(5.0, 0.01)
+            self._power_off_progress = min(1.0, max(0.0, progress))
+            if self._power_off_progress >= 1.0:
+                self._execute_power_off_locked()
+            return
+        
+        if self._power_off_progress > 0.0:
+            decay = dt / max(0.5, 0.01)
+            self._power_off_progress = max(0.0, self._power_off_progress - decay)
+
+    def _execute_power_off_locked(self) -> None:
+        self._power_off_hold_active = False
+        if ALLOW_SYSTEM_POWER_OFF:
+            print("Button2 held for power-off. Shutting down system.")
+            os.system("sudo shutdown -h now")
+        else:
+            print("Button2 held, but power-off is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
+
+
     def button1_press(self) -> None:
         with self._lock:
             if self.active_app is not None:
@@ -1486,6 +1511,17 @@ class DashboardController:
                 getattr(current, "add_minute")()
         self.motion_manager.report_user_activity()
 
+    def button2_press_start(self) -> None:
+        with self._lock:
+            self._power_off_pressed_at = time.time()
+            self._power_off_hold_active = True
+        self.button2_press()
+
+    def button2_press_end(self) -> None:
+        with self._lock:
+            self._power_off_hold_active = False
+            self._power_off_pressed_at = None
+
     def button2_press(self) -> None:
         with self._lock:
             if self.active_app is not None:
@@ -1502,14 +1538,6 @@ class DashboardController:
             if hasattr(current, "subtract_minute"):
                 getattr(current, "subtract_minute")()
         self.motion_manager.report_user_activity()
-
-    def button2_hold(self) -> None:
-        if ALLOW_SYSTEM_POWER_OFF:
-            print("Button2 held for power-off. Shutting down system.")
-            os.system("sudo shutdown -h now")
-            return
-
-        print("Button2 held, but power-off is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
 
     def simulate_motion(self) -> None:
         self.motion_manager.report_user_activity(motion=True)
@@ -1535,6 +1563,10 @@ class DashboardController:
                 "progress": self._dial_exit_progress,
                 "active": self._dial_exit_hold_active,
             }
+            power_off = {
+                "progress": self._power_off_progress,
+                "active": self._power_off_hold_active,
+            }
 
         motion = self.motion_manager.get_status()
         display_mode = "on"
@@ -1551,6 +1583,7 @@ class DashboardController:
             "active_widget": active_payload,
             "active_app": active_app_payload,
             "app_exit": app_exit,
+            "power_off": power_off,
             "motion": motion,
         }
 
@@ -1614,9 +1647,9 @@ class HardwareControls:
             print(f"Failed to initialize button1: {exc}")
 
         try:
-            self.button2 = Button(BUTTON2_PIN, hold_time=5.0, hold_repeat=False)
-            self.button2.when_pressed = self.controller.button2_press
-            self.button2.when_held = self.controller.button2_hold
+            self.button2 = Button(BUTTON2_PIN)
+            self.button2.when_pressed = self.controller.button2_press_start
+            self.button2.when_released = self.controller.button2_press_end
             print("Button2 initialized.")
         except Exception as exc:
             print(f"Failed to initialize button2: {exc}")
@@ -2030,6 +2063,9 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             return
         state = self.controller.snapshot()
         widget_html = _render_oled_widget_html(state)
+        power_off_raw = float((state.get("power_off") or {}).get("progress") or 0.0)
+        if power_off_raw > 0:
+            widget_html += f'<div class="power-off-exit" style="--power-off-progress:{max(0.0, min(1.0, power_off_raw)):.3f};"></div>'
         state_json = json.dumps(state).replace("</script>", "<\\/script>")
         body = body.replace("{{WIDGET_HTML}}", widget_html)
         body = body.replace("{{INITIAL_STATE}}", state_json)
