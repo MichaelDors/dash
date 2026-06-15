@@ -703,6 +703,8 @@ class WeatherWidget(Widget):
 
 
 class VersionStatusWidget(Widget):
+    FETCH_INTERVAL = 30 * 60
+
     def __init__(self) -> None:
         super().__init__("version_status", "Version Debug")
         self.repo = os.getenv("GITHUB_REPO", "MichaelDors/dash").strip() or "MichaelDors/dash"
@@ -711,7 +713,13 @@ class VersionStatusWidget(Widget):
         self.remote_version: Optional[str] = None
         self.error: Optional[str] = None
         self.checked_at: Optional[datetime] = None
+        self._next_fetch_ts = time.time() + self.FETCH_INTERVAL
         self._compute_versions()
+
+    def update(self, now: float) -> None:
+        if now >= self._next_fetch_ts:
+            self._compute_versions()
+            self._next_fetch_ts = now + self.FETCH_INTERVAL
 
     def _compute_versions(self) -> None:
         try:
