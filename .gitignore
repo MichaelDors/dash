@@ -6,3 +6,4 @@ bootlogo.af~lock~
 .DS_Store
 *.af
 *.af~lock~
+.env
