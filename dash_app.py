@@ -1438,6 +1438,8 @@ class DashboardController:
             duration = now - start if start is not None else 0.0
             if self.active_app is not None:
                 self._dial_exit_hold_active = False
+                if duration < 0.5:
+                    self.active_app.on_dial_press()
                 return
             if duration >= DIAL_HOLD_WIDGET_SECONDS:
                 current = self.widgets[self.current_widget_index]
@@ -1670,7 +1672,8 @@ class HardwareControls:
 
     def __init__(self, controller: DashboardController):
         self.controller = controller
-        self.encoder: Optional[Any] = None
+        self.encoder_clk: Optional[Any] = None
+        self.encoder_dt: Optional[Any] = None
         self.main_button: Optional[Any] = None
         self.button1: Optional[Any] = None
         self.button2: Optional[Any] = None
@@ -1681,10 +1684,17 @@ class HardwareControls:
             return
 
         try:
-            self.encoder = RotaryEncoder(CLK_PIN, DT_PIN, max_steps=0)
-            self.encoder.when_rotated_clockwise = lambda *args: self.controller.dial_rotate_clockwise()
-            self.encoder.when_rotated_counter_clockwise = lambda *args: self.controller.dial_rotate_counterclockwise()
-            print("Rotary encoder initialized.")
+            self.encoder_clk = Button(CLK_PIN, pull_up=True, bounce_time=0.01)
+            self.encoder_dt = Button(DT_PIN, pull_up=True, bounce_time=0.01)
+
+            def _enc_cb():
+                if not self.encoder_dt.is_active:
+                    self.controller.dial_rotate_clockwise()
+                else:
+                    self.controller.dial_rotate_counterclockwise()
+
+            self.encoder_clk.when_pressed = _enc_cb
+            print("Rotary encoder initialized (native bounce_time).")
         except Exception as exc:
             print(f"Failed to initialize rotary encoder: {exc}")
 
@@ -1713,7 +1723,7 @@ class HardwareControls:
             print(f"Failed to initialize button2: {exc}")
 
     def cleanup(self) -> None:
-        for device in [self.encoder, self.main_button, self.button1, self.button2]:
+        for device in [self.encoder_clk, self.encoder_dt, self.main_button, self.button1, self.button2]:
             if device is None:
                 continue
             try:
