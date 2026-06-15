@@ -2682,9 +2682,9 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
             draw.text((time_x, time_y), sys_time, fill=1, font=track_font)
 
-            y_offset = 52
+            y_offset = 48
             radius = 6
-            bar_height = 18
+            bar_height = 22
             
             mask = Image.new("1", (128, 64), 0)
             mask_draw = ImageDraw.Draw(mask)
@@ -2898,11 +2898,6 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             track_name = str(preview.get("track_name") or "Waiting for track...")
             artist_name = str(preview.get("artist_name") or "")
             authenticated = bool(preview.get("authenticated"))
-            progress = float(preview.get("progress_ms") or 0)
-            duration = float(preview.get("duration_ms") or 1)
-            pct = min(1.0, max(0.0, progress / duration))
-            progress_text = str(preview.get("progress_text") or _format_duration_ms(preview.get("progress_ms")))
-            duration_text = str(preview.get("duration_text") or _format_duration_ms(preview.get("duration_ms")))
 
             track_font = _font(12)
             artist_font = _font(10)
@@ -2920,9 +2915,8 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                 if p < 2 * pause + t_move: return int(sr)
                 return int(sr - (p - 2 * pause - t_move) * speed)
 
-            time_w = 40 # approximate width for time display
             tw, _ = _text_size(track_name, track_font)
-            track_max_w = 128 - time_w - 6
+            track_max_w = 124
             tx = 2 - get_offset(tw, track_max_w)
             draw.text((tx, 5), track_name, fill=1, font=track_font)
             
@@ -2934,40 +2928,8 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             hint_font = _font(8)
             hint = "CONNECT IN WEB UI" if not authenticated else "PRESS DIAL TO OPEN"
             hw, _ = _text_size(hint, hint_font)
-            draw.text((2, 38), hint, fill=1, font=hint_font)
+            draw.text((2, 45), hint, fill=1, font=hint_font)
 
-            # Draw progress bar
-            y_offset = 52
-            radius = 6
-            bar_height = 18
-            
-            mask = Image.new("1", (128, 64), 0)
-            mask_draw = ImageDraw.Draw(mask)
-            mask_draw.rounded_rectangle((0, y_offset, 127, y_offset + bar_height - 1), radius=radius, fill=1)
-
-            fill_img = Image.new("1", (128, 64), 0)
-            fill_draw = ImageDraw.Draw(fill_img)
-            fill_w = int(128 * pct)
-            if fill_w > 0:
-                fill_draw.rectangle((0, y_offset, fill_w - 1, y_offset + bar_height - 1), fill=1)
-
-            actual_fill = ImageChops.logical_and(fill_img, mask)
-
-            text_img = Image.new("1", (128, 64), 0)
-            text_draw = ImageDraw.Draw(text_img)
-            text_draw.text((4, y_offset + 3), progress_text, fill=1, font=time_font)
-
-            dw, _ = _text_size(duration_text, time_font)
-            text_draw.text((128 - 4 - dw, y_offset + 3), duration_text, fill=1, font=time_font)
-
-            combined_progress = ImageChops.logical_xor(actual_fill, text_img)
-
-            outline_img = Image.new("1", (128, 64), 0)
-            outline_draw = ImageDraw.Draw(outline_img)
-            outline_draw.rounded_rectangle((0, y_offset, 127, y_offset + bar_height - 1), radius=radius, outline=1, fill=0)
-
-            img.paste(outline_img, (0, 0), outline_img)
-            img.paste(combined_progress, (0, 0), combined_progress)
             return img
 
         title_font = _font(10)

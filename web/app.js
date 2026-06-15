@@ -556,16 +556,10 @@ function renderWidget(widget, motion) {
       const duration = Number(preview.duration_ms || 1);
       const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
       const hint = preview.authenticated ? "Press dial to open" : "Connect in web UI";
-      const progressText = preview.progress_text || formatDuration(progress);
-      const durationText = preview.duration_text || formatDuration(duration);
-      const timeHtml = `<div style="position:absolute; right: 8px; top: 8px; text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
-          <span style="font-size:0.7rem;">${progressText}</span>
-          <span style="font-size:0.7rem; color:var(--text-muted);">${durationText}</span>
-        </div>`;
       
       const trackHtml = `
-        <div style="width: calc(100% - 60px); overflow: hidden;">
-          <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
+        <div style="width: 100%; overflow: hidden;">
+          <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
         </div>`;
       
       const artistHtml = `
@@ -575,13 +569,9 @@ function renderWidget(widget, motion) {
 
       return `
         <section class="app-spotify" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; padding-left: 10px; box-sizing: border-box;">
-          ${timeHtml}
           ${trackHtml}
           ${artistHtml}
-          <p style="margin-top:0.5rem; font-size:0.75rem;">${hint}</p>
-          <div style="position:absolute; left:0; bottom:0; width:100%; height:8px; background:rgba(255,255,255,0.2); border-radius:8px 8px 0 0;">
-            <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:8px 8px 0 0;"></div>
-          </div>
+          <p style="margin-top:0.6rem; font-size:0.75rem;">${hint}</p>
         </section>
       `;
     }
