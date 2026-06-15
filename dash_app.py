@@ -1471,6 +1471,10 @@ class DashboardController:
                 for widget in self.widgets:
                     if widget.widget_id in state:
                         widget.set_state(state[widget.widget_id])
+                if "current_widget_index" in state:
+                    idx = int(state["current_widget_index"])
+                    if 0 <= idx < len(self.widgets):
+                        self.current_widget_index = idx
         except Exception as exc:
             print(f"Error loading widget state: {exc}")
 
@@ -1478,6 +1482,7 @@ class DashboardController:
         try:
             path = BASE_DIR / "widget_state.json"
             state = {widget.widget_id: widget.get_state() for widget in self.widgets}
+            state["current_widget_index"] = self.current_widget_index
             path.write_text(json.dumps(state))
         except Exception as exc:
             print(f"Error saving widget state: {exc}")
@@ -1558,6 +1563,7 @@ class DashboardController:
             self.current_widget_index = (self.current_widget_index + 1) % len(self.widgets)
             current = self.widgets[self.current_widget_index]
             print(f"Switched to widget: {current.name}")
+            self.mark_state_dirty()
         self.motion_manager.report_user_activity()
 
     def previous_widget(self) -> None:
@@ -1568,6 +1574,7 @@ class DashboardController:
             self.current_widget_index = (self.current_widget_index - 1) % len(self.widgets)
             current = self.widgets[self.current_widget_index]
             print(f"Switched to widget: {current.name}")
+            self.mark_state_dirty()
         self.motion_manager.report_user_activity()
 
     def dial_rotate(self, delta: int) -> None:
@@ -1724,6 +1731,7 @@ class DashboardController:
 
     def _execute_power_off_locked(self) -> None:
         self._power_off_hold_active = False
+        self.save_widget_state()
         if ALLOW_SYSTEM_POWER_OFF:
             print("Button2 held for power-off. Shutting down system.")
             os.system("sudo shutdown -h now")
@@ -1744,6 +1752,7 @@ class DashboardController:
 
     def _execute_restart_locked(self) -> None:
         self._restart_hold_active = False
+        self.save_widget_state()
         if ALLOW_SYSTEM_POWER_OFF:
             print("Button1 held for restart. Rebooting system.")
             os.system("sudo reboot")
@@ -3055,6 +3064,7 @@ def run_dashboard() -> None:
         if stop_event.is_set():
             return
         stop_event.set()
+        controller.save_widget_state()
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     def _signal_handler(_signum: int, _frame: Any) -> None:
