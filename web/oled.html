@@ -52,6 +52,21 @@
           return '<section class="widget-photo"><div style="font-size:8px;text-align:center;">No photo</div></section>';
         }
         if (widget.type === "app_launcher") {
+          if (widget.preview_type === "spotify" && widget.preview) {
+            const preview = widget.preview || {};
+            const track = preview.track_name || "Waiting for track...";
+            const artist = preview.artist_name || "";
+            const progress = Number(preview.progress_ms || 0);
+            const duration = Number(preview.duration_ms || 1);
+            const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
+            const hint = preview.authenticated ? "PRESS DIAL TO OPEN" : "CONNECT IN WEB UI";
+            return '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">' +
+              '<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + track + '</h2>' +
+              '<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + artist + '</p>' +
+              '<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:' + pct + '%; height:100%; background:#fff;"></div></div>' +
+              '<p style="margin-top:0.35rem; font-size:0.62rem;">' + hint + '</p>' +
+              '</section>';
+          }
           return '<section class="widget-counter"><div style="font-size:9px;text-align:center;line-height:1.2;">PRESS DIAL<br/>TO START</div></section>';
         }
         return '<section class="widget-time"><div class="time-main">?</div></section>';
@@ -59,6 +74,27 @@
 
       function renderApp(app, exitState) {
         if (!app) return "";
+        if (app.type === "spotify") {
+          const track = app.track_name || "Waiting for track...";
+          const artist = app.artist_name || "";
+          const status = app.is_playing ? "Playing" : "Paused";
+          const progress = Number(app.progress_ms || 0);
+          const duration = Number(app.duration_ms || 1);
+          const progressText = app.progress_text || formatDuration(progress);
+          const durationText = app.duration_text || formatDuration(duration);
+          const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
+          const exitProgressRaw = Number(exitState.progress || 0);
+          const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+          return '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">' +
+            '<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + track + '</h2>' +
+            '<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">' + artist + '</p>' +
+            '<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:' + pct + '%; height:100%; background:#fff;"></div></div>' +
+            '<p style="margin-top:0.25rem; font-size:0.65rem;">' + status + '</p>' +
+            '<div style="position:absolute; left:4px; bottom:2px; font-size:0.58rem;">' + progressText + '</div>' +
+            '<div style="position:absolute; right:4px; bottom:2px; font-size:0.58rem;">' + durationText + '</div>' +
+            '<div class="pong-exit" style="height:' + (exitProgress * 100) + '%"></div>' +
+            '</section>';
+        }
         if (app.type === "pong") {
           const field = app.field || { width: 128, height: 64 };
           const ball = app.ball || { x: 0, y: 0, size: 2 };
@@ -82,6 +118,15 @@
           );
         }
         return '<section class="widget-time"><div class="time-main">APP</div></section>';
+      }
+
+      function formatDuration(valueMs) {
+        const total = Math.max(0, Math.floor(Number(valueMs || 0) / 1000));
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        const seconds = total % 60;
+        if (hours > 0) return hours + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
       }
 
       function render(state) {

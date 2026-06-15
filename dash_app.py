@@ -103,6 +103,8 @@ OLED_ENABLED = os.getenv("DASH_OLED", "1") == "1"
 DIAL_HOLD_WIDGET_SECONDS = 1.0
 DIAL_HOLD_EXIT_SECONDS = 3.0
 DIAL_EXIT_UNFILL_SECONDS = 0.6
+SPOTIFY_BACKGROUND_POLL_SECONDS = 15.0
+SPOTIFY_AUTO_SWITCH_IDLE_SECONDS = 60.0
 SERVER_BIND_MAX_RETRIES = 5
 SERVER_BIND_RETRY_DELAY = 1.0
 
@@ -1002,17 +1004,32 @@ class AppLauncherWidget(Widget):
 
     def __init__(self, app: App):
         super().__init__(f"app_{app.app_id}", app.name)
+        self.app = app
         self.app_id = app.app_id
         self.app_name = app.name
 
     def to_payload(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "id": self.widget_id,
             "name": self.name,
             "type": "app_launcher",
             "app_id": self.app_id,
             "app_name": self.app_name,
         }
+        if self.app_id == "spotify":
+            app_payload = self.app.to_payload()
+            payload["preview_type"] = "spotify"
+            payload["preview"] = {
+                "track_name": app_payload.get("track_name"),
+                "artist_name": app_payload.get("artist_name"),
+                "is_playing": app_payload.get("is_playing"),
+                "progress_ms": app_payload.get("progress_ms"),
+                "duration_ms": app_payload.get("duration_ms"),
+                "authenticated": app_payload.get("authenticated"),
+                "progress_text": app_payload.get("progress_text"),
+                "duration_text": app_payload.get("duration_text"),
+            }
+        return payload
 
 
 class SpotifyClient:
@@ -1230,6 +1247,8 @@ class SpotifyApp(App):
         self._last_btn2_time: float = 0
         self._last_dial_time: float = 0
         self._last_user_action_time: float = 0
+        self._fetch_in_flight = False
+        self._playback_started_event = False
 
     def reset(self) -> None:
         self.track_name = ""
@@ -1242,19 +1261,40 @@ class SpotifyApp(App):
         self._fetch_now()
 
     def _fetch_now(self) -> None:
+        if self._fetch_in_flight:
+            return
+        self._fetch_in_flight = True
+
         def fetch() -> None:
-            data = self.client.get_currently_playing()
-            if data and isinstance(data, dict):
-                item = data.get("item")
-                if item:
-                    self.track_name = item.get("name", "")
-                    self.artist_name = ", ".join(a.get("name", "") for a in item.get("artists", []))
-                    self.duration_ms = item.get("duration_ms", 0)
-                
-                if time.time() - getattr(self, "_last_user_action_time", 0) > 3.0:
-                    self.progress_ms = data.get("progress_ms", self.progress_ms)
-                    self.is_playing = data.get("is_playing", False)
-                self.last_fetch_time = time.time()
+            try:
+                previous_playing = self.is_playing
+                data = self.client.get_currently_playing()
+                now = time.time()
+                can_apply_playback_state = now - getattr(self, "_last_user_action_time", 0) > 3.0
+                if isinstance(data, dict):
+                    item = data.get("item")
+                    if item:
+                        self.track_name = item.get("name", "")
+                        self.artist_name = ", ".join(a.get("name", "") for a in item.get("artists", []))
+                        self.duration_ms = int(item.get("duration_ms", 0) or 0)
+                    elif can_apply_playback_state:
+                        self.track_name = ""
+                        self.artist_name = ""
+                        self.duration_ms = 0
+                        self.progress_ms = 0
+
+                    if can_apply_playback_state:
+                        self.progress_ms = int(data.get("progress_ms", 0) or 0)
+                        self.is_playing = bool(data.get("is_playing", False))
+                elif can_apply_playback_state:
+                    self.is_playing = False
+                    self.progress_ms = 0
+
+                if not previous_playing and self.is_playing:
+                    self._playback_started_event = True
+                self.last_fetch_time = now
+            finally:
+                self._fetch_in_flight = False
         threading.Thread(target=fetch, daemon=True).start()
 
     def update(self, now: float, dt: float) -> None:
@@ -1275,6 +1315,20 @@ class SpotifyApp(App):
 
         if self.is_playing and self._scrub_target is None and now - self.last_fetch_time < 2.0:
             self.progress_ms = min(self.duration_ms, self.progress_ms + int(dt * 1000))
+
+    def update_background(self, now: float, dt: float) -> None:
+        if not self.client.is_authenticated():
+            return
+        if now - self.last_fetch_time > SPOTIFY_BACKGROUND_POLL_SECONDS and self._scrub_target is None:
+            self._fetch_now()
+            self.last_fetch_time = now
+        if self.is_playing and self._scrub_target is None and self.duration_ms > 0:
+            self.progress_ms = min(self.duration_ms, self.progress_ms + int(dt * 1000))
+
+    def consume_playback_started_event(self) -> bool:
+        started = self._playback_started_event
+        self._playback_started_event = False
+        return started
 
     def on_encoder(self, delta: int) -> None:
         if self.duration_ms == 0:
@@ -1325,6 +1379,7 @@ class SpotifyApp(App):
         threading.Thread(target=self._switch_track, args=("prev",), daemon=True).start()
 
     def to_payload(self) -> Dict[str, Any]:
+        progress_ms = self._scrub_target if self._scrub_target is not None else self.progress_ms
         return {
             "id": self.app_id,
             "name": self.name,
@@ -1332,8 +1387,10 @@ class SpotifyApp(App):
             "track_name": self.track_name,
             "artist_name": self.artist_name,
             "is_playing": self.is_playing,
-            "progress_ms": self._scrub_target if self._scrub_target is not None else self.progress_ms,
+            "progress_ms": progress_ms,
             "duration_ms": self.duration_ms,
+            "progress_text": _format_duration_ms(progress_ms),
+            "duration_text": _format_duration_ms(self.duration_ms),
             "authenticated": self.client.is_authenticated()
         }
 
@@ -1371,7 +1428,10 @@ class DashboardController:
             PhotoWidget(),
             *[AppLauncherWidget(app) for app in self.apps],
         ]
+        self.spotify_app: Optional[SpotifyApp] = next((app for app in self.apps if isinstance(app, SpotifyApp)), None)
+        self.timer_widget: Optional[TimerWidget] = next((widget for widget in self.widgets if isinstance(widget, TimerWidget)), None)
         self.current_widget_index = 0
+        self._last_interaction_time = time.time()
 
         self.button1_last_press = 0.0
         self.button2_last_press = 0.0
@@ -1424,6 +1484,12 @@ class DashboardController:
                 self.active_app.update(now, dt)
                 self._update_exit_hold_locked(now, dt)
             else:
+                if self.spotify_app is not None:
+                    self.spotify_app.update_background(now, dt)
+                    if self.spotify_app.consume_playback_started_event() and self._should_auto_switch_to_spotify_locked(now):
+                        spotify_widget_index = self._find_spotify_widget_index_locked()
+                        if spotify_widget_index is not None:
+                            self.current_widget_index = spotify_widget_index
                 self._dial_exit_progress = 0.0
                 self._dial_exit_hold_active = False
             self._update_power_off_locked(now, dt)
@@ -1433,6 +1499,25 @@ class DashboardController:
                 self.save_widget_state()
                 self._state_dirty = False
                 self._last_save_time = now
+
+    def _find_spotify_widget_index_locked(self) -> Optional[int]:
+        for idx, widget in enumerate(self.widgets):
+            if isinstance(widget, AppLauncherWidget) and widget.app_id == "spotify":
+                return idx
+        return None
+
+    def _should_auto_switch_to_spotify_locked(self, now: float) -> bool:
+        if self.active_app is not None:
+            return False
+        if self.timer_widget is not None and self.timer_widget.running:
+            return False
+        if now - self._last_interaction_time < SPOTIFY_AUTO_SWITCH_IDLE_SECONDS:
+            return False
+        return True
+
+    def _record_user_interaction(self) -> None:
+        with self._lock:
+            self._last_interaction_time = time.time()
 
     def next_widget(self) -> None:
         if self.active_app is not None:
@@ -1455,6 +1540,7 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def dial_rotate(self, delta: int) -> None:
+        self._record_user_interaction()
         with self._lock:
             if self.active_app is not None:
                 self.active_app.on_encoder(delta)
@@ -1476,6 +1562,7 @@ class DashboardController:
         self.dial_rotate(-1)
 
     def dial_press_short(self) -> None:
+        self._record_user_interaction()
         with self._lock:
             if self.active_app is not None:
                 self.active_app.on_dial_press()
@@ -1485,6 +1572,7 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def dial_press_start(self) -> None:
+        self._record_user_interaction()
         with self._lock:
             self._dial_pressed_at = time.time()
             self._dial_ignore_release = False
@@ -1493,6 +1581,7 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def dial_press_end(self) -> None:
+        self._record_user_interaction()
         now = time.time()
         with self._lock:
             if self._dial_ignore_release:
@@ -1532,11 +1621,13 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def launch_app(self, app_id: str) -> None:
+        self._record_user_interaction()
         with self._lock:
             self._launch_app_locked(app_id)
         self.motion_manager.report_user_activity()
 
     def exit_app(self) -> None:
+        self._record_user_interaction()
         with self._lock:
             self._exit_app_locked(ignore_release=False)
         self.motion_manager.report_user_activity()
@@ -1641,6 +1732,7 @@ class DashboardController:
             self._restart_pressed_at = None
 
     def button1_press(self) -> None:
+        self._record_user_interaction()
         if self.active_app is not None:
             self.active_app.on_button1()
             self.motion_manager.report_user_activity()
@@ -1670,6 +1762,7 @@ class DashboardController:
             self._power_off_pressed_at = None
 
     def button2_press(self) -> None:
+        self._record_user_interaction()
         if self.active_app is not None:
             self.active_app.on_button2()
             self.motion_manager.report_user_activity()
@@ -1690,6 +1783,7 @@ class DashboardController:
         self.motion_manager.report_user_activity(motion=True)
 
     def register_activity(self) -> None:
+        self._record_user_interaction()
         self.motion_manager.report_user_activity()
 
     def snapshot(self) -> Dict[str, Any]:
@@ -1827,6 +1921,18 @@ def _escape_html(s: str) -> str:
     )
 
 
+def _format_duration_ms(value_ms: Any) -> str:
+    try:
+        total_seconds = max(0, int((value_ms or 0) // 1000))
+    except Exception:
+        total_seconds = 0
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours > 0:
+        return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
 def _render_oled_widget_html(state: Dict[str, Any]) -> str:
     """Server-side render of active widget/app HTML (mirrors oled.html render functions)."""
     mode = (state.get("mode") or "widgets").lower()
@@ -1882,15 +1988,19 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             progress = float(app.get("progress_ms") or 0)
             duration = float(app.get("duration_ms") or 1)
             pct = min(100.0, max(0.0, (progress / duration) * 100))
+            progress_text = _escape_html(str(app.get("progress_text") or _format_duration_ms(progress)))
+            duration_text = _escape_html(str(app.get("duration_text") or _format_duration_ms(duration)))
             exit_state = state.get("app_exit") or {}
             exit_progress = float(exit_state.get("progress") or 0.0)
             
             return (
-                '<section class="app-spotify" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center;">'
-                f'<h2 style="margin:0; font-size:1.2rem; white-space:nowrap; overflow:hidden;">{track_name}</h2>'
-                f'<p style="margin:0.2rem 0; font-size:0.9rem;">{artist_name}</p>'
-                f'<div style="width:80%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.5rem;"><div style="width:{pct}%; height:100%; background:#fff;"></div></div>'
-                f'<p style="margin-top:0.5rem; font-size:0.8rem;">{is_playing}</p>'
+                '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">'
+                f'<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">{track_name}</h2>'
+                f'<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">{artist_name}</p>'
+                f'<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:{pct}%; height:100%; background:#fff;"></div></div>'
+                f'<p style="margin-top:0.25rem; font-size:0.65rem;">{is_playing}</p>'
+                f'<div style="position:absolute; left:4px; bottom:2px; font-size:0.58rem;">{progress_text}</div>'
+                f'<div style="position:absolute; right:4px; bottom:2px; font-size:0.58rem;">{duration_text}</div>'
                 f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
                 '</section>'
             )
@@ -1972,6 +2082,23 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
         return '<section class="widget-photo"><div class="photo-placeholder">No photo</div></section>'
     if wtype == "app_launcher":
         app_name = _escape_html(str(w.get("app_name") or w.get("name") or "APP"))
+        if str(w.get("preview_type") or "") == "spotify":
+            preview = w.get("preview") or {}
+            track_name = _escape_html(str(preview.get("track_name") or "Waiting for track..."))
+            artist_name = _escape_html(str(preview.get("artist_name") or ""))
+            authenticated = bool(preview.get("authenticated"))
+            progress = float(preview.get("progress_ms") or 0)
+            duration = float(preview.get("duration_ms") or 1)
+            pct = min(100.0, max(0.0, (progress / duration) * 100))
+            status_text = "Connect in web UI" if not authenticated else "PRESS DIAL TO OPEN"
+            return (
+                '<section class="app-spotify" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; overflow:hidden;">'
+                f'<h2 style="margin:0; font-size:1.0rem; white-space:nowrap; overflow:hidden; max-width:96%;">{track_name}</h2>'
+                f'<p style="margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; overflow:hidden; max-width:96%;">{artist_name}</p>'
+                f'<div style="width:88%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.4rem;"><div style="width:{pct}%; height:100%; background:#fff;"></div></div>'
+                f'<p style="margin-top:0.35rem; font-size:0.62rem;">{_escape_html(status_text)}</p>'
+                '</section>'
+            )
         return (
             '<section class="widget-counter">'
             f'<div style="font-size:9px;text-align:center;line-height:1.2;">{app_name}<br/>PRESS DIAL</div>'
@@ -2444,7 +2571,8 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         if app_type == "spotify":
             track_name = str(app.get("track_name") or "Waiting for track...")
             artist_name = str(app.get("artist_name") or "")
-            is_playing = app.get("is_playing")
+            progress_text = str(app.get("progress_text") or _format_duration_ms(app.get("progress_ms")))
+            duration_text = str(app.get("duration_text") or _format_duration_ms(app.get("duration_ms")))
             progress = float(app.get("progress_ms") or 0)
             duration = float(app.get("duration_ms") or 1)
             pct = min(1.0, max(0.0, progress / duration))
@@ -2478,13 +2606,10 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             fill_w = int(108 * pct)
             if fill_w > 0:
                 draw.rectangle((10, bar_y, 10 + fill_w, bar_y + 4), fill=1)
-                
-            icon_x = 60
-            icon_y = 50
-            if is_playing:
-                _draw_pause_icon(icon_x, icon_y)
-            else:
-                draw.polygon([(icon_x, icon_y), (icon_x, icon_y + 8), (icon_x + 6, icon_y + 4)], fill=1)
+            time_font = _font(8)
+            draw.text((3, 54), progress_text, fill=1, font=time_font)
+            time_w, _ = _text_size(duration_text, time_font)
+            draw.text((max(127 - time_w, 0), 54), duration_text, fill=1, font=time_font)
                 
             progress_exit = float(exit_state.get("progress") or 0.0)
             if progress_exit > 0.0:
@@ -2658,6 +2783,33 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         return img
 
     if wtype == "app_launcher":
+        if str(widget.get("preview_type") or "") == "spotify":
+            preview = widget.get("preview") or {}
+            track_name = str(preview.get("track_name") or "Waiting for track...")
+            artist_name = str(preview.get("artist_name") or "")
+            progress = float(preview.get("progress_ms") or 0)
+            duration = float(preview.get("duration_ms") or 1)
+            authenticated = bool(preview.get("authenticated"))
+            pct = min(1.0, max(0.0, progress / duration))
+
+            title_font = _font(11)
+            sub_font = _font(9)
+            tw, _ = _text_size(track_name, title_font)
+            tx = max((128 - min(tw, 128)) // 2, 0)
+            draw.text((tx, 6), track_name, fill=1, font=title_font)
+            aw, _ = _text_size(artist_name, sub_font)
+            ax = max((128 - min(aw, 128)) // 2, 0)
+            draw.text((ax, 22), artist_name, fill=1, font=sub_font)
+            draw.rectangle((10, 40, 118, 44), outline=1, fill=0)
+            fill_w = int(108 * pct)
+            if fill_w > 0:
+                draw.rectangle((10, 40, 10 + fill_w, 44), fill=1)
+            hint_font = _font(8)
+            hint = "CONNECT IN WEB UI" if not authenticated else "PRESS DIAL TO OPEN"
+            hw, _ = _text_size(hint, hint_font)
+            draw.text((max((128 - hw) // 2, 0), 52), hint, fill=1, font=hint_font)
+            return img
+
         title_font = _font(10)
         name = str(widget.get("app_name") or widget.get("name") or "APP")
         tw, _ = _text_size(name, title_font)
