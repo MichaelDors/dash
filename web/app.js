@@ -326,6 +326,8 @@ function renderSpotify(app, exitState) {
   const isPlaying = app.is_playing ? "Playing \u25B6" : "Paused \u23F8";
   const progress = app.progress_ms || 0;
   const duration = app.duration_ms || 1;
+  const progressText = app.progress_text || formatDuration(progress);
+  const durationText = app.duration_text || formatDuration(duration);
   const auth = app.authenticated ? "" : "<p style='color:red; font-size: 0.8rem; margin: 0;'>Connect in web UI</p>";
   
   const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
@@ -349,9 +351,20 @@ function renderSpotify(app, exitState) {
         <div style="width: ${pct}%; height: 100%; background: var(--accent-color);"></div>
       </div>
       <p style="margin-top: 0.5rem; font-size: 0.8rem;">${isPlaying}</p>
+      <span style="position:absolute; left:8px; bottom:6px; font-size:0.7rem;">${progressText}</span>
+      <span style="position:absolute; right:8px; bottom:6px; font-size:0.7rem;">${durationText}</span>
       <div class="pong-exit"></div>
     </section>
   `;
+}
+
+function formatDuration(valueMs) {
+  const total = Math.max(0, Math.floor(Number(valueMs || 0) / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function renderPong(app, exitState) {
@@ -524,6 +537,25 @@ function renderWidget(widget, motion) {
   }
 
   if (widget.type === "app_launcher") {
+    if (widget.preview_type === "spotify" && widget.preview) {
+      const preview = widget.preview;
+      const trackName = preview.track_name || "Waiting for track...";
+      const artistName = preview.artist_name || "";
+      const progress = Number(preview.progress_ms || 0);
+      const duration = Number(preview.duration_ms || 1);
+      const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
+      const hint = preview.authenticated ? "Press dial to open" : "Connect in web UI";
+      return `
+        <section class="app-spotify" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
+          <h2 style="margin:0; font-size:1.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${trackName}</h2>
+          <p style="margin:0.2rem 0; font-size:0.9rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${artistName}</p>
+          <div style="margin-top:0.5rem; width:80%; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; overflow:hidden;">
+            <div style="width:${pct}%; height:100%; background:var(--accent-color);"></div>
+          </div>
+          <p style="margin-top:0.5rem; font-size:0.75rem;">${hint}</p>
+        </section>
+      `;
+    }
     const appName = widget.app_name || widget.name || "App";
     return `
       <section class="widget-app-launch">
