@@ -235,7 +235,7 @@ function updateControls(mode) {
   const appMode = mode === "app";
   controlButtons.forEach((button) => {
     const action = button.dataset.action;
-    const disable = appMode && action !== "hold" && action !== "simulate_motion";
+    const disable = appMode && action === "simulate_motion";
     button.disabled = disable;
     button.classList.toggle("disabled", disable);
   });
@@ -337,11 +337,19 @@ function renderSpotify(app, exitState) {
   const exitProgressRaw = Number(exitState.progress || 0);
   const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
 
+  const trackHtml = trackName.length > 18 
+    ? `<div style="width: 100%; overflow: hidden;"><div class="marquee-container" style="--marquee-width: 100%;">${trackName}</div></div>`
+    : `<h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${trackName}</h2>`;
+
+  const artistHtml = artistName.length > 22
+    ? `<div style="width: 100%; overflow: hidden;"><div class="marquee-container" style="--marquee-width: 100%; font-size: 0.9rem; color: var(--text-muted);">${artistName}</div></div>`
+    : `<p style="margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${artistName}</p>`;
+
   return `
-    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
       ${auth}
-      <h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${trackName}</h2>
-      <p style="margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted);">${artistName}</p>
+      ${trackHtml}
+      ${artistHtml}
       <div style="margin-top: 0.5rem; width: 80%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden;">
         <div style="width: ${pct}%; height: 100%; background: var(--accent-color);"></div>
       </div>

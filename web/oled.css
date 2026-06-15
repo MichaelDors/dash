@@ -212,3 +212,16 @@ body.oled {
   z-index: 100;
   pointer-events: none;
 }
+
+@keyframes marquee-ping-pong {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(calc(-100% + var(--marquee-width, 100px))); }
+  100% { transform: translateX(0); }
+}
+
+.marquee-container {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee-ping-pong 6s linear infinite;
+  animation-delay: 1s;
+}

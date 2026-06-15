@@ -1264,21 +1264,27 @@ class SpotifyApp(App):
             threading.Thread(target=self.client.play, daemon=True).start()
             self.is_playing = True
 
+    def _switch_track(self, direction: str) -> None:
+        if direction == "prev":
+            self.client.previous_track()
+        else:
+            self.client.next_track()
+        time.sleep(0.4)
+        self._fetch_now()
+
     def on_button1(self) -> None:
         now = time.time()
         if now - getattr(self, "_last_btn1_time", 0) < 0.5:
             return
         self._last_btn1_time = now
-        threading.Thread(target=self.client.previous_track, daemon=True).start()
-        self._fetch_now()
+        threading.Thread(target=self._switch_track, args=("prev",), daemon=True).start()
 
     def on_button2(self) -> None:
         now = time.time()
         if now - getattr(self, "_last_btn2_time", 0) < 0.5:
             return
         self._last_btn2_time = now
-        threading.Thread(target=self.client.next_track, daemon=True).start()
-        self._fetch_now()
+        threading.Thread(target=self._switch_track, args=("next",), daemon=True).start()
 
     def to_payload(self) -> Dict[str, Any]:
         return {
@@ -1664,8 +1670,7 @@ class HardwareControls:
 
     def __init__(self, controller: DashboardController):
         self.controller = controller
-        self.encoder_clk: Optional[Any] = None
-        self.encoder_dt: Optional[Any] = None
+        self.encoder: Optional[Any] = None
         self.main_button: Optional[Any] = None
         self.button1: Optional[Any] = None
         self.button2: Optional[Any] = None
@@ -1676,17 +1681,10 @@ class HardwareControls:
             return
 
         try:
-            self.encoder_clk = Button(CLK_PIN, pull_up=True, bounce_time=0.01)
-            self.encoder_dt = Button(DT_PIN, pull_up=True, bounce_time=0.01)
-
-            def _enc_cb():
-                if not self.encoder_dt.is_active:
-                    self.controller.dial_rotate_clockwise()
-                else:
-                    self.controller.dial_rotate_counterclockwise()
-
-            self.encoder_clk.when_pressed = _enc_cb
-            print("Rotary encoder initialized (native bounce_time).")
+            self.encoder = RotaryEncoder(CLK_PIN, DT_PIN, max_steps=0)
+            self.encoder.when_rotated_clockwise = lambda *args: self.controller.dial_rotate_clockwise()
+            self.encoder.when_rotated_counter_clockwise = lambda *args: self.controller.dial_rotate_counterclockwise()
+            print("Rotary encoder initialized.")
         except Exception as exc:
             print(f"Failed to initialize rotary encoder: {exc}")
 
@@ -1715,7 +1713,7 @@ class HardwareControls:
             print(f"Failed to initialize button2: {exc}")
 
     def cleanup(self) -> None:
-        for device in [self.encoder_clk, self.encoder_dt, self.main_button, self.button1, self.button2]:
+        for device in [self.encoder, self.main_button, self.button1, self.button2]:
             if device is None:
                 continue
             try:
@@ -2357,11 +2355,28 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             track_font = _font(12)
             artist_font = _font(10)
             
+            t = time.time()
             tw, _ = _text_size(track_name, track_font)
-            draw.text((max((128 - tw) // 2, 0), 5), track_name, fill=1, font=track_font)
+            if tw > 128:
+                scroll_range = tw - 128 + 20
+                offset = int((t * 25) % (scroll_range * 2))
+                if offset > scroll_range:
+                    offset = scroll_range * 2 - offset
+                tx = 10 - offset
+            else:
+                tx = max((128 - tw) // 2, 0)
+            draw.text((tx, 5), track_name, fill=1, font=track_font)
             
             aw, _ = _text_size(artist_name, artist_font)
-            draw.text((max((128 - aw) // 2, 0), 22), artist_name, fill=1, font=artist_font)
+            if aw > 128:
+                scroll_range = aw - 128 + 20
+                offset = int((t * 20) % (scroll_range * 2))
+                if offset > scroll_range:
+                    offset = scroll_range * 2 - offset
+                ax = 10 - offset
+            else:
+                ax = max((128 - aw) // 2, 0)
+            draw.text((ax, 22), artist_name, fill=1, font=artist_font)
             
             bar_y = 40
             draw.rectangle((10, bar_y, 118, bar_y + 4), outline=1, fill=0)
