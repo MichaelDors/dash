@@ -1229,6 +1229,7 @@ class SpotifyApp(App):
         self._last_btn1_time: float = 0
         self._last_btn2_time: float = 0
         self._last_dial_time: float = 0
+        self._last_user_action_time: float = 0
 
     def reset(self) -> None:
         self.track_name = ""
@@ -1249,8 +1250,10 @@ class SpotifyApp(App):
                     self.track_name = item.get("name", "")
                     self.artist_name = ", ".join(a.get("name", "") for a in item.get("artists", []))
                     self.duration_ms = item.get("duration_ms", 0)
-                self.progress_ms = data.get("progress_ms", self.progress_ms)
-                self.is_playing = data.get("is_playing", False)
+                
+                if time.time() - getattr(self, "_last_user_action_time", 0) > 3.0:
+                    self.progress_ms = data.get("progress_ms", self.progress_ms)
+                    self.is_playing = data.get("is_playing", False)
                 self.last_fetch_time = time.time()
         threading.Thread(target=fetch, daemon=True).start()
 
@@ -1265,6 +1268,7 @@ class SpotifyApp(App):
         if self._scrub_target is not None and now - self._last_scrub_time > 0.5:
             target = self._scrub_target
             self._scrub_target = None
+            self._last_user_action_time = now
             threading.Thread(target=self.client.seek, args=(target,), daemon=True).start()
             self.progress_ms = target
             self.last_fetch_time = now
@@ -1281,12 +1285,14 @@ class SpotifyApp(App):
         self._scrub_target = max(0, min(self._scrub_target, self.duration_ms))
         self.progress_ms = self._scrub_target
         self._last_scrub_time = time.time()
+        self._last_user_action_time = time.time()
 
     def on_dial_press(self) -> None:
         now = time.time()
         if now - getattr(self, "_last_dial_time", 0) < 0.5:
             return
         self._last_dial_time = now
+        self._last_user_action_time = now
         
         if self.is_playing:
             threading.Thread(target=self.client.pause, daemon=True).start()
@@ -1296,6 +1302,7 @@ class SpotifyApp(App):
             self.is_playing = True
 
     def _switch_track(self, direction: str) -> None:
+        self._last_user_action_time = time.time()
         if direction == "prev":
             self.client.previous_track()
         else:
