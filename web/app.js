@@ -329,13 +329,8 @@ function renderSpotify(app, exitState) {
   const trackName = app.track_name || "Waiting for track...";
   const artistName = app.artist_name || "";
   const isPlaying = app.is_playing ? "Playing \u25B6" : "Paused \u23F8";
-  const progress = app.progress_ms || 0;
-  const duration = app.duration_ms || 1;
-  const progressText = app.progress_text || formatDuration(progress);
-  const durationText = app.duration_text || formatDuration(duration);
   const auth = app.authenticated ? "" : "<p style='color:red; font-size: 0.8rem; margin: 0;'>Connect in web UI</p>";
   
-  const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
   const exitProgressRaw = Number(exitState.progress || 0);
   const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
 
@@ -349,9 +344,11 @@ function renderSpotify(app, exitState) {
       <p class="${artistName.length > 25 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">${artistName}</p>
     </div>`;
 
+  const now = new Date();
+  const timeString = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
   const timeHtml = `<div style="position:absolute; right: 8px; top: 8px; text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
-      <span style="font-size:0.7rem;">${progressText}</span>
-      <span style="font-size:0.7rem; color:var(--text-muted);">${durationText}</span>
+      <span style="font-size:0.7rem;">${timeString}</span>
     </div>`;
 
   return `
@@ -361,9 +358,6 @@ function renderSpotify(app, exitState) {
       ${trackHtml}
       ${artistHtml}
       <p style="margin-top: 0.5rem; font-size: 0.8rem;">${isPlaying}</p>
-      <div style="position:absolute; left:0; bottom:0; width:100%; height:8px; background:rgba(255,255,255,0.2); border-radius:8px 8px 0 0;">
-        <div style="width: ${pct}%; height: 100%; background: var(--accent-color); border-radius:8px 8px 0 0;"></div>
-      </div>
       <div class="pong-exit"></div>
     </section>
   `;
@@ -552,14 +546,11 @@ function renderWidget(widget, motion) {
       const preview = widget.preview;
       const trackName = preview.track_name || "Waiting for track...";
       const artistName = preview.artist_name || "";
-      const progress = Number(preview.progress_ms || 0);
-      const duration = Number(preview.duration_ms || 1);
-      const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
       const hint = preview.authenticated ? "Press dial to open" : "Connect in web UI";
       
       const trackHtml = `
-        <div style="width: 100%; overflow: hidden;">
-          <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
+        <div style="width: calc(100% - 60px); overflow: hidden;">
+          <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
         </div>`;
       
       const artistHtml = `
@@ -567,8 +558,16 @@ function renderWidget(widget, motion) {
           <p class="${artistName.length > 25 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">${artistName}</p>
         </div>`;
 
+      const now = new Date();
+      const timeString = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+      const timeHtml = `<div style="position:absolute; right: 8px; top: 8px; text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size:0.7rem;">${timeString}</span>
+        </div>`;
+
       return `
         <section class="app-spotify" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; padding-left: 10px; box-sizing: border-box;">
+          ${timeHtml}
           ${trackHtml}
           ${artistHtml}
           <p style="margin-top:0.6rem; font-size:0.75rem;">${hint}</p>

@@ -57,9 +57,14 @@
             const track = preview.track_name || "Waiting for track...";
             const artist = preview.artist_name || "";
             const hint = preview.authenticated ? "PRESS DIAL TO OPEN" : "CONNECT IN WEB UI";
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             return '<section class="app-spotify" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; padding-left:4px; box-sizing:border-box;">' +
-              '<div style="width:100%; overflow:hidden; text-align:left;">' +
-              '<h2 class="' + (track.length > 13 ? 'marquee-container' : '') + '" style="--marquee-width:100%; margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">' + track + '</h2>' +
+              '<div style="position:absolute; right:4px; top:4px; text-align:right;">' +
+              '<div style="font-size:0.58rem; text-align:right;">' + timeString + '</div>' +
+              '</div>' +
+              '<div style="width:calc(100% - 35px); overflow:hidden; text-align:left;">' +
+              '<h2 class="' + (track.length > 13 ? 'marquee-container' : '') + '" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">' + track + '</h2>' +
               '</div>' +
               '<div style="width:100%; overflow:hidden; text-align:left;">' +
               '<p class="' + (artist.length > 22 ? 'marquee-container' : '') + '" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">' + artist + '</p>' +
@@ -78,17 +83,13 @@
           const track = app.track_name || "Waiting for track...";
           const artist = app.artist_name || "";
           const status = app.is_playing ? "Playing" : "Paused";
-          const progress = Number(app.progress_ms || 0);
-          const duration = Number(app.duration_ms || 1);
-          const progressText = app.progress_text || formatDuration(progress);
-          const durationText = app.duration_text || formatDuration(duration);
-          const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
           const exitProgressRaw = Number(exitState.progress || 0);
           const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+          const now = new Date();
+          const timeString = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
           return '<section class="app-spotify" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; padding-left:4px; box-sizing:border-box;">' +
             '<div style="position:absolute; right:4px; top:4px; text-align:right;">' +
-            '<div style="font-size:0.58rem; text-align:right;">' + progressText + '</div>' +
-            '<div style="font-size:0.58rem; color:#aaa; text-align:right;">' + durationText + '</div>' +
+            '<div style="font-size:0.58rem; text-align:right;">' + timeString + '</div>' +
             '</div>' +
             '<div style="width:calc(100% - 35px); overflow:hidden; text-align:left;">' +
             '<h2 class="' + (track.length > 13 ? 'marquee-container' : '') + '" style="--marquee-width:calc(100% - 35px); margin:0; font-size:1.0rem; white-space:nowrap; text-align:left;">' + track + '</h2>' +
@@ -97,8 +98,6 @@
             '<p class="' + (artist.length > 22 ? 'marquee-container' : '') + '" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">' + artist + '</p>' +
             '</div>' +
             '<p style="margin-top:0.2rem; font-size:0.65rem; text-align:left;">' + status + '</p>' +
-            '<div style="position:absolute; left:0; bottom:0; width:100%; height:10px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">' +
-            '<div style="width:' + pct + '%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>' +
             '<div class="pong-exit" style="height:' + (exitProgress * 100) + '%"></div>' +
             '</section>';
         }
