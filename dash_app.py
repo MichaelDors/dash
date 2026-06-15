@@ -990,6 +990,7 @@ class SpotifyClient:
         self.client_id: Optional[str] = None
         self.client_secret: Optional[str] = None
         self.refresh_token: Optional[str] = None
+        self.redirect_uri: Optional[str] = None
         self.access_token: Optional[str] = None
         self.expires_at: float = 0.0
         self._lock = threading.Lock()
@@ -1004,19 +1005,23 @@ class SpotifyClient:
                 self.client_id = data.get("client_id")
                 self.client_secret = data.get("client_secret")
                 self.refresh_token = data.get("refresh_token")
+                self.redirect_uri = data.get("redirect_uri")
             except Exception as e:
                 print(f"Error loading spotify config: {e}")
 
-    def save_config(self, client_id: str, client_secret: str, refresh_token: Optional[str] = None) -> None:
+    def save_config(self, client_id: str, client_secret: str, refresh_token: Optional[str] = None, redirect_uri: Optional[str] = None) -> None:
         with self._lock:
             self.client_id = client_id
             self.client_secret = client_secret
-            if refresh_token:
+            if refresh_token is not None:
                 self.refresh_token = refresh_token
+            if redirect_uri is not None:
+                self.redirect_uri = redirect_uri
             data = {
                 "client_id": self.client_id,
                 "client_secret": self.client_secret,
                 "refresh_token": self.refresh_token,
+                "redirect_uri": self.redirect_uri,
             }
             self.token_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -1107,6 +1112,7 @@ class SpotifyClient:
                             "client_id": self.client_id,
                             "client_secret": self.client_secret,
                             "refresh_token": self.refresh_token,
+                            "redirect_uri": self.redirect_uri,
                         }
                         self.token_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
                 return self.access_token
@@ -1866,10 +1872,13 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             code = query.get("code", [""])[0]
             if code:
-                host = self.headers.get("Host", "localhost:8080")
-                scheme = self.headers.get("X-Forwarded-Proto", "http")
-                redirect_uri = f"{scheme}://{host}/api/spotify/callback"
-                self.controller.spotify_client.exchange_code(code, redirect_uri)
+                client = self.controller.spotify_client
+                redirect_uri = client.redirect_uri
+                if not redirect_uri:
+                    host = self.headers.get("Host", "localhost:8080")
+                    scheme = self.headers.get("X-Forwarded-Proto", "http")
+                    redirect_uri = f"{scheme}://{host}/api/spotify/callback"
+                client.exchange_code(code, redirect_uri)
             self.send_response(HTTPStatus.FOUND)
             self.send_header("Location", "/")
             self.end_headers()
@@ -1909,13 +1918,19 @@ class DashRequestHandler(BaseHTTPRequestHandler):
                 return
             client_id = body.get("client_id")
             client_secret = body.get("client_secret")
+            override_uri = body.get("redirect_uri")
             if not client_id or not client_secret:
                 self._send_json({"error": "Missing client_id or client_secret"}, status=HTTPStatus.BAD_REQUEST)
                 return
-            self.controller.spotify_client.save_config(client_id, client_secret)
-            host = self.headers.get("Host", "localhost:8080")
-            scheme = self.headers.get("X-Forwarded-Proto", "http")
-            redirect_uri = f"{scheme}://{host}/api/spotify/callback"
+            
+            if override_uri:
+                redirect_uri = override_uri
+            else:
+                host = self.headers.get("Host", "localhost:8080")
+                scheme = self.headers.get("X-Forwarded-Proto", "http")
+                redirect_uri = f"{scheme}://{host}/api/spotify/callback"
+                
+            self.controller.spotify_client.save_config(client_id, client_secret, redirect_uri=redirect_uri)
             auth_url = self.controller.spotify_client.get_auth_url(redirect_uri)
             self._send_json({"auth_url": auth_url})
             return

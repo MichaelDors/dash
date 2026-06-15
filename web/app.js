@@ -656,14 +656,18 @@ if (spotifyForm) {
     e.preventDefault();
     const clientId = document.getElementById("spotifyClientId").value.trim();
     const clientSecret = document.getElementById("spotifyClientSecret").value.trim();
+    const redirectUri = document.getElementById("spotifyRedirectUri") ? document.getElementById("spotifyRedirectUri").value.trim() : "";
     const statusEl = document.getElementById("spotifyStatus");
     
     statusEl.textContent = "Connecting...";
     try {
+      const payload = { client_id: clientId, client_secret: clientSecret };
+      if (redirectUri) payload.redirect_uri = redirectUri;
+      
       const res = await fetch("/api/spotify/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const data = await res.json();
