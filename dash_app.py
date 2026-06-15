@@ -1315,14 +1315,14 @@ class SpotifyApp(App):
         if now - getattr(self, "_last_btn1_time", 0) < 0.5:
             return
         self._last_btn1_time = now
-        threading.Thread(target=self._switch_track, args=("prev",), daemon=True).start()
+        threading.Thread(target=self._switch_track, args=("next",), daemon=True).start()
 
     def on_button2(self) -> None:
         now = time.time()
         if now - getattr(self, "_last_btn2_time", 0) < 0.5:
             return
         self._last_btn2_time = now
-        threading.Thread(target=self._switch_track, args=("next",), daemon=True).start()
+        threading.Thread(target=self._switch_track, args=("prev",), daemon=True).start()
 
     def to_payload(self) -> Dict[str, Any]:
         return {
@@ -1757,17 +1757,30 @@ class HardwareControls:
             return
 
         try:
-            self.encoder_clk = Button(CLK_PIN, pull_up=True, bounce_time=0.01)
-            self.encoder_dt = Button(DT_PIN, pull_up=True, bounce_time=0.01)
-
-            def _enc_cb():
-                if not self.encoder_dt.is_active:
+            if RotaryEncoder is not None:
+                self.encoder = RotaryEncoder(CLK_PIN, DT_PIN, max_steps=0)
+                
+                def _rotated_cw():
                     self.controller.dial_rotate_clockwise()
-                else:
+                    
+                def _rotated_ccw():
                     self.controller.dial_rotate_counterclockwise()
+                    
+                self.encoder.when_rotated_clockwise = _rotated_cw
+                self.encoder.when_rotated_counter_clockwise = _rotated_ccw
+                print("Rotary encoder initialized using gpiozero.RotaryEncoder.")
+            else:
+                self.encoder_clk = Button(CLK_PIN, pull_up=True, bounce_time=0.01)
+                self.encoder_dt = Button(DT_PIN, pull_up=True, bounce_time=0.01)
 
-            self.encoder_clk.when_pressed = _enc_cb
-            print("Rotary encoder initialized (native bounce_time).")
+                def _enc_cb():
+                    if not self.encoder_dt.is_active:
+                        self.controller.dial_rotate_clockwise()
+                    else:
+                        self.controller.dial_rotate_counterclockwise()
+
+                self.encoder_clk.when_pressed = _enc_cb
+                print("Rotary encoder initialized (native bounce_time).")
         except Exception as exc:
             print(f"Failed to initialize rotary encoder: {exc}")
 
