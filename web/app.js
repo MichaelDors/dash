@@ -319,7 +319,36 @@ function renderApp(app, exitState) {
   if (app.type === "pong") {
     return renderPong(app, exitState);
   }
+  if (app.type === "spotify") {
+    return renderSpotify(app, exitState);
+  }
   return `<p class="counter-help">Unsupported app type: ${app.type}</p>`;
+}
+
+function renderSpotify(app, exitState) {
+  const trackName = app.track_name || "Waiting for track...";
+  const artistName = app.artist_name || "";
+  const isPlaying = app.is_playing ? "Playing \u25B6" : "Paused \u23F8";
+  const progress = app.progress_ms || 0;
+  const duration = app.duration_ms || 1;
+  const auth = app.authenticated ? "" : "<p style='color:red; font-size: 0.8rem; margin: 0;'>Connect in web UI</p>";
+  
+  const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
+  const exitProgressRaw = Number(exitState.progress || 0);
+  const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+
+  return `
+    <section class="app-spotify" style="--exit-progress:${exitProgress}; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+      ${auth}
+      <h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${trackName}</h2>
+      <p style="margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted);">${artistName}</p>
+      <div style="margin-top: 0.5rem; width: 80%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden;">
+        <div style="width: ${pct}%; height: 100%; background: var(--accent-color);"></div>
+      </div>
+      <p style="margin-top: 0.5rem; font-size: 0.8rem;">${isPlaying}</p>
+      <div class="pong-exit"></div>
+    </section>
+  `;
 }
 
 function renderPong(app, exitState) {
@@ -595,3 +624,60 @@ window.addEventListener("keyup", (event) => {
 
 fetchState();
 pollHandle = window.setInterval(fetchState, POLL_MS);
+
+// --- Spotify Settings ---
+async function checkSpotifyStatus() {
+  const statusEl = document.getElementById("spotifyStatus");
+  const formEl = document.getElementById("spotifyForm");
+  if (!statusEl || !formEl) return;
+
+  try {
+    const res = await fetch("/api/spotify/status");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.authenticated) {
+        statusEl.textContent = "Connected \u2714";
+        statusEl.style.color = "var(--accent-color)";
+        formEl.style.display = "none";
+      } else {
+        statusEl.textContent = "Not connected. Please provide Client ID and Secret.";
+        statusEl.style.color = "var(--text-muted)";
+        formEl.style.display = "flex";
+      }
+    }
+  } catch (e) {
+    console.error("Spotify status error:", e);
+  }
+}
+
+const spotifyForm = document.getElementById("spotifyForm");
+if (spotifyForm) {
+  spotifyForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const clientId = document.getElementById("spotifyClientId").value.trim();
+    const clientSecret = document.getElementById("spotifyClientSecret").value.trim();
+    const statusEl = document.getElementById("spotifyStatus");
+    
+    statusEl.textContent = "Connecting...";
+    try {
+      const res = await fetch("/api/spotify/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.auth_url) {
+          window.location.href = data.auth_url;
+        }
+      } else {
+        const err = await res.json();
+        statusEl.textContent = "Error: " + (err.error || "Failed");
+      }
+    } catch (err) {
+      statusEl.textContent = "Error: " + err.message;
+    }
+  });
+}
+
+checkSpotifyStatus();

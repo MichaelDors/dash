@@ -808,6 +808,15 @@ class App:
     def on_encoder(self, _delta: int) -> None:
         return
 
+    def on_button1(self) -> None:
+        return
+
+    def on_button2(self) -> None:
+        return
+
+    def on_dial_press(self) -> None:
+        return
+
     def to_payload(self) -> Dict[str, Any]:
         return {
             "id": self.app_id,
@@ -975,13 +984,295 @@ class AppLauncherWidget(Widget):
         }
 
 
+class SpotifyClient:
+    def __init__(self, token_file: Path):
+        self.token_file = token_file
+        self.client_id: Optional[str] = None
+        self.client_secret: Optional[str] = None
+        self.refresh_token: Optional[str] = None
+        self.access_token: Optional[str] = None
+        self.expires_at: float = 0.0
+        self._lock = threading.Lock()
+        self.load_config()
+
+    def load_config(self) -> None:
+        with self._lock:
+            if not self.token_file.exists():
+                return
+            try:
+                data = json.loads(self.token_file.read_text(encoding="utf-8"))
+                self.client_id = data.get("client_id")
+                self.client_secret = data.get("client_secret")
+                self.refresh_token = data.get("refresh_token")
+            except Exception as e:
+                print(f"Error loading spotify config: {e}")
+
+    def save_config(self, client_id: str, client_secret: str, refresh_token: Optional[str] = None) -> None:
+        with self._lock:
+            self.client_id = client_id
+            self.client_secret = client_secret
+            if refresh_token:
+                self.refresh_token = refresh_token
+            data = {
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "refresh_token": self.refresh_token,
+            }
+            self.token_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def is_configured(self) -> bool:
+        return bool(self.client_id and self.client_secret)
+
+    def is_authenticated(self) -> bool:
+        return bool(self.is_configured() and self.refresh_token)
+
+    def get_auth_url(self, redirect_uri: str) -> str:
+        if not self.client_id:
+            return ""
+        scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
+        params = {
+            "client_id": self.client_id,
+            "response_type": "code",
+            "redirect_uri": redirect_uri,
+            "scope": scopes,
+            "show_dialog": "true"
+        }
+        return "https://accounts.spotify.com/authorize?" + urlencode(params)
+
+    def exchange_code(self, code: str, redirect_uri: str) -> bool:
+        with self._lock:
+            if not self.client_id or not self.client_secret:
+                return False
+            client_id = self.client_id
+            client_secret = self.client_secret
+
+        auth_str = f"{client_id}:{client_secret}"
+        b64_auth = base64.b64encode(auth_str.encode()).decode()
+        headers = {
+            "Authorization": f"Basic {b64_auth}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        data = urlencode({
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }).encode()
+        
+        req = Request("https://accounts.spotify.com/api/token", data=data, headers=headers, method="POST")
+        try:
+            with urlopen(req, timeout=10) as resp:
+                resp_data = json.loads(resp.read().decode())
+                refresh_token = resp_data.get("refresh_token")
+                if refresh_token:
+                    self.save_config(client_id, client_secret, refresh_token)
+                    return True
+        except Exception as e:
+            print(f"Failed to exchange Spotify code: {e}")
+        return False
+
+    def _get_access_token(self) -> Optional[str]:
+        with self._lock:
+            if not self.is_authenticated():
+                return None
+            if self.access_token and time.time() < self.expires_at:
+                return self.access_token
+            
+            client_id = self.client_id
+            client_secret = self.client_secret
+            refresh_token = self.refresh_token
+                
+        auth_str = f"{client_id}:{client_secret}"
+        b64_auth = base64.b64encode(auth_str.encode()).decode()
+        headers = {
+            "Authorization": f"Basic {b64_auth}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        data = urlencode({
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }).encode()
+        
+        req = Request("https://accounts.spotify.com/api/token", data=data, headers=headers, method="POST")
+        try:
+            with urlopen(req, timeout=5) as resp:
+                resp_data = json.loads(resp.read().decode())
+                with self._lock:
+                    self.access_token = resp_data.get("access_token")
+                    expires_in = resp_data.get("expires_in", 3600)
+                    self.expires_at = time.time() + expires_in - 60
+                    new_refresh = resp_data.get("refresh_token")
+                    if new_refresh:
+                        self.refresh_token = new_refresh
+                        config_data = {
+                            "client_id": self.client_id,
+                            "client_secret": self.client_secret,
+                            "refresh_token": self.refresh_token,
+                        }
+                        self.token_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+                return self.access_token
+        except Exception as e:
+            print(f"Spotify token refresh failed: {e}")
+            return None
+
+    def _api_request(self, method: str, endpoint: str, params: Optional[Dict] = None, json_body: Optional[Dict] = None) -> Any:
+        token = self._get_access_token()
+        if not token:
+            return None
+        
+        url = f"https://api.spotify.com/v1{endpoint}"
+        if params:
+            url += "?" + urlencode(params)
+            
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+        
+        data = None
+        if json_body is not None:
+            data = json.dumps(json_body).encode()
+            headers["Content-Type"] = "application/json"
+            
+        req = Request(url, data=data, headers=headers, method=method)
+        try:
+            with urlopen(req, timeout=5) as resp:
+                if resp.status == 204:
+                    return {}
+                body = resp.read()
+                if not body:
+                    return {}
+                return json.loads(body.decode())
+        except HTTPError as e:
+            if e.code != 204:
+                print(f"Spotify API HTTP Error: {e.code} for {url}")
+            return None
+        except Exception as e:
+            print(f"Spotify API Error: {e} for {url}")
+            return None
+
+    def get_currently_playing(self) -> Optional[Dict]:
+        return self._api_request("GET", "/me/player/currently-playing")
+
+    def play(self) -> None:
+        self._api_request("PUT", "/me/player/play")
+
+    def pause(self) -> None:
+        self._api_request("PUT", "/me/player/pause")
+
+    def next_track(self) -> None:
+        self._api_request("POST", "/me/player/next")
+
+    def previous_track(self) -> None:
+        self._api_request("POST", "/me/player/previous")
+
+    def seek(self, position_ms: int) -> None:
+        self._api_request("PUT", "/me/player/seek", params={"position_ms": position_ms})
+
+
+class SpotifyApp(App):
+    def __init__(self, client: SpotifyClient):
+        super().__init__("spotify", "Spotify")
+        self.client = client
+        self.track_name: str = ""
+        self.artist_name: str = ""
+        self.is_playing: bool = False
+        self.progress_ms: int = 0
+        self.duration_ms: int = 0
+        self.last_fetch_time: float = 0
+        self._scrub_target: Optional[int] = None
+        self._last_scrub_time: float = 0
+
+    def reset(self) -> None:
+        self.track_name = ""
+        self.artist_name = ""
+        self.is_playing = False
+        self.progress_ms = 0
+        self.duration_ms = 0
+        self._scrub_target = None
+        self.last_fetch_time = 0
+        self._fetch_now()
+
+    def _fetch_now(self) -> None:
+        def fetch() -> None:
+            data = self.client.get_currently_playing()
+            if data and isinstance(data, dict):
+                item = data.get("item")
+                if item:
+                    self.track_name = item.get("name", "")
+                    self.artist_name = ", ".join(a.get("name", "") for a in item.get("artists", []))
+                    self.duration_ms = item.get("duration_ms", 0)
+                self.progress_ms = data.get("progress_ms", self.progress_ms)
+                self.is_playing = data.get("is_playing", False)
+                self.last_fetch_time = time.time()
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def update(self, now: float, dt: float) -> None:
+        if not self.client.is_authenticated():
+            return
+
+        if now - self.last_fetch_time > 5.0 and self._scrub_target is None:
+            self._fetch_now()
+            self.last_fetch_time = now
+            
+        if self._scrub_target is not None and now - self._last_scrub_time > 0.5:
+            target = self._scrub_target
+            self._scrub_target = None
+            threading.Thread(target=self.client.seek, args=(target,), daemon=True).start()
+            self.progress_ms = target
+            self.last_fetch_time = now
+
+        if self.is_playing and self._scrub_target is None and now - self.last_fetch_time < 5.0:
+            self.progress_ms = min(self.duration_ms, self.progress_ms + int(dt * 1000))
+
+    def on_encoder(self, delta: int) -> None:
+        if self.duration_ms == 0:
+            return
+        if self._scrub_target is None:
+            self._scrub_target = self.progress_ms
+        self._scrub_target += delta * 5000  # 5 seconds per tick
+        self._scrub_target = max(0, min(self._scrub_target, self.duration_ms))
+        self.progress_ms = self._scrub_target
+        self._last_scrub_time = time.time()
+
+    def on_dial_press(self) -> None:
+        if self.is_playing:
+            threading.Thread(target=self.client.pause, daemon=True).start()
+            self.is_playing = False
+        else:
+            threading.Thread(target=self.client.play, daemon=True).start()
+            self.is_playing = True
+
+    def on_button1(self) -> None:
+        threading.Thread(target=self.client.previous_track, daemon=True).start()
+        self._fetch_now()
+
+    def on_button2(self) -> None:
+        threading.Thread(target=self.client.next_track, daemon=True).start()
+        self._fetch_now()
+
+    def to_payload(self) -> Dict[str, Any]:
+        return {
+            "id": self.app_id,
+            "name": self.name,
+            "type": "spotify",
+            "track_name": self.track_name,
+            "artist_name": self.artist_name,
+            "is_playing": self.is_playing,
+            "progress_ms": self._scrub_target if self._scrub_target is not None else self.progress_ms,
+            "duration_ms": self.duration_ms,
+            "authenticated": self.client.is_authenticated()
+        }
+
+
 class DashboardController:
     """Coordinates widgets, motion state, and hardware/button actions."""
 
-    def __init__(self, sensor_available: bool):
+    def __init__(self, sensor_available: bool, spotify_client: Optional[SpotifyClient] = None):
         self.motion_manager = MotionSensorManager(sensor_available)
+        self.spotify_client = spotify_client or SpotifyClient(BASE_DIR / "spotify_tokens.json")
         self.apps: List[App] = [
             PongApp(),
+            SpotifyApp(self.spotify_client),
         ]
         self._app_by_id = {app.app_id: app for app in self.apps}
         self.active_app: Optional[App] = None
@@ -1074,6 +1365,8 @@ class DashboardController:
     def dial_press_short(self) -> None:
         with self._lock:
             if self.active_app is not None:
+                self.active_app.on_dial_press()
+                self.motion_manager.report_user_activity()
                 return
             self._handle_short_press_locked()
         self.motion_manager.report_user_activity()
@@ -1177,9 +1470,11 @@ class DashboardController:
             self._dial_exit_progress = max(0.0, self._dial_exit_progress - decay)
 
     def button1_press(self) -> None:
-        if self.active_app is not None:
-            self.motion_manager.report_user_activity()
-            return
+        with self._lock:
+            if self.active_app is not None:
+                self.active_app.on_button1()
+                self.motion_manager.report_user_activity()
+                return
         now = time.time()
         if now - self.button1_last_press < self.button_cooldown:
             return
@@ -1192,9 +1487,11 @@ class DashboardController:
         self.motion_manager.report_user_activity()
 
     def button2_press(self) -> None:
-        if self.active_app is not None:
-            self.motion_manager.report_user_activity()
-            return
+        with self._lock:
+            if self.active_app is not None:
+                self.active_app.on_button2()
+                self.motion_manager.report_user_activity()
+                return
         now = time.time()
         if now - self.button2_last_press < self.button_cooldown:
             return
@@ -1370,6 +1667,27 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
                 '</div>'
                 '</section>'
             )
+
+        if app_type == "spotify":
+            track_name = _escape_html(str(app.get("track_name") or "Waiting for track..."))
+            artist_name = _escape_html(str(app.get("artist_name") or ""))
+            is_playing = "Playing" if app.get("is_playing") else "Paused"
+            progress = float(app.get("progress_ms") or 0)
+            duration = float(app.get("duration_ms") or 1)
+            pct = min(100.0, max(0.0, (progress / duration) * 100))
+            exit_state = state.get("app_exit") or {}
+            exit_progress = float(exit_state.get("progress") or 0.0)
+            
+            return (
+                '<section class="app-spotify" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center;">'
+                f'<h2 style="margin:0; font-size:1.2rem; white-space:nowrap; overflow:hidden;">{track_name}</h2>'
+                f'<p style="margin:0.2rem 0; font-size:0.9rem;">{artist_name}</p>'
+                f'<div style="width:80%; height:4px; background:rgba(255,255,255,0.2); margin-top:0.5rem;"><div style="width:{pct}%; height:100%; background:#fff;"></div></div>'
+                f'<p style="margin-top:0.5rem; font-size:0.8rem;">{is_playing}</p>'
+                f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
+                '</section>'
+            )
+
         return '<section class="widget-time"><div class="time-main">APP</div></section>'
 
     w = state.get("active_widget") or {}
@@ -1482,6 +1800,28 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             self._send_json(self.controller.snapshot())
             return
 
+        if path == "/api/spotify/status":
+            client = self.controller.spotify_client
+            self._send_json({
+                "configured": client.is_configured(),
+                "authenticated": client.is_authenticated()
+            })
+            return
+
+        if path == "/api/spotify/callback":
+            from urllib.parse import parse_qs
+            query = parse_qs(parsed.query)
+            code = query.get("code", [""])[0]
+            if code:
+                host = self.headers.get("Host", "localhost:8080")
+                scheme = self.headers.get("X-Forwarded-Proto", "http")
+                redirect_uri = f"{scheme}://{host}/api/spotify/callback"
+                self.controller.spotify_client.exchange_code(code, redirect_uri)
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
         if path == "/favicon.ico":
             # Avoid noisy 404s in browsers; fall back to the logo if present.
             if self._try_serve_static("favicon.ico"):
@@ -1507,6 +1847,24 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/weather/location":
             self._handle_weather_location()
+            return
+
+        if parsed.path == "/api/spotify/config":
+            body = self._read_json_body()
+            if body is None:
+                self._send_json({"error": "Invalid JSON body"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            client_id = body.get("client_id")
+            client_secret = body.get("client_secret")
+            if not client_id or not client_secret:
+                self._send_json({"error": "Missing client_id or client_secret"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self.controller.spotify_client.save_config(client_id, client_secret)
+            host = self.headers.get("Host", "localhost:8080")
+            scheme = self.headers.get("X-Forwarded-Proto", "http")
+            redirect_uri = f"{scheme}://{host}/api/spotify/callback"
+            auth_url = self.controller.spotify_client.get_auth_url(redirect_uri)
+            self._send_json({"auth_url": auth_url})
             return
 
         if parsed.path != "/api/action":
@@ -1860,6 +2218,44 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                 if fill_height > 0:
                     draw.rectangle((0, 64 - fill_height, 127, 63), fill=1)
 
+            return img
+
+        if app_type == "spotify":
+            track_name = str(app.get("track_name") or "Waiting for track...")
+            artist_name = str(app.get("artist_name") or "")
+            is_playing = app.get("is_playing")
+            progress = float(app.get("progress_ms") or 0)
+            duration = float(app.get("duration_ms") or 1)
+            pct = min(1.0, max(0.0, progress / duration))
+            exit_state = state.get("app_exit") or {}
+            
+            track_font = _font(12)
+            artist_font = _font(10)
+            
+            tw, _ = _text_size(track_name, track_font)
+            draw.text((max((128 - tw) // 2, 0), 5), track_name, fill=1, font=track_font)
+            
+            aw, _ = _text_size(artist_name, artist_font)
+            draw.text((max((128 - aw) // 2, 0), 22), artist_name, fill=1, font=artist_font)
+            
+            bar_y = 40
+            draw.rectangle((10, bar_y, 118, bar_y + 4), outline=1, fill=0)
+            fill_w = int(108 * pct)
+            if fill_w > 0:
+                draw.rectangle((10, bar_y, 10 + fill_w, bar_y + 4), fill=1)
+                
+            icon_x = 60
+            icon_y = 50
+            if is_playing:
+                _draw_pause_icon(icon_x, icon_y)
+            else:
+                draw.polygon([(icon_x, icon_y), (icon_x, icon_y + 8), (icon_x + 6, icon_y + 4)], fill=1)
+                
+            progress_exit = float(exit_state.get("progress") or 0.0)
+            if progress_exit > 0.0:
+                fill_height = int(64 * min(max(progress_exit, 0.0), 1.0))
+                if fill_height > 0:
+                    draw.rectangle((0, 64 - fill_height, 127, 63), fill=1)
             return img
 
     if wtype == "time":

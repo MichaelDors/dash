@@ -50,6 +50,15 @@
       <button data-action="subtract_minute">-1 Minute</button>
       <button data-action="simulate_motion" class="accent-soft">Sim Motion</button>
     </section>
+    <section class="spotify-settings" id="spotifySettings" style="margin-top: 2rem; padding: 1.5rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+      <h3>Spotify Integration</h3>
+      <p id="spotifyStatus" style="color: var(--text-muted);">Checking status...</p>
+      <form id="spotifyForm" style="display: none; flex-direction: column; gap: 0.75rem; margin-top: 1rem; max-width: 300px;">
+        <input type="text" id="spotifyClientId" placeholder="Client ID" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.5); color: #fff;" required />
+        <input type="password" id="spotifyClientSecret" placeholder="Client Secret" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.5); color: #fff;" required />
+        <button type="submit" class="accent">Connect Spotify</button>
+      </form>
+    </section>
 
     <p class="keyboard-hint">
       Keyboard: Left/Right switch widgets, Space = dial press, hold H = dial hold, + / - adjust timer.
