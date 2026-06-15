@@ -286,6 +286,12 @@ class Widget:
         self.last_button_press_time = now
         return True
 
+    def get_state(self) -> Dict[str, Any]:
+        return {}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        pass
+
     def update(self, _now: float) -> None:
         return
 
@@ -323,8 +329,15 @@ class TimeWidget(Widget):
 
 class ClickCounterWidget(Widget):
     def __init__(self) -> None:
-        super().__init__("click_counter", "Click Counter")
+        super().__init__("click_counter", "Counter")
         self.click_count = 0
+
+    def get_state(self) -> Dict[str, Any]:
+        return {"count": self.click_count}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        if "count" in state:
+            self.click_count = int(state["count"])
 
     def on_button_press(self) -> None:
         self.click_count += 1
@@ -346,15 +359,24 @@ class ClickCounterWidget(Widget):
 class TimerWidget(Widget):
     def __init__(self) -> None:
         super().__init__("timer", "Timer")
-        self.default_duration = 5 * 60
-        self.time_remaining = self.default_duration
-        self.timer_running = False
-        self._end_timestamp: Optional[float] = None
-        self.flash_until = 0.0
+        self.set_minutes = 5
+        self.remaining_seconds = self.set_minutes * 60
+        self.running = False
+        self.last_update_time: Optional[float] = None
+        self.flash_until: Optional[float] = None
         self.flash_state = False
 
+    def get_state(self) -> Dict[str, Any]:
+        return {"set_minutes": self.set_minutes}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        if "set_minutes" in state:
+            self.set_minutes = int(state["set_minutes"])
+            self.remaining_seconds = self.set_minutes * 60
+            self.running = False
+
     def on_button_press(self) -> None:
-        if self.timer_running:
+        if self.running:
             self._pause_timer()
             print("Timer paused.")
         else:
@@ -362,60 +384,54 @@ class TimerWidget(Widget):
             print("Timer started.")
 
     def add_minute(self) -> None:
-        if self.timer_running:
+        if self.running:
             return
-        self.time_remaining = min(99 * 60, self.time_remaining + 60)
-        print(
-            "Added 1 minute. "
-            f"New time: {self.time_remaining // 60}:{self.time_remaining % 60:02d}"
-        )
+        self.set_minutes = min(99, self.set_minutes + 1)
+        self.remaining_seconds = self.set_minutes * 60
+        print(f"Added 1 minute. New time: {self.set_minutes} minutes.")
 
     def subtract_minute(self) -> None:
-        if self.timer_running:
+        if self.running:
             return
-        self.time_remaining = max(60, self.time_remaining - 60)
-        print(
-            "Subtracted 1 minute. "
-            f"New time: {self.time_remaining // 60}:{self.time_remaining % 60:02d}"
-        )
+        self.set_minutes = max(1, self.set_minutes - 1)
+        self.remaining_seconds = self.set_minutes * 60
+        print(f"Subtracted 1 minute. New time: {self.set_minutes} minutes.")
 
     def update(self, now: float) -> None:
-        if self.timer_running and self._end_timestamp is not None:
-            remaining = max(0, int(self._end_timestamp - now + 0.999))
-            self.time_remaining = remaining
-
-            if remaining <= 0:
-                self.timer_running = False
-                self._end_timestamp = None
-                self.time_remaining = self.default_duration
+        if self.running and self.last_update_time is not None:
+            elapsed = now - self.last_update_time
+            self.remaining_seconds -= elapsed
+            if self.remaining_seconds <= 0:
+                self.running = False
+                self.remaining_seconds = 0
                 self.flash_until = now + 3.0
                 print("Timer finished.")
-
-        if now < self.flash_until:
+        
+        self.last_update_time = now
+        if self.flash_until and now < self.flash_until:
             self.flash_state = (int(now * 2) % 2) == 0
         else:
             self.flash_state = False
 
     def _start_timer(self) -> None:
-        self.timer_running = True
-        self._end_timestamp = time.time() + self.time_remaining
+        self.running = True
+        self.last_update_time = time.time()
 
     def _pause_timer(self) -> None:
-        if self._end_timestamp is not None:
-            self.time_remaining = max(1, int(self._end_timestamp - time.time() + 0.999))
-        self.timer_running = False
-        self._end_timestamp = None
+        self.running = False
 
     def to_payload(self) -> Dict[str, Any]:
+        mins = int(self.remaining_seconds // 60)
+        secs = int(self.remaining_seconds % 60)
         return {
             "id": self.widget_id,
             "name": self.name,
             "type": "timer",
-            "running": self.timer_running,
+            "running": self.running,
             "flash": self.flash_state,
-            "minutes": self.time_remaining // 60,
-            "seconds": self.time_remaining % 60,
-            "time_text": f"{self.time_remaining // 60:02d}:{self.time_remaining % 60:02d}",
+            "minutes": mins,
+            "seconds": secs,
+            "time_text": f"{mins:02d}:{secs:02d}",
         }
 
 
@@ -499,23 +515,29 @@ class WeatherWidget(Widget):
 
     def __init__(self) -> None:
         super().__init__("weather", "Weather")
-        default_query = os.getenv("DASH_WEATHER_LOCATION", "").strip()
-        self.location_query: Optional[str] = default_query or None
+        self.location_query: Optional[str] = None
         self.location_label: Optional[str] = None
         self.latitude: Optional[float] = None
         self.longitude: Optional[float] = None
-        self.timezone: str = "auto"
 
         self.temperature_f: Optional[float] = None
         self.apparent_f: Optional[float] = None
         self.wind_mph: Optional[float] = None
         self.weather_code: Optional[int] = None
-        self.is_day: Optional[bool] = None
+        self.is_day: Optional[int] = None
         self.last_updated: Optional[str] = None
-        self.last_error: Optional[str] = None
 
+        self.last_error: Optional[str] = None
         self._geocode_query: Optional[str] = None
-        self._next_fetch_ts: float = 0.0
+        self._next_fetch_ts = 0.0
+
+    def get_state(self) -> Dict[str, Any]:
+        return {"location_query": self.location_query}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        if "location_query" in state and state["location_query"]:
+            self.location_query = state["location_query"]
+            self._next_fetch_ts = 0.0
 
     def set_location(self, query: str) -> Optional[str]:
         cleaned = " ".join((query or "").strip().split())
@@ -747,6 +769,15 @@ class PhotoWidget(Widget):
         super().__init__("photo", "Photo")
         self._bw_base64: Optional[str] = None
         self._lock = threading.Lock()
+
+    def get_state(self) -> Dict[str, Any]:
+        with self._lock:
+            return {"bw_base64": self._bw_base64}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        if "bw_base64" in state:
+            with self._lock:
+                self._bw_base64 = state["bw_base64"]
 
     def set_image(self, raw_bytes: bytes) -> str:
         """Accept raw image bytes, convert to pure black & white, store as base64 PNG.
@@ -1340,6 +1371,32 @@ class DashboardController:
         self.button_cooldown = 0.1
 
         self._lock = threading.Lock()
+        
+        self._state_dirty = False
+        self._last_save_time = 0.0
+        self.load_widget_state()
+
+    def mark_state_dirty(self) -> None:
+        self._state_dirty = True
+
+    def load_widget_state(self) -> None:
+        try:
+            path = BASE_DIR / "widget_state.json"
+            if path.exists():
+                state = json.loads(path.read_text())
+                for widget in self.widgets:
+                    if widget.widget_id in state:
+                        widget.set_state(state[widget.widget_id])
+        except Exception as exc:
+            print(f"Error loading widget state: {exc}")
+
+    def save_widget_state(self) -> None:
+        try:
+            path = BASE_DIR / "widget_state.json"
+            state = {widget.widget_id: widget.get_state() for widget in self.widgets}
+            path.write_text(json.dumps(state))
+        except Exception as exc:
+            print(f"Error saving widget state: {exc}")
 
     def start(self) -> None:
         self.motion_manager.start_monitoring()
@@ -1364,6 +1421,11 @@ class DashboardController:
                 self._dial_exit_hold_active = False
             self._update_power_off_locked(now, dt)
             self._update_restart_locked(now, dt)
+            
+            if self._state_dirty and now - self._last_save_time > 2.0:
+                self.save_widget_state()
+                self._state_dirty = False
+                self._last_save_time = now
 
     def next_widget(self) -> None:
         if self.active_app is not None:
@@ -1454,9 +1516,12 @@ class DashboardController:
     def main_button_hold(self) -> None:
         if self.active_app is not None:
             return
-        with self._lock:
-            current = self.widgets[self.current_widget_index]
-            current.on_button_hold_start()
+        self._execute_dial_hold_locked()
+
+    def _execute_dial_hold_locked(self) -> None:
+        current = self.widgets[self.current_widget_index]
+        current.on_button_hold_start()
+        self.mark_state_dirty()
         self.motion_manager.report_user_activity()
 
     def launch_app(self, app_id: str) -> None:
@@ -1499,6 +1564,7 @@ class DashboardController:
             return
         if current.should_process_button_press():
             current.on_button_press()
+            self.mark_state_dirty()
 
     def _update_exit_hold_locked(self, now: float, dt: float) -> None:
         if self.active_app is None:
@@ -1568,11 +1634,10 @@ class DashboardController:
             self._restart_pressed_at = None
 
     def button1_press(self) -> None:
-        with self._lock:
-            if self.active_app is not None:
-                self.active_app.on_button1()
-                self.motion_manager.report_user_activity()
-                return
+        if self.active_app is not None:
+            self.active_app.on_button1()
+            self.motion_manager.report_user_activity()
+            return
         now = time.time()
         if now - self.button1_last_press < self.button_cooldown:
             return
@@ -1581,7 +1646,8 @@ class DashboardController:
         with self._lock:
             current = self.widgets[self.current_widget_index]
             if hasattr(current, "add_minute"):
-                getattr(current, "add_minute")()
+                current.add_minute()  # type: ignore
+                self.mark_state_dirty()
         self.motion_manager.report_user_activity()
 
     def button2_press_start(self) -> None:
@@ -1597,11 +1663,10 @@ class DashboardController:
             self._power_off_pressed_at = None
 
     def button2_press(self) -> None:
-        with self._lock:
-            if self.active_app is not None:
-                self.active_app.on_button2()
-                self.motion_manager.report_user_activity()
-                return
+        if self.active_app is not None:
+            self.active_app.on_button2()
+            self.motion_manager.report_user_activity()
+            return
         now = time.time()
         if now - self.button2_last_press < self.button_cooldown:
             return
@@ -1610,7 +1675,8 @@ class DashboardController:
         with self._lock:
             current = self.widgets[self.current_widget_index]
             if hasattr(current, "subtract_minute"):
-                getattr(current, "subtract_minute")()
+                current.subtract_minute()  # type: ignore
+                self.mark_state_dirty()
         self.motion_manager.report_user_activity()
 
     def simulate_motion(self) -> None:
@@ -1967,10 +2033,12 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/photo/upload":
             self._handle_photo_upload()
+            self.controller.mark_state_dirty()
             return
 
         if parsed.path == "/api/weather/location":
             self._handle_weather_location()
+            self.controller.mark_state_dirty()
             return
 
         if parsed.path == "/api/spotify/config":
@@ -2365,27 +2433,24 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             track_font = _font(12)
             artist_font = _font(10)
             
-            t = time.time()
+            def get_offset(text_w: int, speed: float = 25.0, pause: float = 3.0) -> int:
+                if text_w <= 128:
+                    return max((128 - text_w) // 2, 0)
+                sr = text_w - 128 + 20
+                t_move = sr / speed
+                cycle = 2 * t_move + 2 * pause
+                p = time.time() % cycle
+                if p < pause: return 0
+                if p < pause + t_move: return int((p - pause) * speed)
+                if p < 2 * pause + t_move: return int(sr)
+                return int(sr - (p - 2 * pause - t_move) * speed)
+                
             tw, _ = _text_size(track_name, track_font)
-            if tw > 128:
-                scroll_range = tw - 128 + 20
-                offset = int((t * 25) % (scroll_range * 2))
-                if offset > scroll_range:
-                    offset = scroll_range * 2 - offset
-                tx = 10 - offset
-            else:
-                tx = max((128 - tw) // 2, 0)
+            tx = 10 - get_offset(tw) if tw > 128 else get_offset(tw)
             draw.text((tx, 5), track_name, fill=1, font=track_font)
             
             aw, _ = _text_size(artist_name, artist_font)
-            if aw > 128:
-                scroll_range = aw - 128 + 20
-                offset = int((t * 20) % (scroll_range * 2))
-                if offset > scroll_range:
-                    offset = scroll_range * 2 - offset
-                ax = 10 - offset
-            else:
-                ax = max((128 - aw) // 2, 0)
+            ax = 10 - get_offset(aw, speed=20.0) if aw > 128 else get_offset(aw)
             draw.text((ax, 22), artist_name, fill=1, font=artist_font)
             
             bar_y = 40

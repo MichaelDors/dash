@@ -162,10 +162,9 @@ async function setWeatherLocation(query) {
   }
 }
 
-function handleWeatherLocationSubmit(event) {
+function handleGlobalWeatherSubmit(event) {
   event.preventDefault();
-  const form = event.currentTarget;
-  const input = form.querySelector(".weather-location-input");
+  const input = document.getElementById("globalWeatherLocation");
   if (!input) {
     return;
   }
@@ -217,16 +216,12 @@ function render(state) {
       input.__dashPhotoBound = true;
     }
   }
-
-  if (active.type === "weather") {
-    const form = widgetBody.querySelector(".weather-form");
-    if (form && !form.__dashWeatherBound) {
-      form.addEventListener("submit", handleWeatherLocationSubmit);
-      form.__dashWeatherBound = true;
-    }
-    const input = widgetBody.querySelector(".weather-location-input");
-    if (input) {
-      input.value = active.location_query || "";
+  // Sync global weather input if not focused
+  const weatherWidget = state.widgets && state.widgets.find(w => w.type === "weather");
+  if (weatherWidget) {
+    const globalInput = document.getElementById("globalWeatherLocation");
+    if (globalInput && document.activeElement !== globalInput) {
+      globalInput.value = weatherWidget.location_query || "";
     }
   }
 }
@@ -472,10 +467,6 @@ function renderWidget(widget, motion) {
           <span class="weather-location-label">${locationLabel}</span>
           <span class="weather-updated">${updatedText}</span>
         </div>
-        <form class="weather-form">
-          <input type="text" class="weather-location-input" placeholder="City, State or ZIP" />
-          <button type="submit" class="weather-location-button">Set</button>
-        </form>
         ${status ? `<p class="weather-status">${status}</p>` : ""}
       </section>
     `;
