@@ -8,6 +8,7 @@ import random
 
 import signal
 import socket
+import sys
 import threading
 import time
 from datetime import datetime
@@ -1720,6 +1721,11 @@ class DashboardController:
         else:
             print("Button1 held, but restart is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
 
+    def _execute_update_software(self) -> None:
+        print("Update Software requested. Restarting dash.py to fetch updates...")
+        dash_script = Path(__file__).resolve().parent / "dash.py"
+        os.execv(sys.executable, [sys.executable, str(dash_script)] + sys.argv[1:])
+
     def button1_press_start(self) -> None:
         with self._lock:
             if self.active_app is None:
@@ -2254,6 +2260,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             "simulate_motion": self.controller.simulate_motion,
             "shutdown": self.controller._execute_power_off_locked,
             "restart": self.controller._execute_restart_locked,
+            "update_software": self.controller._execute_update_software,
         }
 
         handler = actions.get(action)
