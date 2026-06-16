@@ -43,7 +43,9 @@ REPO_FILES = [
     "web/logo.png",
     "web/displayserif.ttf",
     "web/primarytext.otf",
-    "SF-Compact-Rounded-Light.otf",
+    "leggie-12.bdf",
+    "leggie-18.bdf",
+    "leggie-24.bdf",
 ]
 
 # Embedded boot logo (PNG) as base64 data URL. White pixels = on, black pixels = off.

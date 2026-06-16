@@ -1084,7 +1084,9 @@ class SpotifyClient:
                 "refresh_token": self.refresh_token,
                 "redirect_uri": self.redirect_uri,
             }
-            self.token_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp_path = self.token_file.with_suffix('.tmp')
+            tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp_path.replace(self.token_file)
 
     def is_configured(self) -> bool:
         return bool(self.client_id and self.client_secret)
@@ -1175,7 +1177,9 @@ class SpotifyClient:
                             "refresh_token": self.refresh_token,
                             "redirect_uri": self.redirect_uri,
                         }
-                        self.token_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+                        tmp_path = self.token_file.with_suffix('.tmp')
+                        tmp_path.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+                        tmp_path.replace(self.token_file)
                 return self.access_token
         except Exception as e:
             print(f"Spotify token refresh failed: {e}")
@@ -1492,9 +1496,11 @@ class DashboardController:
     def save_widget_state(self) -> None:
         try:
             path = BASE_DIR / "widget_state.json"
+            tmp_path = path.with_suffix('.tmp')
             state = {widget.widget_id: widget.get_state() for widget in self.widgets}
             state["current_widget_index"] = self.current_widget_index
-            path.write_text(json.dumps(state))
+            tmp_path.write_text(json.dumps(state))
+            tmp_path.replace(path)
         except Exception as exc:
             print(f"Error saving widget state: {exc}")
 
@@ -2586,11 +2592,26 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
     wtype = str(widget.get("type") or "").lower()
 
     def _font(size: int) -> Any:
-        # Try custom font first, then DejaVuSans on Linux, then Arial on macOS, then default
         from pathlib import Path
-        custom_font = str(Path(__file__).parent / "SF-Compact-Rounded-Light.otf")
+        custom_font_base = str(Path(__file__).parent / "leggie")
+        
+        # Pick closest leggie size (bitmap font only supports these)
+        if size <= 12:
+            leggie_size = 12
+        elif size <= 18:
+            leggie_size = 18
+        else:
+            leggie_size = 24
+            
+        leggie_path = f"{custom_font_base}-{leggie_size}.bdf"
+        
+        try:
+            return ImageFont.truetype(leggie_path, leggie_size)
+        except Exception:
+            pass
+
+        # Try DejaVuSans on Linux, then Arial on macOS, then default
         for path in (
-            custom_font,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/System/Library/Fonts/Arial.ttf",
         ):
