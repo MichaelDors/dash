@@ -2914,8 +2914,16 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                 if p < 2 * pause + t_move: return int(sr)
                 return int(sr - (p - 2 * pause - t_move) * speed)
 
+            from datetime import datetime
+            now = datetime.now()
+            hour_12 = now.hour % 12 or 12
+            sys_time = f"{hour_12}:{now.minute:02d}"
+            sys_time_w, sys_time_h = _text_size(sys_time, track_font)
+            time_x = 128 - sys_time_w - 2
+            time_y = 5
+
             tw, _ = _text_size(track_name, track_font)
-            track_max_w = 124
+            track_max_w = time_x - 6
             tx = 2 - get_offset(tw, track_max_w)
             draw.text((tx, 5), track_name, fill=1, font=track_font)
             
@@ -2923,6 +2931,10 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             artist_max_w = 124
             ax = 2 - get_offset(aw, artist_max_w, speed=20.0)
             draw.text((ax, 22), artist_name, fill=1, font=artist_font)
+            
+            # Mask out the time area so track name doesn't overlap it when scrolling
+            draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
+            draw.text((time_x, time_y), sys_time, fill=1, font=track_font)
             
             hint_font = _font(8)
             hint = "CONNECT IN WEB UI" if not authenticated else "PRESS DIAL TO OPEN"
