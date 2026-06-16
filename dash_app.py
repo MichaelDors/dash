@@ -2546,8 +2546,11 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
     wtype = str(widget.get("type") or "").lower()
 
     def _font(size: int) -> Any:
-        # Try DejaVuSans on Linux, then Arial on macOS, then default
+        # Try custom font first, then DejaVuSans on Linux, then Arial on macOS, then default
+        from pathlib import Path
+        custom_font = str(Path(__file__).parent / "Ranch-Water-Regular.otf")
         for path in (
+            custom_font,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/System/Library/Fonts/Arial.ttf",
         ):
