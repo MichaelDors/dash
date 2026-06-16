@@ -331,12 +331,18 @@ function renderSpotify(app, exitState) {
   const isPlaying = app.is_playing ? "Playing \u25B6" : "Paused \u23F8";
   const auth = app.authenticated ? "" : "<p style='color:red; font-size: 0.8rem; margin: 0;'>Connect in web UI</p>";
   
+  const progressText = app.progress_text || formatDuration(app.progress_ms);
+  const durationText = app.duration_text || formatDuration(app.duration_ms);
+  const progress = Number(app.progress_ms || 0);
+  const duration = Number(app.duration_ms || 1);
+  const pct = Math.max(0, Math.min(100, (progress / duration) * 100));
+
   const exitProgressRaw = Number(exitState.progress || 0);
   const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
 
   const trackHtml = `
     <div style="width: calc(100% - 60px); overflow: hidden;">
-      <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
+      <h2 class="\${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">\${trackName}</h2>
     </div>`;
 
   const artistHtml = `
@@ -357,7 +363,13 @@ function renderSpotify(app, exitState) {
       ${timeHtml}
       ${trackHtml}
       ${artistHtml}
-      <p style="margin-top: 0.5rem; font-size: 0.8rem;">${isPlaying}</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:0.5rem; padding-right:10px; box-sizing:border-box;">
+        <p style="margin: 0; font-size: 0.8rem;">${isPlaying}</p>
+        <div style="font-size:0.7rem; color: var(--text-muted);">${progressText} / ${durationText}</div>
+      </div>
+      <div style="position: absolute; left: 0; bottom: 0; width: 100%; height: 6px; background: rgba(255, 255, 255, 0.2);">
+        <div style="width: ${pct}%; height: 100%; background: var(--text-color);"></div>
+      </div>
       <div class="pong-exit"></div>
     </section>
   `;

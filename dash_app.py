@@ -2070,6 +2070,11 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             track_name = _escape_html(str(app.get("track_name") or "Waiting for track..."))
             artist_name = _escape_html(str(app.get("artist_name") or ""))
             is_playing = "Playing" if app.get("is_playing") else "Paused"
+            progress = float(app.get("progress_ms") or 0)
+            duration = float(app.get("duration_ms") or 1)
+            pct = min(100.0, max(0.0, (progress / duration) * 100))
+            progress_text = _escape_html(str(app.get("progress_text") or _format_duration_ms(progress)))
+            duration_text = _escape_html(str(app.get("duration_text") or _format_duration_ms(duration)))
             exit_state = state.get("app_exit") or {}
             exit_progress = float(exit_state.get("progress") or 0.0)
             
@@ -2087,7 +2092,12 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
                 f'<div style="width:100%; overflow:hidden; text-align:left;">'
                 f'<p class="{"marquee-container" if len(artist_name) > 22 else ""}" style="--marquee-width:100%; margin:0.2rem 0; font-size:0.75rem; white-space:nowrap; text-align:left;">{artist_name}</p>'
                 f'</div>'
-                f'<p style="margin-top:0.2rem; font-size:0.65rem; text-align:left;">{is_playing}</p>'
+                f'<div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:0.2rem;">'
+                f'<p style="margin:0; font-size:0.65rem; text-align:left;">{is_playing}</p>'
+                f'<div style="font-size:0.5rem; color:#ccc; margin-right:4px;">{progress_text} / {duration_text}</div>'
+                f'</div>'
+                f'<div style="position:absolute; left:0; bottom:0; width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">'
+                f'<div style="width:{pct}%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>'
                 f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
                 '</section>'
             )
@@ -2580,7 +2590,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
     def _font(size: int) -> Any:
         # Try custom font first, then DejaVuSans on Linux, then Arial on macOS, then default
         from pathlib import Path
-        custom_font = str(Path(__file__).parent / "Ranch-Water-Regular.otf")
+        custom_font = str(Path(__file__).parent / "SF-Compact-Rounded-Light.otf")
         for path in (
             custom_font,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

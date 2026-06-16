@@ -43,7 +43,7 @@ REPO_FILES = [
     "web/logo.png",
     "web/displayserif.ttf",
     "web/primarytext.otf",
-    "Ranch-Water-Regular.otf",
+    "SF-Compact-Rounded-Light.otf",
 ]
 
 # Embedded boot logo (PNG) as base64 data URL. White pixels = on, black pixels = off.
