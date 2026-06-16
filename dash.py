@@ -257,15 +257,18 @@ def run_update_check() -> None:
 
 
 def main() -> None:
+    quiet = os.environ.get("DASH_QUIET_UPDATE") == "1"
     stop_existing_dashboard()
-    show_boot_logo()
+    if not quiet:
+        show_boot_logo()
     boot_start = time.monotonic()
     run_update_check()
     # Ensure the boot logo is visible for at least 3 seconds total.
-    elapsed = time.monotonic() - boot_start
-    remaining = 3.0 - elapsed
-    if remaining > 0:
-        time.sleep(remaining)
+    if not quiet:
+        elapsed = time.monotonic() - boot_start
+        remaining = 3.0 - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
     if not APP_SCRIPT.exists():
         print(f"App script not found: {APP_SCRIPT}", file=sys.stderr)
         print("Add dash_app.py to your repo (https://github.com/MichaelDors/dash) and push, then try again.", file=sys.stderr)

@@ -103,7 +103,7 @@ class SH1106Driver:
             self._send_command(0x10)
             self._send_data([0] * BYTES_PER_PAGE)
 
-    def init_display(self) -> None:
+    def init_display(self, quiet: bool = False) -> None:
         """Hardware reset and SH1106 init sequence."""
         self._gpio_output(self._resn, 0)
         import time
@@ -135,7 +135,10 @@ class SH1106Driver:
         self._send_command(0xA4)
         self._send_command(0xA6)
         self.clear_display()
-        self._send_command(0xAF)  # Display ON
+        if quiet:
+            self._send_command(0xAE)  # Display OFF
+        else:
+            self._send_command(0xAF)  # Display ON
         time.sleep(0.15)  # Let DC-DC stabilize before writing frame data
 
     def display_frame(self, page_data: List[List[int]]) -> None:

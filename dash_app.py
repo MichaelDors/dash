@@ -157,6 +157,9 @@ class MotionSensorManager:
         self.motion_detected = False
         self.display_dimmed = False
         self.display_off = False
+        if os.environ.get("DASH_QUIET_UPDATE") == "1":
+            self.last_activity_time = time.time() - 3600
+            self.display_off = True
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -1538,10 +1541,35 @@ class DashboardController:
             self._update_power_off_locked(now, dt)
             self._update_restart_locked(now, dt)
             
+            self._check_auto_update(now)
+
             if self._state_dirty and now - self._last_save_time > 2.0:
                 self.save_widget_state()
                 self._state_dirty = False
                 self._last_save_time = now
+
+    def _check_auto_update(self, now: float) -> None:
+        if getattr(self, "_last_auto_update_check", 0) + 60 > now:
+            return
+        self._last_auto_update_check = now
+
+        now_dt = datetime.now()
+        is_night = 1 <= now_dt.hour < 5
+        if not is_night:
+            return
+
+        status = self.motion_manager.get_status()
+        if status["seconds_since_activity"] < 3600:
+            return
+
+        version_widget = next((w for w in self.widgets if isinstance(w, VersionStatusWidget)), None)
+        if not version_widget:
+            return
+            
+        payload = version_widget.to_payload()
+        if payload.get("remote_newer"):
+            print("Auto-update conditions met (night time, idle > 1h, update available). Restarting quietly.")
+            self._execute_update_software(quiet=True)
 
     def _find_spotify_widget_index_locked(self) -> Optional[int]:
         for idx, widget in enumerate(self.widgets):
@@ -1767,8 +1795,12 @@ class DashboardController:
         else:
             print("Button1 held, but restart is disabled (set DASH_ALLOW_POWEROFF=1 to enable).")
 
-    def _execute_update_software(self) -> None:
+    def _execute_update_software(self, quiet: bool = False) -> None:
         print("Update Software requested. Restarting dash.py to fetch updates...")
+        if quiet:
+            os.environ["DASH_QUIET_UPDATE"] = "1"
+        else:
+            os.environ.pop("DASH_QUIET_UPDATE", None)
         dash_script = Path(__file__).resolve().parent / "dash.py"
         os.execv(sys.executable, [sys.executable, str(dash_script)] + sys.argv[1:])
 
@@ -3052,7 +3084,7 @@ def run_dashboard() -> None:
                 GPIO.output(pin, value)
 
             oled_driver = SH1106Driver(spi, _gpio_output, OLED_A0_PIN, OLED_RESN_PIN)
-            oled_driver.init_display()
+            oled_driver.init_display(quiet=(os.environ.get("DASH_QUIET_UPDATE") == "1"))
 
             controller.motion_manager.set_display_driver(
                 turn_off=oled_driver.turn_off,
