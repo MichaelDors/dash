@@ -2078,7 +2078,6 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             exit_state = state.get("app_exit") or {}
             exit_progress = float(exit_state.get("progress") or 0.0)
             
-            from datetime import datetime
             time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
             
             return (
@@ -2186,7 +2185,6 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
             authenticated = bool(preview.get("authenticated"))
             status_text = "Connect in web UI" if not authenticated else "PRESS DIAL TO OPEN"
             
-            from datetime import datetime
             time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
             
             return (
@@ -2959,7 +2957,6 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                 if p < 2 * pause + t_move: return int(sr)
                 return int(sr - (p - 2 * pause - t_move) * speed)
 
-            from datetime import datetime
             now = datetime.now()
             hour_12 = now.hour % 12 or 12
             sys_time = f"{hour_12}:{now.minute:02d}"
