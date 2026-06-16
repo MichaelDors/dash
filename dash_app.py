@@ -2689,7 +2689,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             
             track_font = _font(12)
             artist_font = _font(10)
-            time_font = _font(8)
+            time_font = _font(10)
             
             def get_offset(text_w: int, max_w: int, speed: float = 25.0, pause: float = 3.0) -> int:
                 if text_w <= max_w:
@@ -2713,7 +2713,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             tw, _ = _text_size(track_name, track_font)
             track_max_w = time_x - 6
             tx = 2 - get_offset(tw, track_max_w)
-            draw.text((tx, 5), track_name, fill=1, font=track_font)
+            draw.text((tx, 5), track_name, fill=1, font=track_font, anchor="lt")
             
             aw, _ = _text_size(artist_name, artist_font)
             artist_max_w = 124
@@ -2722,7 +2722,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             
             # Mask out the time area so track name doesn't overlap it when scrolling
             draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
-            draw.text((time_x, time_y), sys_time, fill=1, font=track_font)
+            draw.text((time_x, time_y), sys_time, fill=1, font=track_font, anchor="lt")
 
             y_offset = 48
             radius = 6
@@ -2747,9 +2747,9 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             if not is_playing:
                 pw, _ = _text_size(progress_text, time_font)
                 px = 4 + pw + 4
-                py = y_offset + 5
-                text_draw.rectangle((px, py, px+1, py+6), fill=1)
-                text_draw.rectangle((px+3, py, px+4, py+6), fill=1)
+                py = y_offset + 4
+                text_draw.rectangle((px, py, px+1, py+8), fill=1)
+                text_draw.rectangle((px+3, py, px+4, py+8), fill=1)
 
             dw, _ = _text_size(duration_text, time_font)
             text_draw.text((128 - 4 - dw, y_offset + 3), duration_text, fill=1, font=time_font)
@@ -2967,7 +2967,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             tw, _ = _text_size(track_name, track_font)
             track_max_w = time_x - 6
             tx = 2 - get_offset(tw, track_max_w)
-            draw.text((tx, 5), track_name, fill=1, font=track_font)
+            draw.text((tx, 5), track_name, fill=1, font=track_font, anchor="lt")
             
             aw, _ = _text_size(artist_name, artist_font)
             artist_max_w = 124
@@ -2976,7 +2976,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             
             # Mask out the time area so track name doesn't overlap it when scrolling
             draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
-            draw.text((time_x, time_y), sys_time, fill=1, font=track_font)
+            draw.text((time_x, time_y), sys_time, fill=1, font=track_font, anchor="lt")
             
             hint_font = _font(8)
             hint = "CONNECT IN WEB UI" if not authenticated else "PRESS DIAL TO OPEN"
