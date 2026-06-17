@@ -3037,9 +3037,8 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                     checked = str(app.get("checked_at") or "")
                     if checked:
                         try:
-                            from datetime import datetime
                             d = datetime.fromisoformat(checked)
-                            time_str = d.strftime("%H:%M")
+                            time_str = d.strftime("%I:%M").lstrip("0")
                         except Exception:
                             time_str = ""
                     else:
@@ -3123,7 +3122,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             draw.text((ax, 22), artist_name, fill=1, font=artist_font)
             
             # Mask out the time area so track name doesn't overlap it when scrolling
-            draw.rectangle((time_x - 4, 0, 127, time_y + sys_time_h + 2), fill=0)
+            draw.rectangle((time_x - 8, 0, 127, time_y + sys_time_h + 2), fill=0)
             draw.text((time_x, time_y), sys_time, fill=1, font=track_font, anchor="lt")
 
             y_offset = 48
@@ -3214,9 +3213,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         font_size = 48
         font = _font(font_size)
 
-        # nanobackup approximates width as (font_size/2) per char
-        text_width = len(count_str) * (font_size // 2)
-        text_height = font_size
+        text_width, text_height = _text_size(count_str, font)
         x = (128 - text_width) // 2
         y = (64 - text_height) // 2
         x = max(0, min(x, 128 - text_width))
@@ -3235,8 +3232,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
 
         font_size = 36
         font = _font(font_size)
-        text_width = len(time_text) * (font_size // 2)
-        text_height = font_size
+        text_width, text_height = _text_size(time_text, font)
         x = (128 - text_width) // 2
         y = (64 - text_height) // 2
         x = max(0, min(x, 128 - text_width))
@@ -3254,11 +3250,11 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         body_font = _font(9)
 
         draw.rectangle((0, 0, 127, 63), outline=1, fill=0)  # border
-        draw.text((15, 5), "MOTION STATUS", fill=1, font=title_font)
-        draw.text((10, 20), f"MOTION: {motion_yes}", fill=1, font=body_font)
-        draw.text((10, 32), f"DISPLAY: {display_state}", fill=1, font=body_font)
-        draw.text((10, 44), f"IDLE: {idle}", fill=1, font=body_font)
-        draw.text((5, 55), "ROTATE TO CHANGE", fill=1, font=body_font)
+        draw.text((15, 3), "MOTION STATUS", fill=1, font=title_font)
+        draw.text((10, 15), f"MOTION: {motion_yes}", fill=1, font=body_font)
+        draw.text((10, 27), f"DISPLAY: {display_state}", fill=1, font=body_font)
+        draw.text((10, 39), f"IDLE: {idle}", fill=1, font=body_font)
+        draw.text((5, 51), "ROTATE TO CHANGE", fill=1, font=body_font)
         return img
 
     if wtype == "weather":
@@ -3296,7 +3292,7 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
 
         condition = condition[:18]
         cw, _ = _text_size(condition, meta_font)
-        draw.text((max((128 - cw) // 2, 0), 52), condition, fill=1, font=meta_font)
+        draw.text((max((128 - cw) // 2, 0), 50), condition, fill=1, font=meta_font)
         return img
 
     if wtype == "version_status":
