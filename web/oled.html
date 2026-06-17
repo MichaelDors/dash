@@ -133,6 +133,71 @@
             '</section>'
           );
         }
+        if (app.type === "settings") {
+          const view = app.current_view || "main";
+          const exitProgressRaw = Number(exitState.progress || 0);
+          const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+          
+          let content = "";
+          if (view === "main") {
+            const idx = app.main_menu_idx;
+            const options = app.main_menu_options || [];
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding-top:2px;">';
+            options.forEach(function(opt, i) {
+              const active = i === idx ? 'background:#fff;color:#000;' : 'color:#fff;';
+              const val = opt.is_subpage ? '&gt;' : (opt.value || '');
+              content += '<div style="display:flex; justify-content:space-between; align-items:center; padding:1px 4px; font-size:10px; line-height:14px; ' + active + '">' +
+                '<span>' + opt.name + '</span>' +
+                '<span>' + val + '</span>' +
+                '</div>';
+            });
+            content += '</div>';
+          } else if (view === "updates") {
+            const focused = app.updates_focused || 0;
+            const arrowStyle = focused === 0 ? 'background:#fff;color:#000;' : 'color:#fff;';
+            const btnStyle = focused === 1 ? 'background:#fff;color:#000;' : 'color:#fff; border:1px solid #fff;';
+            const status = app.update_status || "Checking...";
+            const local = app.local_version || "?";
+            const branch = app.branch || "main";
+            let timeStr = "";
+            if (app.checked_at) {
+              const d = new Date(app.checked_at);
+              timeStr = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+            }
+            
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding:2px;">' +
+              '<div style="font-size:10px; padding:0 4px; width: fit-content; ' + arrowStyle + '">&lt; Back</div>' +
+              '<div style="font-size:9px; margin-top:2px;">Status: ' + status + '</div>';
+            
+            if (app.remote_newer) {
+               content += '<div style="font-size:9px; margin-top:2px;">v' + (app.remote_version || "?") + ' available</div>' +
+                          '<div style="font-size:9px; text-align:center; margin-top:4px; padding:1px; ' + btnStyle + '">Update Now</div>';
+            } else {
+               content += '<div style="font-size:9px; margin-top:2px;">Current: v' + local + '</div>' +
+                          '<div style="font-size:9px; margin-top:2px;">Branch: ' + branch + '</div>' +
+                          '<div style="font-size:9px; margin-top:2px;">Checked: ' + timeStr + '</div>';
+            }
+            content += '</div>';
+          } else {
+            const idx = app.sub_menu_idx;
+            const options = app.sub_menu_options || [];
+            const displayCount = Math.min(options.length, 4);
+            const startIdx = Math.max(0, Math.min(idx - 1, options.length - displayCount));
+            const endIdx = startIdx + displayCount;
+            
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding-top:2px;">';
+            for (let i = startIdx; i < endIdx; i++) {
+              const active = i === idx ? 'background:#fff;color:#000;' : 'color:#fff;';
+              content += '<div style="text-align:center; padding:2px; font-size:11px; ' + active + '">' + options[i] + '</div>';
+            }
+            content += '</div>';
+          }
+          
+          return '<section class="app-settings" style="position:absolute; top:0; left:0; width:100%; height:100%;">' +
+            content +
+            '<div class="pong-exit" style="height:' + (exitProgress * 100) + '%"></div>' +
+            '</section>';
+        }
         return '<section class="widget-time"><div class="time-main">APP</div></section>';
       }
 

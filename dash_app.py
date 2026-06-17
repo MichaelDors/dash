@@ -148,11 +148,43 @@ def setup_gpio_pins() -> bool:
         return False
 
 
+class SettingsStore:
+    def __init__(self, filepath: Path):
+        self.filepath = filepath
+        self._lock = threading.Lock()
+        self.max_brightness = 100
+        self.dim_brightness = 10
+        self.motion_sensor = True
+        self.load()
+
+    def load(self) -> None:
+        if self.filepath.exists():
+            try:
+                data = json.loads(self.filepath.read_text(encoding="utf-8"))
+                self.max_brightness = data.get("max_brightness", 100)
+                self.dim_brightness = data.get("dim_brightness", 10)
+                self.motion_sensor = data.get("motion_sensor", True)
+            except Exception as exc:
+                print(f"Error loading settings: {exc}")
+
+    def save(self) -> None:
+        with self._lock:
+            data = {
+                "max_brightness": self.max_brightness,
+                "dim_brightness": self.dim_brightness,
+                "motion_sensor": self.motion_sensor
+            }
+            tmp = self.filepath.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp.replace(self.filepath)
+
+
 class MotionSensorManager:
     """Tracks motion and display power states for the dashboard."""
 
-    def __init__(self, sensor_available: bool):
+    def __init__(self, sensor_available: bool, settings_store: SettingsStore):
         self.sensor_available = sensor_available
+        self.settings = settings_store
         self.last_activity_time = time.time()
         self.motion_detected = False
         self.display_dimmed = False
@@ -209,7 +241,7 @@ class MotionSensorManager:
             if self._display_turn_on:
                 self._display_turn_on()
             if self._display_set_brightness:
-                self._display_set_brightness(DISPLAY_FULL_BRIGHTNESS)
+                self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
 
     def get_status(self) -> Dict[str, Any]:
         with self._lock:
@@ -252,7 +284,7 @@ class MotionSensorManager:
                     if self._display_turn_on:
                         self._display_turn_on()
                     if self._display_set_brightness:
-                        self._display_set_brightness(DISPLAY_FULL_BRIGHTNESS)
+                        self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
                 else:
                     if self.motion_detected and MOTION_DEBUG:
                         print("No motion detected.")
@@ -272,7 +304,18 @@ class MotionSensorManager:
                         self.display_dimmed = True
                         print("No activity threshold reached: display set to DIM state.")
                         if self._display_set_brightness:
-                            self._display_set_brightness(DISPLAY_DIM_BRIGHTNESS)
+                            self._display_set_brightness(int(self.settings.dim_brightness / 100 * 255))
+
+                # Handle motion sensor override
+                if not self.settings.motion_sensor:
+                    self.last_activity_time = now
+                    if self.display_dimmed or self.display_off:
+                        self.display_dimmed = False
+                        self.display_off = False
+                        if self._display_turn_on:
+                            self._display_turn_on()
+                        if self._display_set_brightness:
+                            self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
 
             time.sleep(MOTION_CHECK_INTERVAL)
 
@@ -1427,15 +1470,166 @@ class SpotifyApp(App):
         }
 
 
+class SettingsApp(App):
+    def __init__(self, controller: "DashboardController", settings_store: SettingsStore):
+        super().__init__("settings", "Settings")
+        self.controller = controller
+        self.settings = settings_store
+        
+        self.current_view = "main"
+        self.main_menu_idx = 0
+        self.main_menu_options = ["Max Brightness", "Dim Brightness", "Motion Sensor", "Updates"]
+        
+        self.brightness_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        self.motion_options = [True, False]
+        
+        self.sub_menu_idx = 0
+
+        self.updates_checked = False
+        self.update_status = "unknown"
+        self.remote_version = None
+        self.local_version = "unknown"
+        self.checked_at = None
+        self.remote_newer = False
+        self.updates_focused = 0 # 0 for back arrow, 1 for update button
+
+    def reset(self) -> None:
+        self.current_view = "main"
+        self.main_menu_idx = 0
+
+    def on_encoder(self, delta: int) -> None:
+        if self.current_view == "main":
+            self.main_menu_idx = (self.main_menu_idx + delta) % len(self.main_menu_options)
+        elif self.current_view in ("max_brightness", "dim_brightness"):
+            self.sub_menu_idx = max(0, min(len(self.brightness_options) - 1, self.sub_menu_idx + delta))
+            # Preview brightness
+            val = self.brightness_options[self.sub_menu_idx]
+            if self.controller.motion_manager._display_set_brightness:
+                self.controller.motion_manager._display_set_brightness(int(val / 100 * 255))
+        elif self.current_view == "motion_sensor":
+            self.sub_menu_idx = (self.sub_menu_idx + delta) % len(self.motion_options)
+        elif self.current_view == "updates":
+            if self.remote_newer:
+                self.updates_focused = (self.updates_focused + delta) % 2
+
+    def on_dial_press(self) -> None:
+        if self.current_view == "main":
+            selected = self.main_menu_options[self.main_menu_idx]
+            if selected == "Max Brightness":
+                self.current_view = "max_brightness"
+                try:
+                    self.sub_menu_idx = self.brightness_options.index(self.settings.max_brightness)
+                except ValueError:
+                    self.sub_menu_idx = len(self.brightness_options) - 1
+            elif selected == "Dim Brightness":
+                self.current_view = "dim_brightness"
+                try:
+                    self.sub_menu_idx = self.brightness_options.index(self.settings.dim_brightness)
+                except ValueError:
+                    self.sub_menu_idx = 0
+            elif selected == "Motion Sensor":
+                self.current_view = "motion_sensor"
+                self.sub_menu_idx = 0 if self.settings.motion_sensor else 1
+            elif selected == "Updates":
+                self.current_view = "updates"
+                self.updates_focused = 0
+                self._check_updates()
+        elif self.current_view == "max_brightness":
+            self.settings.max_brightness = self.brightness_options[self.sub_menu_idx]
+            self.settings.save()
+            if self.controller.motion_manager._display_set_brightness:
+                self.controller.motion_manager._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+            self.current_view = "main"
+        elif self.current_view == "dim_brightness":
+            self.settings.dim_brightness = self.brightness_options[self.sub_menu_idx]
+            self.settings.save()
+            # Restore max brightness
+            if self.controller.motion_manager._display_set_brightness:
+                self.controller.motion_manager._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+            self.current_view = "main"
+        elif self.current_view == "motion_sensor":
+            self.settings.motion_sensor = self.motion_options[self.sub_menu_idx]
+            self.settings.save()
+            self.current_view = "main"
+            self.controller.motion_manager.report_user_activity()
+        elif self.current_view == "updates":
+            if self.updates_focused == 0:
+                self.current_view = "main"
+            elif self.updates_focused == 1 and self.remote_newer:
+                self.controller._execute_update_software()
+
+    def _check_updates(self):
+        self.updates_checked = False
+        def fetch():
+            try:
+                repo = os.getenv("GITHUB_REPO", "MichaelDors/dash").strip() or "MichaelDors/dash"
+                branch = os.getenv("GITHUB_BRANCH", "main").strip() or "main"
+                if DASH_LAUNCHER_AVAILABLE and dash_launcher is not None:
+                    self.local_version = dash_launcher.read_local_version()
+                    self.remote_version = dash_launcher.fetch_remote_version(repo, branch)
+                    self.remote_newer = dash_launcher.is_newer(self.remote_version, self.local_version)
+                    if self.remote_newer:
+                        self.update_status = "Update available"
+                    else:
+                        self.update_status = "Up to date"
+                else:
+                    self.update_status = "Launcher not available"
+                self.checked_at = datetime.now()
+            except Exception as e:
+                self.update_status = f"Error: {e}"
+            self.updates_checked = True
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def to_payload(self) -> Dict[str, Any]:
+        payload = super().to_payload()
+        payload["type"] = "settings"
+        payload["current_view"] = self.current_view
+        payload["main_menu_idx"] = self.main_menu_idx
+        
+        main_options = []
+        for opt in self.main_menu_options:
+            val = ""
+            if opt == "Max Brightness":
+                val = str(self.settings.max_brightness)
+            elif opt == "Dim Brightness":
+                val = str(self.settings.dim_brightness)
+            elif opt == "Motion Sensor":
+                val = "On" if self.settings.motion_sensor else "Off"
+            main_options.append({"name": opt, "value": val, "is_subpage": opt == "Updates"})
+        payload["main_menu_options"] = main_options
+        
+        if self.current_view == "max_brightness":
+            payload["sub_menu_options"] = [str(x) for x in self.brightness_options]
+            payload["sub_menu_idx"] = self.sub_menu_idx
+        elif self.current_view == "dim_brightness":
+            payload["sub_menu_options"] = [str(x) for x in self.brightness_options]
+            payload["sub_menu_idx"] = self.sub_menu_idx
+        elif self.current_view == "motion_sensor":
+            payload["sub_menu_options"] = ["On", "Off"]
+            payload["sub_menu_idx"] = self.sub_menu_idx
+        elif self.current_view == "updates":
+            payload["updates_checked"] = self.updates_checked
+            payload["update_status"] = self.update_status
+            payload["remote_version"] = self.remote_version
+            payload["local_version"] = self.local_version
+            payload["checked_at"] = self.checked_at.isoformat(timespec="seconds") if self.checked_at else None
+            payload["remote_newer"] = self.remote_newer
+            payload["updates_focused"] = self.updates_focused
+            payload["branch"] = os.getenv("GITHUB_BRANCH", "main").strip() or "main"
+        
+        return payload
+
 class DashboardController:
     """Coordinates widgets, motion state, and hardware/button actions."""
 
     def __init__(self, sensor_available: bool, spotify_client: Optional[SpotifyClient] = None):
-        self.motion_manager = MotionSensorManager(sensor_available)
+        self.settings = SettingsStore(BASE_DIR / "settings.json")
+        self.motion_manager = MotionSensorManager(sensor_available, self.settings)
         self.spotify_client = spotify_client or SpotifyClient(BASE_DIR / "spotify_tokens.json")
         self.apps: List[App] = [
             PongApp(),
             SpotifyApp(self.spotify_client),
+            SettingsApp(self, self.settings),
         ]
         self._app_by_id = {app.app_id: app for app in self.apps}
         self.active_app: Optional[App] = None
@@ -2105,6 +2299,80 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
                 f'</div>'
                 f'<div style="position:absolute; left:0; bottom:0; width:100%; height:6px; background:rgba(255,255,255,0.2); border-radius:6px 6px 0 0;">'
                 f'<div style="width:{pct}%; height:100%; background:#fff; border-radius:6px 6px 0 0;"></div></div>'
+                f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
+                '</section>'
+            )
+
+        if app_type == "settings":
+            view = app.get("current_view", "main")
+            exit_state = state.get("app_exit") or {}
+            exit_progress = float(exit_state.get("progress") or 0.0)
+            
+            content = ""
+            if view == "main":
+                idx = app.get("main_menu_idx", 0)
+                options = app.get("main_menu_options", [])
+                content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding-top:2px;">'
+                for i, opt in enumerate(options):
+                    active = 'background:#fff;color:#000;' if i == idx else 'color:#fff;'
+                    val = '&gt;' if opt.get("is_subpage") else _escape_html(str(opt.get("value", "")))
+                    name = _escape_html(opt.get("name", ""))
+                    content += (
+                        f'<div style="display:flex; justify-content:space-between; align-items:center; padding:1px 4px; font-size:10px; line-height:14px; {active}">'
+                        f'<span>{name}</span><span>{val}</span></div>'
+                    )
+                content += '</div>'
+            elif view == "updates":
+                focused = app.get("updates_focused", 0)
+                arrow_style = 'background:#fff;color:#000;' if focused == 0 else 'color:#fff;'
+                btn_style = 'background:#fff;color:#000;' if focused == 1 else 'color:#fff; border:1px solid #fff;'
+                status = _escape_html(app.get("update_status", "Checking..."))
+                local = _escape_html(app.get("local_version", "?"))
+                branch = _escape_html(app.get("branch", "main"))
+                checked_at = app.get("checked_at")
+                time_str = ""
+                if checked_at:
+                    try:
+                        d = datetime.fromisoformat(checked_at)
+                        time_str = f"{d.hour:02d}:{d.minute:02d}"
+                    except Exception:
+                        pass
+                
+                content = (
+                    '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding:2px;">'
+                    f'<div style="font-size:10px; padding:0 4px; width: fit-content; {arrow_style}">&lt; Back</div>'
+                    f'<div style="font-size:9px; margin-top:2px;">Status: {status}</div>'
+                )
+                if app.get("remote_newer"):
+                    remote_ver = _escape_html(app.get("remote_version", "?"))
+                    content += (
+                        f'<div style="font-size:9px; margin-top:2px;">v{remote_ver} available</div>'
+                        f'<div style="font-size:9px; text-align:center; margin-top:4px; padding:1px; {btn_style}">Update Now</div>'
+                    )
+                else:
+                    content += (
+                        f'<div style="font-size:9px; margin-top:2px;">Current: v{local}</div>'
+                        f'<div style="font-size:9px; margin-top:2px;">Branch: {branch}</div>'
+                        f'<div style="font-size:9px; margin-top:2px;">Checked: {time_str}</div>'
+                    )
+                content += '</div>'
+            else:
+                idx = app.get("sub_menu_idx", 0)
+                options = app.get("sub_menu_options", [])
+                display_count = min(len(options), 4)
+                start_idx = max(0, min(idx - 1, len(options) - display_count))
+                end_idx = start_idx + display_count
+                
+                content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding-top:2px;">'
+                for i in range(start_idx, end_idx):
+                    active = 'background:#fff;color:#000;' if i == idx else 'color:#fff;'
+                    opt_str = _escape_html(str(options[i]))
+                    content += f'<div style="text-align:center; padding:2px; font-size:11px; {active}">{opt_str}</div>'
+                content += '</div>'
+
+            return (
+                '<section class="app-settings" style="position:absolute; top:0; left:0; width:100%; height:100%;">'
+                f'{content}'
                 f'<div class="pong-exit" style="height:{exit_progress * 100}%"></div>'
                 '</section>'
             )

@@ -322,8 +322,83 @@ function renderApp(app, exitState) {
   if (app.type === "spotify") {
     return renderSpotify(app, exitState);
   }
+  if (app.type === "settings") {
+    return renderSettings(app, exitState);
+  }
   return `<p class="counter-help">Unsupported app type: ${app.type}</p>`;
 }
+
+function renderSettings(app, exitState) {
+  const exitProgressRaw = Number(exitState.progress || 0);
+  const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
+  const view = app.current_view || "main";
+  
+  let content = "";
+  
+  if (view === "main") {
+    const idx = app.main_menu_idx;
+    const options = app.main_menu_options || [];
+    content = `<div style="display: flex; flex-direction: column; width: 100%; gap: 0.5rem; margin-top: 1rem;">`;
+    options.forEach((opt, i) => {
+      const active = i === idx ? "background: var(--text-color); color: var(--bg-color);" : "border: 1px solid var(--border-color);";
+      const val = opt.is_subpage ? ">" : (opt.value || "");
+      content += `<div style="display: flex; justify-content: space-between; padding: 0.5rem 1rem; border-radius: 4px; ${active}">
+        <span>${opt.name}</span>
+        <span>${val}</span>
+      </div>`;
+    });
+    content += `</div>`;
+  } else if (view === "updates") {
+    const focused = app.updates_focused || 0;
+    const arrowStyle = focused === 0 ? "background: var(--text-color); color: var(--bg-color);" : "border: 1px solid var(--border-color);";
+    const btnStyle = focused === 1 ? "background: var(--text-color); color: var(--bg-color);" : "border: 1px solid var(--border-color);";
+    const status = app.update_status || "Checking...";
+    const local = app.local_version || "?";
+    const branch = app.branch || "main";
+    let timeStr = "";
+    if (app.checked_at) {
+      const d = new Date(app.checked_at);
+      timeStr = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+    }
+    
+    content = `<div style="display: flex; flex-direction: column; width: 100%; gap: 0.5rem;">
+      <div style="padding: 0.2rem 0.5rem; width: fit-content; border-radius: 4px; ${arrowStyle}">&lt; Back</div>
+      <div style="margin-top: 0.5rem; font-size: 0.9rem;">Status: ${status}</div>`;
+      
+    if (app.remote_newer) {
+      content += `<div style="font-size: 0.9rem;">v${app.remote_version || "?"} available</div>
+        <div style="padding: 0.5rem; text-align: center; border-radius: 4px; margin-top: 0.5rem; ${btnStyle}">Update Now</div>`;
+    } else {
+      content += `<div style="font-size: 0.9rem;">Current: v${local}</div>
+        <div style="font-size: 0.9rem;">Branch: ${branch}</div>
+        <div style="font-size: 0.9rem;">Checked: ${timeStr}</div>`;
+    }
+    content += `</div>`;
+  } else {
+    // Dropdown
+    const idx = app.sub_menu_idx;
+    const options = app.sub_menu_options || [];
+    content = `<div style="display: flex; flex-direction: column; width: 100%; gap: 0.3rem; margin-top: 1rem; align-items: center; max-height: 200px; overflow-y: hidden;">`;
+    
+    // Calculate sliding window to show ~5 items
+    const displayCount = Math.min(options.length, 5);
+    const startIdx = Math.max(0, Math.min(idx - 2, options.length - displayCount));
+    const endIdx = startIdx + displayCount;
+    
+    for (let i = startIdx; i < endIdx; i++) {
+      const active = i === idx ? "background: var(--text-color); color: var(--bg-color);" : "color: var(--text-color);";
+      const scale = i === idx ? "font-size: 1.2rem; padding: 0.5rem 2rem;" : "font-size: 0.9rem; padding: 0.2rem 1rem; opacity: 0.6;";
+      content += `<div style="border-radius: 4px; text-align: center; transition: all 0.2s; ${active} ${scale}">${options[i]}</div>`;
+    }
+    content += `</div>`;
+  }
+  
+  return `
+    <section class="app-settings" style="--exit-progress:${exitProgress}; position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; box-sizing: border-box; padding: 0.5rem;">
+      ${content}
+      <div class="pong-exit"></div>
+    </section>
+  `;
 
 function renderSpotify(app, exitState) {
   const trackName = app.track_name || "Waiting for track...";
