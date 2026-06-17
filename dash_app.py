@@ -2907,6 +2907,35 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             except Exception:
                 return (len(text) * 6, 10)
 
+    def _scaled_text_size(text: str, font: Any, scale: float) -> tuple[int, int]:
+        w, h = _text_size(text, font)
+        return int(w * scale), int(h * scale)
+
+    def _draw_scaled_text(draw_obj: Any, img_obj: Any, x: int, y: int, text: str, font: Any, scale: float) -> None:
+        if scale <= 1.0:
+            draw_obj.text((x, y), text, fill=1, font=font)
+            return
+        
+        tw, th = _text_size(text, font)
+        if tw <= 0 or th <= 0:
+            return
+            
+        temp_img = Image.new("1", (tw + 4, th + 4), 0)
+        temp_draw = ImageDraw.Draw(temp_img)
+        try:
+            left, top, _, _ = temp_draw.textbbox((0, 0), text, font=font)
+        except Exception:
+            left, top = 0, 0
+            
+        temp_draw.text((2 - left, 2 - top), text, fill=1, font=font)
+        
+        new_w, new_h = int((tw + 4) * scale), int((th + 4) * scale)
+        scaled_img = temp_img.resize((new_w, new_h), resample=Image.NEAREST)
+        
+        paste_x = int(x - 2 * scale)
+        paste_y = int(y - 2 * scale)
+        img_obj.paste(scaled_img, (paste_x, paste_y), scaled_img)
+
     def _draw_hourglass(x: int, y: int) -> None:
         # Copied from nanobackup.py's TimerWidget styling
         draw.line((x + 2, y, x + 8, y), fill=1)
@@ -3179,27 +3208,29 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         month = str(widget.get("month") or "---")
 
         # Match nanobackup.py TimeWidget styling/positions
-        main_font = _font(30)
+        main_font = _font(24)
+        main_scale = 1.25
         sec_font = _font(12)
         date_day_font = _font(18)
         date_month_font = _font(12)
 
-        main_time_x = 0
-        main_time_y = 8
-        draw.text((main_time_x, main_time_y), time_main, fill=1, font=main_font)
+        main_time_x = 12
+        main_time_y = 6
+        _draw_scaled_text(draw, img, main_time_x, main_time_y, time_main, main_font, main_scale)
 
         # Push seconds further left (close to the main time)
-        sec_w, _ = _text_size(seconds, sec_font)
-        seconds_x = main_time_x + _text_size(time_main, main_font)[0] + 4  # 4px gap after main time
+        sec_w, _ = _scaled_text_size(seconds, sec_font, 1.0)
+        main_w, _ = _scaled_text_size(time_main, main_font, main_scale)
+        seconds_x = main_time_x + main_w + 4  # 4px gap after main time
         if seconds_x + sec_w > 128:
             seconds_x = 128 - sec_w
         if seconds_x < 0:
             seconds_x = 0
         seconds_y = main_time_y + 12
-        draw.text((seconds_x, seconds_y), seconds, fill=1, font=sec_font)
+        _draw_scaled_text(draw, img, seconds_x, seconds_y, seconds, sec_font, 1.0)
 
         date_x = main_time_x
-        date_y = 45
+        date_y = 40
         draw.text((date_x, date_y), day_str, fill=1, font=date_day_font)
         day_w, _ = _text_size(day_str, date_day_font)
         month_x = date_x + day_w + 2  # 2px spacing like nanobackup
@@ -3210,15 +3241,15 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
     if wtype == "click_counter":
         # Match nanobackup ClickCounterWidget styling (big centered number)
         count_str = str(widget.get("count", 0))
-        font_size = 48
-        font = _font(font_size)
+        font = _font(24)
+        scale = 2.5
 
-        text_width, text_height = _text_size(count_str, font)
+        text_width, text_height = _scaled_text_size(count_str, font, scale)
         x = (128 - text_width) // 2
         y = (64 - text_height) // 2
         x = max(0, min(x, 128 - text_width))
         y = max(0, min(y, 64 - text_height))
-        draw.text((x, y), count_str, fill=1, font=font)
+        _draw_scaled_text(draw, img, x, y, count_str, font, scale)
         return img
 
     if wtype == "timer":
@@ -3230,14 +3261,14 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         if not running:
             _draw_pause_icon(110, 5)
 
-        font_size = 36
-        font = _font(font_size)
-        text_width, text_height = _text_size(time_text, font)
+        font = _font(24)
+        scale = 2.0
+        text_width, text_height = _scaled_text_size(time_text, font, scale)
         x = (128 - text_width) // 2
         y = (64 - text_height) // 2
         x = max(0, min(x, 128 - text_width))
         y = max(0, min(y, 64 - text_height))
-        draw.text((x, y), time_text, fill=1, font=font)
+        _draw_scaled_text(draw, img, x, y, time_text, font, scale)
         return img
 
     if wtype == "motion_status":
@@ -3285,14 +3316,14 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
         meta_font = _font(8)
 
         tw, _ = _text_size(location, title_font)
-        draw.text((max((128 - tw) // 2, 0), 2), location.upper(), fill=1, font=title_font)
+        draw.text((max((128 - tw) // 2, 0), 9), location.upper(), fill=1, font=title_font)
 
         temp_w, _ = _text_size(temp_text, temp_font)
-        draw.text((max((128 - temp_w) // 2, 0), 18), temp_text, fill=1, font=temp_font)
+        draw.text((max((128 - temp_w) // 2, 0), 19), temp_text, fill=1, font=temp_font)
 
         condition = condition[:18]
         cw, _ = _text_size(condition, meta_font)
-        draw.text((max((128 - cw) // 2, 0), 50), condition, fill=1, font=meta_font)
+        draw.text((max((128 - cw) // 2, 0), 48), condition, fill=1, font=meta_font)
         return img
 
     if wtype == "version_status":
