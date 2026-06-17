@@ -399,6 +399,7 @@ function renderSettings(app, exitState) {
       <div class="pong-exit"></div>
     </section>
   `;
+}
 
 function renderSpotify(app, exitState) {
   const trackName = app.track_name || "Waiting for track...";

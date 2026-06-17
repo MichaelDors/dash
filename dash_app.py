@@ -1511,6 +1511,7 @@ class SettingsApp(App):
         elif self.current_view == "updates":
             if self.remote_newer:
                 self.updates_focused = (self.updates_focused + delta) % 2
+        self.controller.mark_state_dirty()
 
     def on_dial_press(self) -> None:
         if self.current_view == "main":
@@ -1557,6 +1558,7 @@ class SettingsApp(App):
                 self.current_view = "main"
             elif self.updates_focused == 1 and self.remote_newer:
                 self.controller._execute_update_software()
+        self.controller.mark_state_dirty()
 
     def _check_updates(self):
         self.updates_checked = False
@@ -1578,6 +1580,7 @@ class SettingsApp(App):
             except Exception as e:
                 self.update_status = f"Error: {e}"
             self.updates_checked = True
+            self.controller.mark_state_dirty()
         threading.Thread(target=fetch, daemon=True).start()
 
     def to_payload(self) -> Dict[str, Any]:
@@ -1930,11 +1933,13 @@ class DashboardController:
         self._dial_pressed_at = None
         if ignore_release:
             self._dial_ignore_release = True
+        self.mark_state_dirty()
 
     def _handle_short_press_locked(self) -> None:
         current = self.widgets[self.current_widget_index]
         if isinstance(current, AppLauncherWidget):
             self._launch_app_locked(current.app_id)
+            self.mark_state_dirty()
             return
         if current.should_process_button_press():
             current.on_button_press()
@@ -2962,6 +2967,112 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
             progress = float(exit_state.get("progress") or 0.0)
             if progress > 0.0:
                 fill_height = int(64 * min(max(progress, 0.0), 1.0))
+                if fill_height > 0:
+                    draw.rectangle((0, 64 - fill_height, 127, 63), fill=1)
+
+            return img
+
+        if app_type == "settings":
+            view = str(app.get("current_view") or "main")
+            exit_state = state.get("app_exit") or {}
+            exit_progress = float(exit_state.get("progress") or 0.0)
+            font = _font(10)
+            small_font = _font(9)
+
+            if view == "main":
+                idx = int(app.get("main_menu_idx", 0))
+                options = app.get("main_menu_options", [])
+                
+                display_count = min(len(options), 4)
+                start_idx = max(0, min(idx - 1, len(options) - display_count))
+                end_idx = start_idx + display_count
+                
+                y = 2
+                for i in range(start_idx, end_idx):
+                    opt = options[i]
+                    name = str(opt.get("name", ""))
+                    val = ">" if opt.get("is_subpage") else str(opt.get("value", ""))
+                    
+                    if i == idx:
+                        draw.rectangle((0, y, 127, y + 14), fill=1)
+                        text_fill = 0
+                    else:
+                        text_fill = 1
+                        
+                    draw.text((4, y + 2), name, fill=text_fill, font=font)
+                    vw, _ = _text_size(val, font)
+                    draw.text((128 - 4 - vw, y + 2), val, fill=text_fill, font=font)
+                    y += 15
+                    
+            elif view == "updates":
+                focused = int(app.get("updates_focused", 0))
+                status = str(app.get("update_status") or "Checking...")
+                
+                draw.text((4, 2), "< Back", fill=0 if focused == 0 else 1, font=font)
+                if focused == 0:
+                    vw, vh = _text_size("< Back", font)
+                    draw.rectangle((2, 1, 6 + vw, 3 + vh), fill=1)
+                    draw.text((4, 2), "< Back", fill=0, font=font)
+                
+                draw.text((4, 16), f"Status: {status}", fill=1, font=small_font)
+                
+                if app.get("remote_newer"):
+                    ver = str(app.get("remote_version") or "?")
+                    draw.text((4, 28), f"v{ver} available", fill=1, font=small_font)
+                    
+                    bx, by = 30, 44
+                    bw, bh = 68, 14
+                    if focused == 1:
+                        draw.rectangle((bx, by, bx + bw, by + bh), fill=1)
+                        text_fill = 0
+                    else:
+                        draw.rectangle((bx, by, bx + bw, by + bh), outline=1, fill=0)
+                        text_fill = 1
+                    
+                    tw, _ = _text_size("Update Now", small_font)
+                    draw.text((bx + (bw - tw) // 2, by + 2), "Update Now", fill=text_fill, font=small_font)
+                else:
+                    local = str(app.get("local_version") or "?")
+                    branch = str(app.get("branch") or "main")
+                    checked = str(app.get("checked_at") or "")
+                    if checked:
+                        try:
+                            from datetime import datetime
+                            d = datetime.fromisoformat(checked)
+                            time_str = d.strftime("%H:%M")
+                        except Exception:
+                            time_str = ""
+                    else:
+                        time_str = ""
+                    
+                    draw.text((4, 28), f"Current: v{local}", fill=1, font=small_font)
+                    draw.text((4, 38), f"Branch: {branch}", fill=1, font=small_font)
+                    draw.text((4, 48), f"Checked: {time_str}", fill=1, font=small_font)
+            else:
+                idx = int(app.get("sub_menu_idx", 0))
+                options = app.get("sub_menu_options", [])
+                
+                display_count = min(len(options), 4)
+                start_idx = max(0, min(idx - 1, len(options) - display_count))
+                end_idx = start_idx + display_count
+                
+                y = 2
+                for i in range(start_idx, end_idx):
+                    opt_str = str(options[i])
+                    tw, _ = _text_size(opt_str, font)
+                    tx = max((128 - tw) // 2, 0)
+                    
+                    if i == idx:
+                        draw.rectangle((0, y, 127, y + 14), fill=1)
+                        text_fill = 0
+                    else:
+                        text_fill = 1
+                        
+                    draw.text((tx, y + 2), opt_str, fill=text_fill, font=font)
+                    y += 15
+
+            if exit_progress > 0.0:
+                fill_height = int(64 * min(max(exit_progress, 0.0), 1.0))
                 if fill_height > 0:
                     draw.rectangle((0, 64 - fill_height, 127, 63), fill=1)
 
