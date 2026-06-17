@@ -1387,6 +1387,8 @@ class SpotifyApp(App):
 
     def _switch_track(self, direction: str) -> None:
         self._last_user_action_time = time.time()
+        self.progress_ms = 0
+        self._scrub_target = None
         if direction == "prev":
             self.client.previous_track()
         else:
