@@ -508,6 +508,7 @@ function renderWidget(widget, motion) {
     const status = String(widget.status || "unknown").toUpperCase();
     const branch = widget.branch || "";
     const repo = widget.repo || "";
+    const checkedAt = widget.checked_at ? new Date(widget.checked_at).toLocaleTimeString() : "never";
     return `
       <section class="widget-motion">
         <div class="status-grid">
@@ -526,6 +527,10 @@ function renderWidget(widget, motion) {
           <div class="status-tile">
             <div class="status-label">Branch</div>
             <div class="status-value">${branch}</div>
+          </div>
+          <div class="status-tile">
+            <div class="status-label">Checked</div>
+            <div class="status-value">${checkedAt}</div>
           </div>
         </div>
         <p class="counter-help">${repo ? `Repo: ${repo}` : ""}</p>

@@ -51,6 +51,16 @@
           }
           return '<section class="widget-photo"><div style="font-size:8px;text-align:center;">No photo</div></section>';
         }
+        if (widget.type === "version_status") {
+          const local = widget.local ?? "unk";
+          const remote = widget.remote ?? "n/a";
+          let checkedAt = "never";
+          if (widget.checked_at) {
+            const d = new Date(widget.checked_at);
+            checkedAt = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+          }
+          return '<section class="widget-motion"><div class="status-grid"><div class="status-tile"><div class="status-label">Local</div><div class="status-value">' + local + '</div></div><div class="status-tile"><div class="status-label">Remote</div><div class="status-value">' + remote + '</div></div><div class="status-tile" style="grid-column: span 2"><div class="status-label">Checked</div><div class="status-value">' + checkedAt + '</div></div></div></section>';
+        }
         if (widget.type === "app_launcher") {
           if (widget.preview_type === "spotify" && widget.preview) {
             const preview = widget.preview || {};
