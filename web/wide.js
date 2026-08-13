@@ -57,6 +57,123 @@
   const elHeroSeconds = document.getElementById("heroSeconds");
   const elHeroWeatherText = document.getElementById("heroWeatherText");
 
+  // Dynamic Color Extraction for Spotify Album Art (Cadence Inspired)
+  let currentAlbumArtUrl = null;
+
+  function sampleImageRegion(img, x, y, width, height) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = Math.max(1, width);
+    canvas.height = Math.max(1, height);
+    try {
+      ctx.drawImage(img, x, y, width, height, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      let r = 0, g = 0, b = 0, count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
+      }
+      return {
+        r: Math.round(r / count),
+        g: Math.round(g / count),
+        b: Math.round(b / count)
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function extractVibrantColor(img) {
+    try {
+      if (!img.complete || img.naturalWidth === 0) {
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+      }
+      const width = img.naturalWidth;
+      const height = img.naturalHeight;
+      if (width === 0 || height === 0) return null;
+
+      const borderThickness = Math.max(5, Math.min(width, height) * 0.05);
+      const sampleSize = Math.min(width, height) * 0.2;
+      const regions = [
+        { x: 0, y: 0, w: width, h: borderThickness, isEdge: true },
+        { x: 0, y: height - borderThickness, w: width, h: borderThickness, isEdge: true },
+        { x: 0, y: 0, w: borderThickness, h: height, isEdge: true },
+        { x: width - borderThickness, y: 0, w: borderThickness, h: height, isEdge: true },
+        { x: width * 0.3, y: height * 0.3, w: width * 0.4, h: height * 0.4, isEdge: false },
+        { x: width * 0.1, y: height * 0.1, w: width * 0.3, h: height * 0.3, isEdge: false },
+        { x: width * 0.6, y: height * 0.1, w: width * 0.3, h: height * 0.3, isEdge: false },
+      ];
+
+      const allColors = [];
+      for (const region of regions) {
+        const rgb = sampleImageRegion(img, Math.round(region.x), Math.round(region.y), Math.round(region.w), Math.round(region.h));
+        if (!rgb) continue;
+        const r = rgb.r, g = rgb.g, b = rgb.b;
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const saturation = max === 0 ? 0 : (max - min) / max;
+
+        const hex = `#${[r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+        allColors.push({ hex, r, g, b, brightness, saturation, isEdge: region.isEdge });
+      }
+
+      let bestColor = null;
+      let bestScore = 0;
+
+      for (const color of allColors) {
+        const isGrey = Math.abs(color.r - color.g) < 15 && Math.abs(color.g - color.b) < 15 && Math.abs(color.r - color.b) < 15;
+        const isBlack = color.brightness < 35;
+        const isWhite = color.brightness > 225;
+        const isBeige = color.brightness > 180 && color.saturation < 0.15;
+        if (isGrey || isBlack || isWhite || isBeige || color.saturation < 0.15) continue;
+
+        const edgeBonus = color.isEdge ? 0.15 : 0;
+        const brightnessScore = Math.min(color.brightness / 255, 1);
+        const brightnessPenalty = color.brightness > 200 ? 0.3 : 1;
+        const score = color.saturation * 0.85 + (brightnessScore * brightnessPenalty) * 0.1 + edgeBonus;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestColor = color;
+        }
+      }
+
+      if (bestColor) return bestColor.hex;
+      return null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function updateSpotifyAccentColor(artUrl) {
+    if (!artUrl) {
+      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      return;
+    }
+    if (artUrl === currentAlbumArtUrl) return;
+    currentAlbumArtUrl = artUrl;
+
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = artUrl;
+    extractVibrantColor(img).then(color => {
+      if (color) {
+        document.documentElement.style.setProperty('--spotify-accent', color);
+      } else {
+        document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      }
+    }).catch(() => {
+      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+    });
+  }
+
   // Connection state management
   let failedFetchCount = 0;
   let isOffline = false;
@@ -235,6 +352,14 @@
     const data = state.latestData;
     if (!data) return;
 
+    // Spotify Dynamic Color Extraction
+    const spData = data.apps?.spotify || data.widgets?.spotify || {};
+    if (spData.album_art_url) {
+      updateSpotifyAccentColor(spData.album_art_url);
+    } else {
+      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+    }
+
     // Update Persistent Time Hero Card
     updateHeroTime(data.widgets.time, data.widgets.weather);
 
@@ -292,18 +417,33 @@
       html += createWidgetCardHTML(appId, data);
     });
 
-    elSlotsContainer.innerHTML = html;
+    if (elSlotsContainer.innerHTML !== html) {
+      elSlotsContainer.innerHTML = html;
 
-    // Attach Long Press & Click handlers to cards
-    activeSlots.slice(0, 3).forEach((appId) => {
-      const cardEl = document.getElementById(`card_${appId}`);
-      if (cardEl) {
-        setupCardTouchGestures(cardEl, appId);
+      // Attach Long Press & Click handlers to cards
+      activeSlots.slice(0, 3).forEach((appId) => {
+        const cardEl = document.getElementById(`card_${appId}`);
+        if (cardEl) setupCardTouchGestures(cardEl, appId);
+      });
+
+      // Attach inner touch action buttons
+      attachSlotActionListeners();
+    }
+
+    // Direct DOM updates for rapidly changing values to prevent innerHTML tearing
+    const spProg = document.getElementById("widget-spotify-progress");
+    if (spProg) {
+      const sp = data.apps.spotify || data.widgets.spotify || {};
+      const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
+      spProg.style.width = `${progress}%`;
+    }
+    const tmText = document.getElementById("widget-timer-text");
+    if (tmText) {
+      const tm = data.widgets.timer || {};
+      if (tmText.innerText !== (tm.time_text || "05:00")) {
+        tmText.innerText = tm.time_text || "05:00";
       }
-    });
-
-    // Attach inner touch action buttons
-    attachSlotActionListeners();
+    }
   }
 
   // Gesture Handler: Long Press (>600ms) opens Widget Modal, Short Tap opens App
@@ -365,7 +505,10 @@
       const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
 
       const artHTML = albumArt ?
-        `<div class="spotify-art-wrapper"><img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" /></div>` :
+        `<div class="spotify-art-wrapper">
+          <img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" />
+          <div class="art-sweep-flash"></div>
+        </div>` :
         `<div class="spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
 
       bodyHTML = `
@@ -377,7 +520,7 @@
               <p class="spotify-artist-name">${escapeHTML(artist)}</p>
             </div>
             <div class="spotify-progress-bar-wrap">
-              <div class="spotify-progress-fill" style="width: ${progress}%"></div>
+              <div class="spotify-progress-fill" id="widget-spotify-progress"></div>
             </div>
             <div class="spotify-mini-controls">
               <button class="mini-ctrl-btn" data-act="spotify_prev"><i class="fa-solid fa-backward-step"></i></button>
@@ -409,7 +552,7 @@
 
       bodyHTML = `
         <div class="timer-card-content">
-          <div class="timer-digits-display">${timeText}</div>
+          <div class="timer-digits-display" id="widget-timer-text">00:00</div>
           <div class="spotify-mini-controls">
             <button class="mini-ctrl-btn" data-act="timer_sub_min">-1m</button>
             <button class="mini-ctrl-btn btn-play-main" data-act="timer_toggle" style="background:var(--accent-purple); color:#fff;">
@@ -493,8 +636,15 @@
     state.activeOverlayApp = appId;
     const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
 
-    if (elOverlayAppTitle) elOverlayAppTitle.innerHTML = `<i class="${appDef.icon}"></i> ${appDef.name}`;
-    if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = `Full Screen View`;
+    if (appId === "spotify") {
+      elAppOverlayView.classList.add("spotify-active");
+      if (elOverlayAppTitle) elOverlayAppTitle.innerHTML = "";
+      if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = "";
+    } else {
+      elAppOverlayView.classList.remove("spotify-active");
+      if (elOverlayAppTitle) elOverlayAppTitle.innerHTML = `<i class="${appDef.icon}"></i> ${appDef.name}`;
+      if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = `Full Screen View`;
+    }
 
     elAppOverlayView.classList.remove("hidden");
     if (state.latestData) {
@@ -505,6 +655,7 @@
   function closeOverlayApp() {
     state.activeOverlayApp = null;
     elAppOverlayView.classList.add("hidden");
+    elAppOverlayView.classList.remove("spotify-active");
   }
 
   // Settings Overlay Management
@@ -560,7 +711,10 @@
       const pct = Math.min(100, (progressMs / durationMs) * 100);
 
       const artHTML = albumArt ?
-        `<div class="fs-spotify-art-wrapper"><img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" alt="Album Art" /></div>` :
+        `<div class="fs-spotify-art-wrapper">
+          <img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" alt="Album Art" />
+          <div class="art-sweep-flash"></div>
+        </div>` :
         `<div class="fs-spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
 
       html = `
@@ -572,12 +726,12 @@
               <h2 class="fs-spotify-artist">${escapeHTML(artist)}</h2>
             </div>
             <div class="fs-spotify-scrub-wrap">
-              <div class="fs-scrub-bar" id="fsScrubBar">
-                <div class="fs-scrub-fill" style="width: ${pct}%"></div>
+              <div class="fs-spotify-progress">
+                <div class="fs-spotify-progress-fill" id="fs-spotify-progress"></div>
               </div>
-              <div class="fs-scrub-times">
-                <span>${formatMs(progressMs)}</span>
-                <span>${formatMs(durationMs)}</span>
+              <div class="fs-spotify-time-row">
+                <span id="fs-spotify-time-current">0:00</span>
+                <span id="fs-spotify-time-duration">0:00</span>
               </div>
             </div>
             <div class="fs-spotify-controls">
@@ -592,13 +746,12 @@
       `;
     } else if (appId === "timer") {
       const tm = data.widgets.timer || {};
-      const timeText = tm.time_text || "05:00";
       const running = tm.running;
 
       html = `
         <div class="fs-timer-container">
-          <div class="fs-timer-digits">${timeText}</div>
-          <div class="fs-spotify-controls">
+          <div class="fs-timer-display" id="fs-timer-text">00:00</div>
+          <div class="fs-timer-actions">
             <button class="touch-btn btn-primary" id="fsTimerToggle" style="font-size:1.4rem; padding:1rem 2.5rem;">
               <i class="fa-solid ${running ? 'fa-pause' : 'fa-play'}"></i> ${running ? 'Pause' : 'Start'}
             </button>
@@ -770,6 +923,27 @@
     } else if (appId === "motion_status") {
       const btnSim = document.getElementById("fsSimulateMotion");
       if (btnSim) btnSim.addEventListener("click", () => sendAction("simulate_motion"));
+    }
+
+    // Direct DOM updates for rapidly changing values in full screen
+    const fsSpProg = document.getElementById("fs-spotify-progress");
+    if (fsSpProg) {
+      const sp = data.apps.spotify || data.widgets.spotify || {};
+      const pct = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
+      fsSpProg.style.width = `${pct}%`;
+      
+      const elCur = document.getElementById("fs-spotify-time-current");
+      if (elCur) elCur.innerText = formatMs(sp.progress_ms || 0);
+      const elDur = document.getElementById("fs-spotify-time-duration");
+      if (elDur) elDur.innerText = formatMs(sp.duration_ms || 0);
+    }
+
+    const fsTmText = document.getElementById("fs-timer-text");
+    if (fsTmText) {
+      const tm = data.widgets.timer || {};
+      if (fsTmText.innerText !== (tm.time_text || "05:00")) {
+        fsTmText.innerText = tm.time_text || "05:00";
+      }
     }
   }
 

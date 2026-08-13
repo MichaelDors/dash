@@ -12,6 +12,7 @@
   --accent-cyan: #00f2fe;
   --accent-blue: #38bdf8;
   --accent-green: #1db954;
+  --spotify-accent: #00f2fe;
   --accent-purple: #a855f7;
   --accent-amber: #f59e0b;
   --accent-red: #ef4444;
@@ -154,22 +155,22 @@ html, body {
   outline: none;
 }
 
-.touch-btn::after {
+.touch-btn::after, .mini-ctrl-btn::after {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 6rem;
+  border-radius: inherit;
   background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), transparent);
   pointer-events: none;
   mix-blend-mode: screen;
   z-index: 1;
 }
 
-.touch-btn::before {
+.touch-btn::before, .mini-ctrl-btn::before {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 6rem;
+  border-radius: inherit;
   pointer-events: none;
   z-index: 1;
   box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.3);
@@ -189,6 +190,14 @@ html, body {
   color: #000;
   font-weight: 700;
   border: 1px solid var(--accent-cyan);
+}
+
+.btn-primary::before {
+  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.6), inset 0 0 18px rgba(255, 255, 255, 0.4);
+}
+
+.btn-primary::after {
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.2), transparent);
 }
 
 .btn-primary:hover {
@@ -470,21 +479,42 @@ html, body {
 }
 
 .spotify-art-wrapper::after {
-  content: '';
+  content: "";
   position: absolute;
-  top: 0;
-  left: -150%;
-  width: 150%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  transform: skewX(-25deg);
-  animation: sheen 4s infinite;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.1), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
 }
 
-@keyframes sheen {
-  0% { left: -150%; }
-  20% { left: 150%; }
-  100% { left: 150%; }
+.spotify-art-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.2);
+}
+
+.art-sweep-flash {
+  position: absolute;
+  top: 0; left: -150%;
+  width: 150%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: skewX(-25deg);
+  pointer-events: none;
+  z-index: 2;
+  animation: sweep-flash 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes sweep-flash {
+  0% { left: -150%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: 150%; opacity: 0; }
 }
 
 .spotify-art-thumb {
@@ -504,7 +534,8 @@ html, body {
   align-items: center;
   justify-content: center;
   font-size: 2.2rem;
-  color: var(--accent-green);
+  color: var(--spotify-accent);
+  transition: color 0.8s ease;
   flex-shrink: 0;
 }
 
@@ -528,7 +559,8 @@ html, body {
 .spotify-artist-name {
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--accent-green);
+  color: var(--spotify-accent);
+  transition: color 0.8s ease;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -544,7 +576,8 @@ html, body {
 
 .spotify-progress-fill {
   height: 100%;
-  background: var(--accent-green);
+  background: var(--spotify-accent);
+  transition: background-color 0.8s ease;
   width: 0%;
 }
 
@@ -567,6 +600,7 @@ html, body {
   justify-content: center;
   font-size: 1rem;
   cursor: pointer;
+  position: relative;
   transition: all var(--transition-fast);
 }
 
@@ -578,7 +612,8 @@ html, body {
 .mini-ctrl-btn.btn-play-main {
   width: 50px;
   height: 50px;
-  background: var(--accent-green);
+  background: var(--spotify-accent);
+  transition: background-color 0.8s ease;
   color: #000;
   border: none;
   font-size: 1.15rem;
@@ -703,14 +738,25 @@ html, body {
   overflow-y: auto;
 }
 
+.app-overlay-view.spotify-active .overlay-header {
+  border-bottom: none;
+}
+
+.app-overlay-view.spotify-active .overlay-title-group {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Full Screen Spotify App Layout */
 .fs-spotify-container {
   display: flex;
   width: 100%;
-  max-width: 1500px;
+  max-width: 100%;
   height: 100%;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: flex-start;
   gap: 3.5rem;
+  padding: 0 0 2.5rem 2.5rem;
 }
 
 .fs-spotify-art-wrapper {
@@ -725,21 +771,24 @@ html, body {
 }
 
 .fs-spotify-art-wrapper::after {
-  content: '';
+  content: "";
   position: absolute;
-  top: 0;
-  left: -150%;
-  width: 150%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
-  transform: skewX(-25deg);
-  animation: sheen-large 5s infinite;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.08), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
 }
 
-@keyframes sheen-large {
-  0% { left: -150%; }
-  20% { left: 150%; }
-  100% { left: 150%; }
+.fs-spotify-art-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.2);
 }
 
 .fs-spotify-art-large {
@@ -759,7 +808,8 @@ html, body {
   align-items: center;
   justify-content: center;
   font-size: 6rem;
-  color: var(--accent-green);
+  color: var(--spotify-accent);
+  transition: color 0.8s ease;
   flex-shrink: 0;
 }
 
@@ -768,7 +818,8 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  justify-content: center;
+  justify-content: flex-end;
+  max-width: 800px;
 }
 
 .fs-spotify-title {
@@ -781,7 +832,8 @@ html, body {
 .fs-spotify-artist {
   font-size: clamp(1.3rem, 2vw, 1.8rem);
   font-weight: 600;
-  color: var(--accent-green);
+  color: var(--spotify-accent);
+  transition: color 0.8s ease;
   margin-top: 0.3rem;
 }
 
@@ -791,7 +843,7 @@ html, body {
   gap: 0.5rem;
 }
 
-.fs-scrub-bar {
+.fs-scrub-bar, .fs-spotify-progress {
   width: 100%;
   height: 12px;
   background: #181d2a;
@@ -801,9 +853,10 @@ html, body {
   overflow: hidden;
 }
 
-.fs-scrub-fill {
+.fs-scrub-fill, .fs-spotify-progress-fill {
   height: 100%;
-  background: var(--accent-green);
+  background: var(--spotify-accent);
+  transition: background-color 0.8s ease;
   width: 0%;
 }
 
@@ -845,7 +898,8 @@ html, body {
 .fs-ctrl-btn.fs-play-btn {
   width: 84px;
   height: 84px;
-  background: var(--accent-green);
+  background: var(--spotify-accent);
+  transition: background-color 0.8s ease;
   color: #000;
   border: none;
   font-size: 2.2rem;
