@@ -1428,7 +1428,7 @@ class SpotifyApp(App):
             self.progress_ms = target
             self.last_fetch_time = now
 
-        if self.is_playing and self._scrub_target is None and now - self.last_fetch_time < 2.0:
+        if self.is_playing and self._scrub_target is None and self.duration_ms > 0:
             self.progress_ms = min(self.duration_ms, self.progress_ms + int(dt * 1000))
 
     def update_background(self, now: float, dt: float) -> None:
