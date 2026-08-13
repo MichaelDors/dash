@@ -1,22 +1,27 @@
 (function() {
   "use strict";
 
-  // Available apps definition
+  // Available apps definition using Font Awesome Icon Classes
   const AVAILABLE_APPS = [
-    { id: "spotify", name: "Spotify Player", icon: "🎵", desc: "Playback & Track Controls" },
-    { id: "weather", name: "Weather Forecast", icon: "🌤", desc: "Local Temp & Conditions" },
-    { id: "timer", name: "Countdown Timer", icon: "⏱", desc: "Timer & Alarm Controls" },
-    { id: "click_counter", name: "Tally Counter", icon: "🔢", desc: "Touch Click Counter" },
-    { id: "photo", name: "Photo Frame", icon: "🖼", desc: "Image Display & Upload" },
-    { id: "motion_status", name: "System Status", icon: "⚙️", desc: "Motion & System Diagnostics" }
+    { id: "spotify", name: "Spotify Player", icon: "fa-brands fa-spotify", desc: "Playback & Album Art" },
+    { id: "weather", name: "Weather Forecast", icon: "fa-solid fa-cloud-sun", desc: "Local Temp & Forecast" },
+    { id: "timer", name: "Countdown Timer", icon: "fa-solid fa-stopwatch", desc: "Timer & Alarm Controls" },
+    { id: "click_counter", name: "Tally Counter", icon: "fa-solid fa-calculator", desc: "Touch Click Counter" },
+    { id: "photo", name: "Photo Frame", icon: "fa-solid fa-image", desc: "Image Display & Upload" },
+    { id: "motion_status", name: "System Status", icon: "fa-solid fa-sliders", desc: "Motion & System Diagnostics" }
   ];
 
   let state = {
     slots: ["spotify", "weather"],
     activeOverlayApp: null,
+    settingsOpen: false,
     latestData: null,
     pickerSelected: ["spotify", "weather"]
   };
+
+  // Long press timer ref
+  let longPressTimer = null;
+  let isLongPress = false;
 
   // DOM Elements
   const elAppGrid = document.getElementById("dashboardGrid");
@@ -26,12 +31,24 @@
   const elOverlayAppTitle = document.getElementById("overlayAppTitle");
   const elOverlayAppSubtitle = document.getElementById("overlayAppSubtitle");
   const elBtnBackToDash = document.getElementById("btnBackToDash");
-  
-  // Status badges
-  const elBadgeDisplay = document.getElementById("badgeDisplay");
-  const elBadgeMotion = document.getElementById("badgeMotion");
-  const elBadgeSpotify = document.getElementById("badgeSpotify");
-  const elBtnManageWidgets = document.getElementById("btnManageWidgets");
+
+  // Settings Overlay Elements
+  const elSettingsOverlayView = document.getElementById("settingsOverlayView");
+  const elBtnOpenSettings = document.getElementById("btnOpenSettings");
+  const elBtnCloseSettings = document.getElementById("btnCloseSettings");
+
+  // Settings Metrics & Actions
+  const elCfgDisplayState = document.getElementById("cfgDisplayState");
+  const elCfgMotionState = document.getElementById("cfgMotionState");
+  const elCfgIpAddress = document.getElementById("cfgIpAddress");
+  const elCfgSoftwareVersion = document.getElementById("cfgSoftwareVersion");
+  const elCfgSpotifyStatus = document.getElementById("cfgSpotifyStatus");
+  const elBtnSimulateMotion = document.getElementById("btnSimulateMotion");
+  const elBtnUpdateSoftware = document.getElementById("btnUpdateSoftware");
+  const elBtnRestartDevice = document.getElementById("btnRestartDevice");
+  const elBtnShutdownDevice = document.getElementById("btnShutdownDevice");
+  const elCfgSpotifyForm = document.getElementById("cfgSpotifyForm");
+  const elCfgWeatherForm = document.getElementById("cfgWeatherForm");
 
   // Hero Time elements
   const elHeroDay = document.getElementById("heroDay");
@@ -56,18 +73,72 @@
 
   // Setup Event Listeners
   function setupEventListeners() {
-    // Back from full screen app
+    // Back from full screen app overlay
     elBtnBackToDash.addEventListener("click", () => {
       closeOverlayApp();
     });
 
-    // Time hero card tap -> opens Time/System or Weather overlay if clicked
-    document.getElementById("cardTime").addEventListener("click", () => {
-      openOverlayApp("motion_status");
-    });
+    // Settings overlay triggers
+    elBtnOpenSettings.addEventListener("click", openSettingsOverlay);
+    elBtnCloseSettings.addEventListener("click", closeSettingsOverlay);
+
+    // Settings Form & Control Listeners
+    if (elBtnSimulateMotion) {
+      elBtnSimulateMotion.addEventListener("click", () => sendAction("simulate_motion"));
+    }
+    if (elBtnUpdateSoftware) {
+      elBtnUpdateSoftware.addEventListener("click", () => sendAction("update_software"));
+    }
+    if (elBtnRestartDevice) {
+      elBtnRestartDevice.addEventListener("click", () => sendAction("restart"));
+    }
+    if (elBtnShutdownDevice) {
+      elBtnShutdownDevice.addEventListener("click", () => sendAction("shutdown"));
+    }
+
+    if (elCfgSpotifyForm) {
+      elCfgSpotifyForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const cid = document.getElementById("cfgSpotifyClientId").value.trim();
+        const csec = document.getElementById("cfgSpotifyClientSecret").value.trim();
+        const ruri = document.getElementById("cfgSpotifyRedirectUri").value.trim();
+        if (!cid || !csec) return;
+        try {
+          const res = await fetch("/api/spotify/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ client_id: cid, client_secret: csec, redirect_uri: ruri })
+          });
+          const data = await res.json();
+          if (data.auth_url) {
+            window.location.href = data.auth_url;
+          }
+        } catch (err) {
+          alert("Failed to connect Spotify: " + err);
+        }
+      });
+    }
+
+    if (elCfgWeatherForm) {
+      elCfgWeatherForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const loc = document.getElementById("cfgWeatherLocation").value.trim();
+        if (!loc) return;
+        try {
+          await fetch("/api/weather/location", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `location=${encodeURIComponent(loc)}`
+          });
+          alert("Weather location updated!");
+          fetchState();
+        } catch (err) {
+          alert("Failed to update weather location: " + err);
+        }
+      });
+    }
 
     // Modal triggers
-    elBtnManageWidgets.addEventListener("click", openWidgetModal);
     elBtnCloseModal.addEventListener("click", closeWidgetModal);
     elWidgetModal.addEventListener("click", (e) => {
       if (e.target === elWidgetModal) closeWidgetModal();
@@ -132,25 +203,7 @@
     const data = state.latestData;
     if (!data) return;
 
-    // Update Status Cluster Badges
-    if (elBadgeDisplay) {
-      const mode = (data.display_mode || "on").toUpperCase();
-      elBadgeDisplay.textContent = `DISPLAY ${mode}`;
-    }
-
-    if (elBadgeMotion && data.motion) {
-      const isMotion = data.motion.motion_detected;
-      elBadgeMotion.textContent = isMotion ? "MOTION DETECTED" : "MOTION IDLE";
-      elBadgeMotion.className = isMotion ? "status-badge badge-success" : "status-badge badge-soft";
-    }
-
-    if (elBadgeSpotify && data.spotify_status) {
-      const auth = data.spotify_status.authenticated;
-      elBadgeSpotify.textContent = auth ? "SPOTIFY CONNECTED" : "SPOTIFY OFF";
-      elBadgeSpotify.className = auth ? "status-badge badge-success" : "status-badge badge-soft";
-    }
-
-    // Render Persistent Time Hero Card
+    // Update Persistent Time Hero Card
     updateHeroTime(data.widgets.time, data.widgets.weather);
 
     // Update Dashboard Grid Slots
@@ -160,16 +213,27 @@
     if (state.activeOverlayApp) {
       renderOverlayAppContent(state.activeOverlayApp, data);
     }
+
+    // If Settings overlay is open, update metrics
+    if (state.settingsOpen) {
+      updateSettingsMetrics(data);
+    }
   }
 
-  // Hero Time update
+  // Hero Time update with Date Bug Fix!
   function updateHeroTime(timeWidget, weatherWidget) {
     const now = timeWidget || {};
     const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
     const d = new Date();
 
-    if (elHeroDay) elHeroDay.textContent = now.day ? days[d.getDay()] : days[d.getDay()];
-    if (elHeroDate) elHeroDate.textContent = now.month ? `${now.month} ${now.date}, ${now.year}` : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    const dayName = now.day_name || days[d.getDay()];
+    const monthStr = now.month || months[d.getMonth()];
+    const dayNum = now.day || d.getDate();
+    const yearNum = now.year || d.getFullYear();
+
+    if (elHeroDay) elHeroDay.textContent = dayName;
+    if (elHeroDate) elHeroDate.textContent = `${monthStr} ${dayNum}, ${yearNum}`;
     if (elHeroTime) elHeroTime.textContent = now.time_main || d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
     if (elHeroSeconds) elHeroSeconds.textContent = `:${now.seconds || String(d.getSeconds()).padStart(2, '0')}`;
 
@@ -198,17 +262,11 @@
 
     elSlotsContainer.innerHTML = html;
 
-    // Attach click handlers to cards and inner buttons
+    // Attach Long Press & Click handlers to cards
     activeSlots.slice(0, 3).forEach((appId) => {
       const cardEl = document.getElementById(`card_${appId}`);
       if (cardEl) {
-        cardEl.addEventListener("click", (e) => {
-          // If tap was on a control button, don't open full screen overlay
-          if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input")) {
-            return;
-          }
-          openOverlayApp(appId);
-        });
+        setupCardTouchGestures(cardEl, appId);
       }
     });
 
@@ -216,31 +274,86 @@
     attachSlotActionListeners();
   }
 
+  // Gesture Handler: Long Press (>600ms) opens Widget Modal, Short Tap opens App
+  function setupCardTouchGestures(cardEl, appId) {
+    const startPress = (e) => {
+      // Don't trigger long press if user tapped a control button inside card
+      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input")) {
+        return;
+      }
+      isLongPress = false;
+      cardEl.classList.add("holding");
+      longPressTimer = setTimeout(() => {
+        isLongPress = true;
+        cardEl.classList.remove("holding");
+        if (navigator.vibrate) navigator.vibrate(40);
+        openWidgetModal();
+      }, 600);
+    };
+
+    const cancelPress = () => {
+      cardEl.classList.remove("holding");
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    const handleTap = (e) => {
+      cancelPress();
+      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input")) {
+        return;
+      }
+      if (!isLongPress) {
+        openOverlayApp(appId);
+      }
+      isLongPress = false;
+    };
+
+    cardEl.addEventListener("touchstart", startPress, { passive: true });
+    cardEl.addEventListener("touchend", handleTap);
+    cardEl.addEventListener("touchcancel", cancelPress);
+
+    cardEl.addEventListener("mousedown", startPress);
+    cardEl.addEventListener("mouseup", handleTap);
+    cardEl.addEventListener("mouseleave", cancelPress);
+  }
+
   // Create Card HTML for Dashboard Grid
   function createWidgetCardHTML(appId, data) {
-    const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "📱" };
+    const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
     let bodyHTML = "";
 
     if (appId === "spotify") {
       const sp = data.apps.spotify || data.widgets.spotify || {};
       const track = sp.track_name || "No Track Playing";
-      const artist = sp.artist_name || "Connect Spotify";
+      const artist = sp.artist_name || "Connect Spotify in Settings";
       const isPlaying = sp.is_playing;
+      const albumArt = sp.album_art_url;
       const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
+
+      const artHTML = albumArt ?
+        `<img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" />` :
+        `<div class="spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
 
       bodyHTML = `
         <div class="spotify-card-content">
-          <div class="spotify-track-info">
-            <h3 class="spotify-track-title">${escapeHTML(track)}</h3>
-            <p class="spotify-artist-name">${escapeHTML(artist)}</p>
-          </div>
-          <div class="spotify-progress-bar-wrap">
-            <div class="spotify-progress-fill" style="width: ${progress}%"></div>
-          </div>
-          <div class="spotify-mini-controls">
-            <button class="mini-ctrl-btn" data-act="spotify_prev">⏮</button>
-            <button class="mini-ctrl-btn btn-play-main" data-act="spotify_toggle">${isPlaying ? '⏸' : '▶'}</button>
-            <button class="mini-ctrl-btn" data-act="spotify_next">⏭</button>
+          ${artHTML}
+          <div class="spotify-info-panel">
+            <div>
+              <h3 class="spotify-track-title">${escapeHTML(track)}</h3>
+              <p class="spotify-artist-name">${escapeHTML(artist)}</p>
+            </div>
+            <div class="spotify-progress-bar-wrap">
+              <div class="spotify-progress-fill" style="width: ${progress}%"></div>
+            </div>
+            <div class="spotify-mini-controls">
+              <button class="mini-ctrl-btn" data-act="spotify_prev"><i class="fa-solid fa-backward-step"></i></button>
+              <button class="mini-ctrl-btn btn-play-main" data-act="spotify_toggle">
+                <i class="fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+              </button>
+              <button class="mini-ctrl-btn" data-act="spotify_next"><i class="fa-solid fa-forward-step"></i></button>
+            </div>
           </div>
         </div>
       `;
@@ -252,7 +365,7 @@
 
       bodyHTML = `
         <div class="weather-card-content">
-          <span class="weather-location-label">📍 ${escapeHTML(location)}</span>
+          <span class="weather-location-label"><i class="fa-solid fa-location-dot"></i> ${escapeHTML(location)}</span>
           <span class="weather-temp-main">${temp}</span>
           <span class="weather-condition-label">${escapeHTML(condition)}</span>
         </div>
@@ -265,10 +378,12 @@
       bodyHTML = `
         <div class="timer-card-content">
           <div class="timer-digits-display">${timeText}</div>
-          <div class="timer-controls-row">
-            <button class="touch-btn" data-act="timer_sub_min">-1m</button>
-            <button class="touch-btn btn-primary" data-act="timer_toggle">${running ? 'Pause' : 'Start'}</button>
-            <button class="touch-btn" data-act="timer_add_min">+1m</button>
+          <div class="spotify-mini-controls">
+            <button class="mini-ctrl-btn" data-act="timer_sub_min">-1m</button>
+            <button class="mini-ctrl-btn btn-play-main" data-act="timer_toggle" style="background:var(--accent-purple); color:#fff;">
+              <i class="fa-solid ${running ? 'fa-pause' : 'fa-play'}"></i>
+            </button>
+            <button class="mini-ctrl-btn" data-act="timer_add_min">+1m</button>
           </div>
         </div>
       `;
@@ -279,10 +394,10 @@
       bodyHTML = `
         <div class="counter-card-content">
           <div class="counter-digits-display">${count}</div>
-          <div class="timer-controls-row">
-            <button class="touch-btn" data-act="counter_dec">-1</button>
-            <button class="touch-btn btn-primary" data-act="counter_inc">+1 Tap</button>
-            <button class="touch-btn" data-act="counter_reset">Reset</button>
+          <div class="spotify-mini-controls">
+            <button class="mini-ctrl-btn" data-act="counter_dec">-1</button>
+            <button class="mini-ctrl-btn btn-play-main" data-act="counter_inc" style="background:var(--accent-cyan); color:#000;">+1</button>
+            <button class="mini-ctrl-btn" data-act="counter_reset"><i class="fa-solid fa-rotate-left"></i></button>
           </div>
         </div>
       `;
@@ -290,14 +405,15 @@
       const ph = data.widgets.photo || {};
       if (ph.has_image && ph.image_base64) {
         bodyHTML = `
-          <div class="photo-card-content">
-            <img src="data:image/png;base64,${ph.image_base64}" class="photo-preview-img" alt="Photo" />
+          <div class="photo-card-content" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+            <img src="data:image/png;base64,${ph.image_base64}" style="max-width:100%; max-height:100%; object-fit:cover; border-radius:12px;" alt="Photo" />
           </div>
         `;
       } else {
         bodyHTML = `
           <div class="photo-card-content" style="color:var(--text-muted); text-align:center;">
-            <span>📷 No Photo Uploaded</span>
+            <i class="fa-solid fa-image" style="font-size:2.5rem; color:var(--accent-cyan);"></i>
+            <p style="margin-top:0.5rem;">No Photo Uploaded</p>
           </div>
         `;
       }
@@ -305,9 +421,9 @@
       const m = data.motion || {};
       bodyHTML = `
         <div class="weather-card-content">
-          <span class="weather-location-label">Display: ${(data.display_mode || 'ON').toUpperCase()}</span>
+          <span class="weather-location-label">Display Mode: ${(data.display_mode || 'ON').toUpperCase()}</span>
           <span class="weather-temp-main" style="font-size:2.2rem; color:var(--accent-cyan);">${m.motion_detected ? 'ACTIVE' : 'IDLE'}</span>
-          <button class="touch-btn" data-act="simulate_motion" style="margin-top:0.5rem;">Simulate Motion</button>
+          <button class="touch-btn" data-act="simulate_motion" style="margin-top:0.5rem;"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
         </div>
       `;
     }
@@ -317,10 +433,10 @@
         <div class="card-glow"></div>
         <header class="card-header">
           <div class="card-title-group">
-            <span class="card-icon">${appDef.icon}</span>
+            <i class="${appDef.icon} card-icon"></i>
             <h2 class="card-title">${appDef.name}</h2>
           </div>
-          <span class="card-expand-hint">Expand ⤢</span>
+          <span class="card-expand-hint"><i class="fa-solid fa-expand"></i></span>
         </header>
         <div class="card-body">
           ${bodyHTML}
@@ -343,10 +459,10 @@
   // Full Screen Overlay Management
   function openOverlayApp(appId) {
     state.activeOverlayApp = appId;
-    const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "📱" };
+    const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
 
-    if (elOverlayAppTitle) elOverlayAppTitle.textContent = `${appDef.icon} ${appDef.name}`;
-    if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = `Full Screen Touch View`;
+    if (elOverlayAppTitle) elOverlayAppTitle.innerHTML = `<i class="${appDef.icon}"></i> ${appDef.name}`;
+    if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = `Full Screen View`;
 
     elAppOverlayView.classList.remove("hidden");
     if (state.latestData) {
@@ -359,6 +475,44 @@
     elAppOverlayView.classList.add("hidden");
   }
 
+  // Settings Overlay Management
+  function openSettingsOverlay() {
+    state.settingsOpen = true;
+    elSettingsOverlayView.classList.remove("hidden");
+    if (state.latestData) {
+      updateSettingsMetrics(state.latestData);
+    }
+  }
+
+  function closeSettingsOverlay() {
+    state.settingsOpen = false;
+    elSettingsOverlayView.classList.add("hidden");
+  }
+
+  function updateSettingsMetrics(data) {
+    if (elCfgDisplayState) elCfgDisplayState.textContent = (data.display_mode || 'on').toUpperCase();
+    if (elCfgMotionState && data.motion) {
+      elCfgMotionState.textContent = data.motion.motion_detected ? 'ACTIVE' : 'IDLE';
+    }
+    if (elCfgIpAddress) {
+      elCfgIpAddress.textContent = window.location.hostname || "127.0.0.1";
+    }
+    if (elCfgSpotifyStatus && data.spotify_status) {
+      const auth = data.spotify_status.authenticated;
+      const conf = data.spotify_status.configured;
+      if (auth) {
+        elCfgSpotifyStatus.textContent = "Status: Authenticated & Connected!";
+        elCfgSpotifyStatus.style.color = "var(--accent-green)";
+      } else if (conf) {
+        elCfgSpotifyStatus.textContent = "Status: Configured. Click Connect Spotify to authenticate.";
+        elCfgSpotifyStatus.style.color = "var(--accent-amber)";
+      } else {
+        elCfgSpotifyStatus.textContent = "Status: Not configured. Enter Client ID & Secret below.";
+        elCfgSpotifyStatus.style.color = "var(--text-muted)";
+      }
+    }
+  }
+
   // Render Full Screen App Content
   function renderOverlayAppContent(appId, data) {
     let html = "";
@@ -366,17 +520,20 @@
     if (appId === "spotify") {
       const sp = data.apps.spotify || data.widgets.spotify || {};
       const track = sp.track_name || "No Track Playing";
-      const artist = sp.artist_name || "Connect Spotify in web UI";
+      const artist = sp.artist_name || "Connect Spotify in Settings";
       const isPlaying = sp.is_playing;
+      const albumArt = sp.album_art_url;
       const progressMs = sp.progress_ms || 0;
       const durationMs = sp.duration_ms || 1;
       const pct = Math.min(100, (progressMs / durationMs) * 100);
 
+      const artHTML = albumArt ?
+        `<img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" alt="Album Art" />` :
+        `<div class="fs-spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
+
       html = `
         <div class="fs-spotify-container">
-          <div class="fs-spotify-art-box">
-            🎵
-          </div>
+          ${artHTML}
           <div class="fs-spotify-details">
             <div>
               <h1 class="fs-spotify-title">${escapeHTML(track)}</h1>
@@ -392,9 +549,11 @@
               </div>
             </div>
             <div class="fs-spotify-controls">
-              <button class="fs-ctrl-btn" id="fsSpotPrev">⏮</button>
-              <button class="fs-ctrl-btn fs-play-btn" id="fsSpotPlay">${isPlaying ? '⏸' : '▶'}</button>
-              <button class="fs-ctrl-btn" id="fsSpotNext">⏭</button>
+              <button class="fs-ctrl-btn" id="fsSpotPrev"><i class="fa-solid fa-backward-step"></i></button>
+              <button class="fs-ctrl-btn fs-play-btn" id="fsSpotPlay">
+                <i class="fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+              </button>
+              <button class="fs-ctrl-btn" id="fsSpotNext"><i class="fa-solid fa-forward-step"></i></button>
             </div>
           </div>
         </div>
@@ -407,11 +566,15 @@
       html = `
         <div class="fs-timer-container">
           <div class="fs-timer-digits">${timeText}</div>
-          <div class="fs-timer-btn-group">
-            <button class="touch-btn btn-primary" id="fsTimerToggle" style="font-size:1.4rem; padding:1rem 2.5rem;">${running ? 'Pause Timer' : 'Start Timer'}</button>
-            <button class="touch-btn" id="fsTimerReset" style="font-size:1.4rem; padding:1rem 2.5rem;">Reset</button>
+          <div class="fs-spotify-controls">
+            <button class="touch-btn btn-primary" id="fsTimerToggle" style="font-size:1.4rem; padding:1rem 2.5rem;">
+              <i class="fa-solid ${running ? 'fa-pause' : 'fa-play'}"></i> ${running ? 'Pause' : 'Start'}
+            </button>
+            <button class="touch-btn" id="fsTimerReset" style="font-size:1.4rem; padding:1rem 2.5rem;">
+              <i class="fa-solid fa-rotate-left"></i> Reset
+            </button>
           </div>
-          <div class="fs-timer-preset-group">
+          <div style="display:flex; gap:1rem; margin-top:1rem;">
             <button class="touch-btn" id="fsT1">-1 Min</button>
             <button class="touch-btn" id="fsT2">+1 Min</button>
             <button class="touch-btn" id="fsT5">5 Mins</button>
@@ -428,10 +591,10 @@
         <div class="fs-counter-container">
           <div class="fs-counter-digits">${count}</div>
           <div class="fs-counter-pads">
-            <button class="touch-btn counter-pad" id="fsCountMinus" style="background:rgba(239, 68, 68, 0.2); border-color:rgba(239, 68, 68, 0.4); color:#fca5a5;">-1</button>
-            <button class="touch-btn counter-pad" id="fsCountPlus" style="background:rgba(0, 242, 254, 0.2); border-color:var(--accent-cyan); color:#fff;">+1</button>
+            <button class="touch-btn counter-pad" id="fsCountMinus" style="background:#261414; border-color:#dc2626; color:#ef4444;">-1</button>
+            <button class="touch-btn counter-pad" id="fsCountPlus" style="background:#0c242c; border-color:var(--accent-cyan); color:#fff;">+1</button>
           </div>
-          <button class="touch-btn" id="fsCountReset" style="font-size:1.2rem; padding:0.8rem 2rem;">Reset Counter</button>
+          <button class="touch-btn" id="fsCountReset" style="font-size:1.2rem; padding:0.8rem 2rem;"><i class="fa-solid fa-rotate-left"></i> Reset Counter</button>
         </div>
       `;
     } else if (appId === "weather") {
@@ -442,14 +605,9 @@
 
       html = `
         <div class="fs-counter-container">
-          <span style="font-size:1.5rem; color:var(--text-muted);">📍 ${escapeHTML(location)}</span>
-          <div style="font-size:7rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-gold);">${temp}</div>
-          <span style="font-size:2rem; font-weight:600;">${escapeHTML(condition)}</span>
-          
-          <form id="fsWeatherForm" style="display:flex; gap:0.75rem; margin-top:2rem; width:100%; max-width:480px;">
-            <input type="text" id="fsWeatherInput" placeholder="Enter City or ZIP" style="flex:1; padding:0.8rem 1.2rem; border-radius:12px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:1.1rem;" required />
-            <button type="submit" class="touch-btn btn-primary" style="padding:0.8rem 1.5rem;">Update</button>
-          </form>
+          <span style="font-size:1.5rem; color:var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHTML(location)}</span>
+          <div style="font-size:7rem; font-weight:800; font-family:var(--font-mono); color:#ffffff;">${temp}</div>
+          <span style="font-size:2rem; font-weight:600; color:var(--accent-cyan);">${escapeHTML(condition)}</span>
         </div>
       `;
     } else if (appId === "photo") {
@@ -467,7 +625,7 @@
       } else {
         html = `
           <div style="display:flex; flex-direction:column; align-items:center; gap:2rem;">
-            <span style="font-size:4rem;">📷</span>
+            <i class="fa-solid fa-image" style="font-size:4rem; color:var(--accent-cyan);"></i>
             <h2>No Photo Uploaded</h2>
             <form id="fsPhotoForm" style="display:flex; gap:1rem; align-items:center;">
               <input type="file" id="fsPhotoInput" accept="image/*" style="color:#fff;" />
@@ -482,20 +640,20 @@
         <div style="display:flex; flex-direction:column; align-items:center; gap:2rem;">
           <h2 style="font-size:2rem;">System & Motion Diagnostics</h2>
           <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:1.5rem; width:100%; max-width:800px;">
-            <div style="background:rgba(255,255,255,0.05); padding:1.5rem; border-radius:16px; text-align:center;">
+            <div style="background:#0e121c; border:1px solid var(--border-card); padding:1.5rem; border-radius:16px; text-align:center;">
               <span style="color:var(--text-muted); font-size:0.9rem;">Display Mode</span>
               <h3 style="font-size:1.8rem; margin-top:0.5rem; color:var(--accent-cyan);">${(data.display_mode || 'ON').toUpperCase()}</h3>
             </div>
-            <div style="background:rgba(255,255,255,0.05); padding:1.5rem; border-radius:16px; text-align:center;">
+            <div style="background:#0e121c; border:1px solid var(--border-card); padding:1.5rem; border-radius:16px; text-align:center;">
               <span style="color:var(--text-muted); font-size:0.9rem;">Motion Sensor</span>
               <h3 style="font-size:1.8rem; margin-top:0.5rem; color:var(--accent-green);">${m.motion_detected ? 'ACTIVE' : 'IDLE'}</h3>
             </div>
-            <div style="background:rgba(255,255,255,0.05); padding:1.5rem; border-radius:16px; text-align:center;">
+            <div style="background:#0e121c; border:1px solid var(--border-card); padding:1.5rem; border-radius:16px; text-align:center;">
               <span style="color:var(--text-muted); font-size:0.9rem;">Idle Time</span>
               <h3 style="font-size:1.8rem; margin-top:0.5rem;">${m.idle || '00:00'}</h3>
             </div>
           </div>
-          <button class="touch-btn btn-primary" id="fsSimulateMotion" style="font-size:1.2rem; padding:1rem 2.5rem;">Simulate Motion Activity</button>
+          <button class="touch-btn btn-primary" id="fsSimulateMotion" style="font-size:1.2rem; padding:1rem 2.5rem;"><i class="fa-solid fa-person-walking"></i> Simulate Motion Activity</button>
         </div>
       `;
     }
@@ -552,25 +710,6 @@
       if (btnPlus) btnPlus.addEventListener("click", () => sendAction("counter_inc"));
       if (btnMinus) btnMinus.addEventListener("click", () => sendAction("counter_dec"));
       if (btnReset) btnReset.addEventListener("click", () => sendAction("counter_reset"));
-    } else if (appId === "weather") {
-      const form = document.getElementById("fsWeatherForm");
-      if (form) {
-        form.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const input = document.getElementById("fsWeatherInput");
-          if (!input || !input.value) return;
-          try {
-            await fetch("/api/weather/location", {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: `location=${encodeURIComponent(input.value)}`
-            });
-            fetchState();
-          } catch (err) {
-            console.error("Failed to update weather:", err);
-          }
-        });
-      }
     } else if (appId === "photo") {
       const form = document.getElementById("fsPhotoForm");
       if (form) {
@@ -619,7 +758,7 @@
       const isSelected = state.pickerSelected.includes(app.id);
       html += `
         <div class="picker-item ${isSelected ? 'selected' : ''}" data-picker-id="${app.id}">
-          <span class="picker-item-icon">${app.icon}</span>
+          <i class="${app.icon} picker-item-icon"></i>
           <div class="picker-item-info">
             <h4>${app.name}</h4>
             <p>${app.desc}</p>
@@ -649,7 +788,7 @@
 
   function updateSlotIndicator() {
     if (elSlotCountIndicator) {
-      elSlotCountIndicator.textContent = `${state.pickerSelected.length} / 3 apps selected`;
+      elSlotCountIndicator.textContent = `${state.pickerSelected.length} / 3 selected`;
     }
   }
 

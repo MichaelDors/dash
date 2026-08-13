@@ -385,8 +385,11 @@ class TimeWidget(Widget):
             "type": "time",
             "time_main": f"{hour_12}:{now.minute:02d}",
             "seconds": f"{now.second:02d}",
+            "day_name": now.strftime("%A").upper(),
             "day": now.day,
             "month": now.strftime("%b").upper(),
+            "year": now.year,
+            "full_date": now.strftime("%b %d, %Y").upper(),
         }
 
 
@@ -1355,9 +1358,15 @@ class SpotifyApp(App):
                         self.track_name = item.get("name", "")
                         self.artist_name = ", ".join(a.get("name", "") for a in item.get("artists", []))
                         self.duration_ms = int(item.get("duration_ms", 0) or 0)
+                        album_images = item.get("album", {}).get("images", []) if isinstance(item.get("album"), dict) else []
+                        if album_images and len(album_images) > 0:
+                            self.album_art_url = str(album_images[0].get("url", "") or "")
+                        else:
+                            self.album_art_url = ""
                     elif can_apply_playback_state:
                         self.track_name = ""
                         self.artist_name = ""
+                        self.album_art_url = ""
                         self.duration_ms = 0
                         self.progress_ms = 0
 
@@ -1475,6 +1484,7 @@ class SpotifyApp(App):
             "type": "spotify",
             "track_name": self.track_name,
             "artist_name": self.artist_name,
+            "album_art_url": getattr(self, "album_art_url", ""),
             "is_playing": self.is_playing,
             "progress_ms": progress_ms,
             "duration_ms": self.duration_ms,
