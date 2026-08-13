@@ -2179,6 +2179,13 @@ class DashboardController:
                 "display_mode": display_mode,
                 "motion": motion,
                 "spotify_status": spotify_status,
+                "settings": {
+                    "max_brightness": getattr(self.settings, "max_brightness", 100),
+                    "dim_brightness": getattr(self.settings, "dim_brightness", 10),
+                    "motion_sensor": getattr(self.settings, "motion_sensor", True),
+                    "dim_delay": getattr(self.settings, "dim_delay", 30),
+                    "off_delay": getattr(self.settings, "off_delay", 90),
+                },
                 "slots": self.wide_slots,
                 "widgets": widget_payloads,
                 "apps": app_payloads
@@ -2188,6 +2195,39 @@ class DashboardController:
         with self._lock:
             if action == "reload_web_interface" or action == "reload_page":
                 self._reload_web_requested = True
+                return True
+            if action == "set_max_brightness":
+                val = params.get("value")
+                if val is not None:
+                    self.settings.max_brightness = max(10, min(100, int(val)))
+                    self.save_widget_state()
+                    if self.motion_manager._display_set_brightness:
+                        self.motion_manager._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+                return True
+            if action == "set_dim_brightness":
+                val = params.get("value")
+                if val is not None:
+                    self.settings.dim_brightness = max(0, min(100, int(val)))
+                    self.save_widget_state()
+                return True
+            if action == "toggle_motion_sensor":
+                self.settings.motion_sensor = not getattr(self.settings, "motion_sensor", True)
+                self.save_widget_state()
+                return True
+            if action == "update_software":
+                self._execute_update_software(quiet=False)
+                return True
+            if action == "restart":
+                def do_restart():
+                    time.sleep(0.5)
+                    os.system("sudo reboot")
+                threading.Thread(target=do_restart, daemon=True).start()
+                return True
+            if action == "shutdown":
+                def do_shutdown():
+                    time.sleep(0.5)
+                    os.system("sudo shutdown -h now")
+                threading.Thread(target=do_shutdown, daemon=True).start()
                 return True
             if action == "spotify_toggle":
                 if self.spotify_app:
@@ -2819,7 +2859,7 @@ def _format_duration_ms(value_ms: Any) -> str:
     hours, minutes = divmod(minutes, 60)
     if hours > 0:
         return f"{hours:d}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes:02d}:{seconds:02d}"
+    return f"{minutes:d}:{seconds:02d}"
 
 
 def _render_oled_widget_html(state: Dict[str, Any]) -> str:

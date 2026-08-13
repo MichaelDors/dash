@@ -123,15 +123,19 @@
     </header>
 
     <section class="settings-page-grid">
-      <!-- Section 1: OLED & System Status -->
+      <!-- Section 1: System & Diagnostics Status -->
       <div class="settings-card">
         <div class="settings-card-header">
           <i class="fa-solid fa-microchip"></i>
-          <h3>OLED & Hardware Diagnostics</h3>
+          <h3>System & Version Info</h3>
         </div>
         <div class="settings-metrics-list">
           <div class="metric-row">
-            <span class="metric-label">OLED Display Mode:</span>
+            <span class="metric-label">Software Version:</span>
+            <span class="metric-value badge" id="cfgSoftwareVersion">v1.8.1</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Display State:</span>
             <span class="metric-value badge" id="cfgDisplayState">ON</span>
           </div>
           <div class="metric-row">
@@ -139,39 +143,60 @@
             <span class="metric-value badge" id="cfgMotionState">IDLE</span>
           </div>
           <div class="metric-row">
-            <span class="metric-label">Device IP Address:</span>
+            <span class="metric-label">Device IP:</span>
             <span class="metric-value badge ip-badge" id="cfgIpAddress">127.0.0.1</span>
           </div>
         </div>
       </div>
 
-      <!-- Section 2: Spotify Credentials & Status -->
+      <!-- Section 2: Display & Brightness Settings (OLED Parity) -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <i class="fa-brands fa-spotify"></i>
-          <h3>Spotify Integration Settings</h3>
+          <i class="fa-solid fa-sun"></i>
+          <h3>Display Brightness</h3>
         </div>
-        <p class="settings-status-text" id="cfgSpotifyStatus">Status: Checking...</p>
-        <form id="cfgSpotifyForm" class="settings-form-col">
-          <input type="text" id="cfgClientId" placeholder="Spotify Client ID" class="settings-input" />
-          <input type="password" id="cfgClientSecret" placeholder="Spotify Client Secret" class="settings-input" />
-          <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
-        </form>
+        <div class="settings-metrics-list">
+          <div class="form-group">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label for="cfgMaxBrightnessRange">Max Brightness:</label>
+              <span class="metric-value" id="cfgMaxBrightnessVal">100%</span>
+            </div>
+            <input type="range" id="cfgMaxBrightnessRange" min="10" max="100" step="5" value="100" class="settings-range-input" />
+          </div>
+          <div class="form-group" style="margin-top: 6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label for="cfgDimBrightnessRange">Dim Brightness:</label>
+              <span class="metric-value" id="cfgDimBrightnessVal">10%</span>
+            </div>
+            <input type="range" id="cfgDimBrightnessRange" min="0" max="100" step="5" value="10" class="settings-range-input" />
+          </div>
+        </div>
       </div>
 
-      <!-- Section 3: Weather Location Config -->
+      <!-- Section 3: Motion Sensor & Sleep Settings (OLED Parity) -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <i class="fa-solid fa-cloud-sun"></i>
-          <h3>Weather Location</h3>
+          <i class="fa-solid fa-person-walking"></i>
+          <h3>Motion & Sleep Config</h3>
         </div>
-        <form id="cfgWeatherForm" class="settings-form-col">
-          <input type="text" id="cfgWeatherLocation" placeholder="Enter City, State (e.g. San Francisco, CA)" class="settings-input" />
-          <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
-        </form>
+        <div class="settings-metrics-list">
+          <div class="metric-row">
+            <span class="metric-label">Sensor Function:</span>
+            <span class="metric-value badge" id="cfgMotionToggleStatus">ENABLED</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Dim Delay:</span>
+            <span class="metric-value" id="cfgDimDelay">30s</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Off Delay:</span>
+            <span class="metric-value" id="cfgOffDelay">90s</span>
+          </div>
+        </div>
+        <button class="touch-btn" id="btnToggleMotionSensor"><i class="fa-solid fa-power-off"></i> Toggle Motion Sensor</button>
       </div>
 
-      <!-- Section 4: Wi-Fi Network Controls -->
+      <!-- Section 4: Wi-Fi Network Settings -->
       <div class="settings-card">
         <div class="settings-card-header">
           <i class="fa-solid fa-wifi"></i>
@@ -191,16 +216,42 @@
           <button class="touch-btn" id="btnScanWifi"><i class="fa-solid fa-arrows-rotate"></i> Scan Networks</button>
           <a href="/wifi" target="_blank" class="touch-btn" style="text-decoration:none; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:6px;"><i class="fa-solid fa-qrcode"></i> QR Setup</a>
         </div>
-        <div id="cfgWifiList" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;"></div>
+        <div id="cfgWifiList" style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
       </div>
 
-      <!-- Section 5: System Actions -->
+      <!-- Section 5: Spotify Integration Credentials -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <i class="fa-solid fa-power-off"></i>
-          <h3>System Controls</h3>
+          <i class="fa-brands fa-spotify"></i>
+          <h3>Spotify Integration</h3>
         </div>
-        <div class="settings-actions-grid">
+        <p class="settings-status-text" id="cfgSpotifyStatus">Status: Checking...</p>
+        <form id="cfgSpotifyForm" class="settings-form-col">
+          <input type="text" id="cfgSpotifyClientId" placeholder="Spotify Client ID" class="settings-input" />
+          <input type="password" id="cfgSpotifyClientSecret" placeholder="Spotify Client Secret" class="settings-input" />
+          <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
+        </form>
+      </div>
+
+      <!-- Section 6: Weather Location Config -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-cloud-sun"></i>
+          <h3>Weather Location</h3>
+        </div>
+        <form id="cfgWeatherForm" class="settings-form-col">
+          <input type="text" id="cfgWeatherLocation" placeholder="City, State (e.g. San Francisco, CA)" class="settings-input" />
+          <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
+        </form>
+      </div>
+
+      <!-- Section 7: System Controls -->
+      <div class="settings-card" style="grid-column: span 3;">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-sliders"></i>
+          <h3>System Controls & Power</h3>
+        </div>
+        <div class="settings-actions-grid" style="grid-template-columns: repeat(5, 1fr);">
           <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload Page</button>
           <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
           <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update Software</button>
@@ -215,8 +266,8 @@
       <img src="/logo.png" alt="Nano Logo" class="lost-logo" />
     </div>
     <div class="lost-bottom-left">
-      <div class="spinner-ring"></div>
       <span class="lost-text">connection lost... searching</span>
+      <div class="spinner-ring"></div>
     </div>
   </div>
 

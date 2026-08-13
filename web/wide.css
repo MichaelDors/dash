@@ -1247,38 +1247,38 @@ html, body {
 
 .lost-top-left {
   position: absolute;
-  top: 1.25rem;
-  left: 1.75rem;
+  top: 2rem;
+  left: 2.25rem;
   margin: 0;
   padding: 0;
   line-height: 0;
 }
 
 .lost-logo {
-  width: 36px;
-  height: 36px;
+  width: 64px;
+  height: 64px;
   object-fit: contain;
-  filter: invert(1) drop-shadow(0 0 8px rgba(0, 242, 254, 0.5));
+  filter: invert(1);
   mix-blend-mode: screen;
   display: block;
 }
 
 .lost-bottom-left {
   position: absolute;
-  bottom: 1.25rem;
-  left: 1.75rem;
+  bottom: 2.25rem;
+  left: 2.25rem;
   margin: 0;
   padding: 0;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 1rem;
   line-height: 1;
 }
 
 .spinner-ring {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(0, 242, 254, 0.15);
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(0, 242, 254, 0.2);
   border-top-color: var(--accent-cyan);
   border-radius: 50%;
   animation: spinnerRotate 0.8s linear infinite;
@@ -1293,8 +1293,8 @@ html, body {
 
 .lost-text {
   font-family: var(--font-sans);
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #94a3b8;
-  letter-spacing: 0.03em;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  letter-spacing: 0.04em;
 }

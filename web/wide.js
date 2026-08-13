@@ -176,7 +176,7 @@
 
   function updateSpotifyAccentColor(bgImageUrl, colorExtractUrl) {
     if (!bgImageUrl) {
-      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
       document.documentElement.style.setProperty('--spotify-bg-image', 'none');
       return;
     }
@@ -190,10 +190,10 @@
       if (color) {
         document.documentElement.style.setProperty('--spotify-accent', color);
       } else {
-        document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+        document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
       }
     }).catch(() => {
-      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
     });
   }
 
@@ -630,7 +630,7 @@
     if (bgImage) {
       updateSpotifyAccentColor(bgImage, spData.album_art_url || bgImage);
     } else {
-      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
       document.documentElement.style.setProperty('--spotify-bg-image', 'none');
     }
 
@@ -1137,13 +1137,13 @@
 
     const elCurTime = document.getElementById("fs-spotify-time-current");
     if (elCurTime) {
-      const curText = sp.progress_text || formatMsToMinSec(progressMs);
+      const curText = formatMsToMinSec(progressMs);
       if (elCurTime.innerText !== curText) elCurTime.innerText = curText;
     }
 
     const elDurTime = document.getElementById("fs-spotify-time-duration");
     if (elDurTime) {
-      const durText = sp.duration_text || formatMsToMinSec(durationMs);
+      const durText = formatMsToMinSec(durationMs);
       if (elDurTime.innerText !== durText) elDurTime.innerText = durText;
     }
 
@@ -1387,9 +1387,9 @@
       fsSpProg.style.width = `${pct}%`;
 
       const elCur = document.getElementById("fs-spotify-time-current");
-      if (elCur) elCur.innerText = formatMs(sp.progress_ms || 0);
+      if (elCur) elCur.innerText = formatMsToMinSec(sp.progress_ms || 0);
       const elDur = document.getElementById("fs-spotify-time-duration");
-      if (elDur) elDur.innerText = formatMs(sp.duration_ms || 0);
+      if (elDur) elDur.innerText = formatMsToMinSec(sp.duration_ms || 0);
     }
 
     const fsTmText = document.getElementById("fs-timer-text");
@@ -1488,11 +1488,7 @@
   }
 
   function formatMs(ms) {
-    if (!ms || ms < 0) return "0:00";
-    const totalSec = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return formatMsToMinSec(ms);
   }
 
   // Start app on DOM ready
