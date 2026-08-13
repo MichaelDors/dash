@@ -63,6 +63,97 @@
 
   // Dynamic Color Extraction for Spotify Album Art (Fetch Blob Same-Origin Canvas)
   let currentAlbumArtUrl = null;
+  let currentSpotifyBackgroundUrl = null;
+  let spotifyBackgroundTransitionTimer = null;
+  let spotifyBgPreloadToken = 0;
+  const SPOTIFY_BACKGROUND_ZOOM_MS = 8200;
+
+  function toCssUrl(url) {
+    return `url("${String(url).replace(/["\\\n\r]/g, "")}")`;
+  }
+
+  function ensureSpotifyBackgroundStage() {
+    let stage = document.getElementById("spotifyBgStage");
+    if (stage || !elAppOverlayView) return stage;
+
+    stage = document.createElement("div");
+    stage.id = "spotifyBgStage";
+    stage.className = "spotify-bg-stage";
+    stage.setAttribute("aria-hidden", "true");
+    stage.innerHTML = `
+      <div class="spotify-bg-layer spotify-bg-layer-current"></div>
+      <div class="spotify-bg-layer spotify-bg-layer-next"></div>
+    `;
+    elAppOverlayView.prepend(stage);
+    return stage;
+  }
+
+  function updateSpotifyBackgroundImage(bgImageUrl) {
+    const root = document.documentElement;
+    const stage = ensureSpotifyBackgroundStage();
+
+    if (!bgImageUrl) {
+      currentSpotifyBackgroundUrl = null;
+      spotifyBgPreloadToken++;
+      root.style.setProperty('--spotify-bg-image-current', 'none');
+      root.style.setProperty('--spotify-bg-image-next', 'none');
+      root.style.setProperty('--spotify-bg-image', 'none');
+      if (stage) stage.classList.remove("is-transitioning");
+      if (spotifyBackgroundTransitionTimer) {
+        clearTimeout(spotifyBackgroundTransitionTimer);
+        spotifyBackgroundTransitionTimer = null;
+      }
+      return;
+    }
+
+    if (currentSpotifyBackgroundUrl === bgImageUrl) return;
+
+    const cssUrl = toCssUrl(bgImageUrl);
+    root.style.setProperty('--spotify-bg-image', cssUrl);
+
+    if (!currentSpotifyBackgroundUrl) {
+      currentSpotifyBackgroundUrl = bgImageUrl;
+      root.style.setProperty('--spotify-bg-image-current', cssUrl);
+      root.style.setProperty('--spotify-bg-image-next', cssUrl);
+      return;
+    }
+
+    currentSpotifyBackgroundUrl = bgImageUrl;
+    const thisToken = ++spotifyBgPreloadToken;
+
+    // Preload image before initiating transition to guarantee zero flicker
+    const img = new Image();
+    let handled = false;
+
+    const startTransition = () => {
+      if (handled || thisToken !== spotifyBgPreloadToken) return;
+      handled = true;
+
+      root.style.setProperty('--spotify-bg-image-next', cssUrl);
+      if (!stage) return;
+
+      if (spotifyBackgroundTransitionTimer) {
+        clearTimeout(spotifyBackgroundTransitionTimer);
+      }
+
+      stage.classList.remove("is-transitioning");
+      void stage.offsetWidth;
+      stage.classList.add("is-transitioning");
+
+      spotifyBackgroundTransitionTimer = setTimeout(() => {
+        if (thisToken !== spotifyBgPreloadToken) return;
+        root.style.setProperty('--spotify-bg-image-current', cssUrl);
+        stage.classList.remove("is-transitioning");
+        spotifyBackgroundTransitionTimer = null;
+      }, SPOTIFY_BACKGROUND_ZOOM_MS);
+    };
+
+    img.onload = startTransition;
+    img.onerror = startTransition;
+    img.src = bgImageUrl;
+    if (img.complete) startTransition();
+    setTimeout(startTransition, 500);
+  }
 
   function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -177,10 +268,10 @@
   function updateSpotifyAccentColor(bgImageUrl, colorExtractUrl) {
     if (!bgImageUrl) {
       document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
-      document.documentElement.style.setProperty('--spotify-bg-image', 'none');
+      updateSpotifyBackgroundImage(null);
       return;
     }
-    document.documentElement.style.setProperty('--spotify-bg-image', `url("${bgImageUrl}")`);
+    updateSpotifyBackgroundImage(bgImageUrl);
 
     const extractUrl = colorExtractUrl || bgImageUrl;
     if (extractUrl === currentAlbumArtUrl) return;
@@ -229,7 +320,7 @@
       // 2. Auto Close when playback stops if it was auto opened
       if (autoOpenedSpotifyOverlay && state.activeOverlayApp === "spotify") {
         autoOpenedSpotifyOverlay = false;
-        closeOverlayApp();
+        closeOverlayApp(false);
       }
     } else if (isPlaying) {
       wasSpotifyPlaying = true;
@@ -241,7 +332,7 @@
         state.spotifyIdleStartTime = now;
       } else if (now - state.spotifyIdleStartTime > 300000) { // 5 minutes
         autoOpenedSpotifyOverlay = false;
-        closeOverlayApp();
+        closeOverlayApp(false);
       }
     } else {
       state.spotifyIdleStartTime = null;
@@ -698,7 +789,7 @@
       updateSpotifyAccentColor(bgImage, spData.album_art_url || bgImage);
     } else {
       document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
-      document.documentElement.style.setProperty('--spotify-bg-image', 'none');
+      updateSpotifyBackgroundImage(null);
     }
 
     // Update Persistent Time Hero Card
@@ -1006,9 +1097,11 @@
     renderOverlayAppContent(appId, dataToRender);
   }
 
-  function closeOverlayApp() {
+  function closeOverlayApp(isUserAction = true) {
     if (state.activeOverlayApp === "spotify") {
-      lastUserClosedSpotifyTime = Date.now();
+      if (isUserAction) {
+        lastUserClosedSpotifyTime = Date.now();
+      }
       autoOpenedSpotifyOverlay = false;
     }
     state.activeOverlayApp = null;
