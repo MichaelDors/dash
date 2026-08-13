@@ -84,7 +84,8 @@ html, body {
   width: 36px;
   height: 36px;
   object-fit: contain;
-  filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.5));
+  filter: invert(1) drop-shadow(0 0 8px rgba(0, 242, 254, 0.5));
+  mix-blend-mode: screen;
 }
 
 .brand-info {
@@ -1222,15 +1223,14 @@ html, body {
 /* Connection Lost Minimalist Screen */
 .connection-lost-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100vw;
   height: 100vh;
   background: #000000;
-  z-index: 1000;
+  z-index: 99999;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.8s ease-in-out;
+  transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .connection-lost-overlay.visible {
@@ -1252,10 +1252,11 @@ html, body {
 }
 
 .lost-logo {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
-  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.4));
+  filter: invert(1) drop-shadow(0 0 8px rgba(0, 242, 254, 0.5));
+  mix-blend-mode: screen;
   display: block;
 }
 
@@ -1267,14 +1268,14 @@ html, body {
   padding: 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   line-height: 1;
 }
 
 .spinner-ring {
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(0, 242, 254, 0.2);
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 242, 254, 0.15);
   border-top-color: var(--accent-cyan);
   border-radius: 50%;
   animation: spinnerRotate 0.8s linear infinite;
@@ -1289,8 +1290,8 @@ html, body {
 
 .lost-text {
   font-family: var(--font-sans);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 500;
   color: #94a3b8;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
