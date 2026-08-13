@@ -897,55 +897,122 @@
     }
   }
 
-  // Render Full Screen App Content
-  function renderOverlayAppContent(appId, data) {
-    let html = "";
+  function formatMsToMinSec(ms) {
+    if (!ms || ms <= 0) return "0:00";
+    const totalSec = Math.floor(ms / 1000);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+  }
 
-    if (appId === "spotify") {
-      const sp = data.apps.spotify || data.widgets.spotify || {};
-      const track = sp.track_name || "No Track Playing";
-      const artist = sp.artist_name || "Connect Spotify in Settings";
-      const isPlaying = sp.is_playing;
-      const albumArt = sp.album_art_url;
-      const progressMs = sp.progress_ms || 0;
-      const durationMs = sp.duration_ms || 1;
-      const pct = Math.min(100, (progressMs / durationMs) * 100);
+  function updateFullScreenSpotifyUI(data) {
+    const sp = data.apps?.spotify || data.widgets?.spotify || {};
+    const track = sp.track_name || "No Track Playing";
+    const artist = sp.artist_name || "Connect Spotify in Settings";
+    const isPlaying = sp.is_playing;
+    const albumArt = sp.album_art_url || "";
+    const progressMs = sp.progress_ms || 0;
+    const durationMs = sp.duration_ms || 1;
+    const pct = Math.min(100, Math.max(0, (progressMs / durationMs) * 100));
 
-      const artHTML = albumArt ?
-        `<div class="fs-spotify-art-wrapper">
-          <img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" alt="Album Art" />
-          <div class="art-sweep-flash"></div>
-        </div>` :
-        `<div class="fs-spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
-
-      html = `
-        <div class="fs-spotify-container">
-          ${artHTML}
+    // Render static DOM structure once
+    const container = document.getElementById("fsSpotifyContainer");
+    if (!container) {
+      elOverlayContent.innerHTML = `
+        <div class="fs-spotify-container" id="fsSpotifyContainer">
+          <div class="fs-spotify-art-wrapper" id="fsSpotArtWrap">
+            <img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" id="fsSpotArtImg" alt="Album Art" />
+            <div class="art-sweep-flash" id="fsSpotSweep"></div>
+          </div>
           <div class="fs-spotify-details">
             <div>
-              <h1 class="fs-spotify-title">${escapeHTML(track)}</h1>
-              <h2 class="fs-spotify-artist">${escapeHTML(artist)}</h2>
+              <h1 class="fs-spotify-title" id="fsSpotTitle">${escapeHTML(track)}</h1>
+              <h2 class="fs-spotify-artist" id="fsSpotArtist">${escapeHTML(artist)}</h2>
             </div>
             <div class="fs-spotify-scrub-wrap">
               <div class="fs-spotify-progress" id="fsScrubBar" style="cursor: pointer;">
-                <div class="fs-spotify-progress-fill" id="fs-spotify-progress"></div>
+                <div class="fs-spotify-progress-fill" id="fs-spotify-progress" style="width:${pct}%;"></div>
               </div>
               <div class="fs-spotify-time-row">
-                <span id="fs-spotify-time-current">0:00</span>
-                <span id="fs-spotify-time-duration">0:00</span>
+                <span id="fs-spotify-time-current">${escapeHTML(sp.progress_text || formatMsToMinSec(progressMs))}</span>
+                <span id="fs-spotify-time-duration">${escapeHTML(sp.duration_text || formatMsToMinSec(durationMs))}</span>
               </div>
             </div>
             <div class="fs-spotify-controls">
               <button class="fs-ctrl-btn" id="fsSpotPrev"><i class="fa-solid fa-backward-step"></i></button>
               <button class="fs-ctrl-btn fs-play-btn" id="fsSpotPlay">
-                <i class="fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+                <i class="fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}" id="fsSpotPlayIcon"></i>
               </button>
               <button class="fs-ctrl-btn" id="fsSpotNext"><i class="fa-solid fa-forward-step"></i></button>
             </div>
           </div>
         </div>
       `;
-    } else if (appId === "timer") {
+      attachOverlayEventListeners("spotify", data);
+    }
+
+    // Direct DOM updates on every 250ms poll
+    const elTitle = document.getElementById("fsSpotTitle");
+    if (elTitle && elTitle.innerText !== track) elTitle.innerText = track;
+
+    const elArtist = document.getElementById("fsSpotArtist");
+    if (elArtist && elArtist.innerText !== artist) elArtist.innerText = artist;
+
+    const elArtImg = document.getElementById("fsSpotArtImg");
+    if (elArtImg) {
+      if (albumArt) {
+        if (elArtImg.src !== albumArt) {
+          elArtImg.src = albumArt;
+          elArtImg.style.display = "block";
+          const sweep = document.getElementById("fsSpotSweep");
+          if (sweep) {
+            sweep.classList.remove("flash-active");
+            void sweep.offsetWidth;
+            sweep.classList.add("flash-active");
+          }
+        }
+      } else {
+        elArtImg.style.display = "none";
+      }
+    }
+
+    const elProg = document.getElementById("fs-spotify-progress");
+    if (elProg) elProg.style.width = `${pct}%`;
+
+    const elCurTime = document.getElementById("fs-spotify-time-current");
+    if (elCurTime) {
+      const curText = sp.progress_text || formatMsToMinSec(progressMs);
+      if (elCurTime.innerText !== curText) elCurTime.innerText = curText;
+    }
+
+    const elDurTime = document.getElementById("fs-spotify-time-duration");
+    if (elDurTime) {
+      const durText = sp.duration_text || formatMsToMinSec(durationMs);
+      if (elDurTime.innerText !== durText) elDurTime.innerText = durText;
+    }
+
+    const elPlayIcon = document.getElementById("fsSpotPlayIcon");
+    if (elPlayIcon) {
+      const iconClass = `fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`;
+      if (elPlayIcon.className !== iconClass) elPlayIcon.className = iconClass;
+    }
+
+    // Live background image & accent color update
+    const bgImage = sp.artist_image_url || sp.album_art_url;
+    if (bgImage) {
+      updateSpotifyAccentColor(bgImage, sp.album_art_url || bgImage);
+    }
+  }
+
+  // Render Full Screen App Content
+  function renderOverlayAppContent(appId, data) {
+    if (appId === "spotify") {
+      updateFullScreenSpotifyUI(data);
+      return;
+    }
+
+    let html = "";
+    if (appId === "timer") {
       const tm = data.widgets.timer || {};
       const running = tm.running;
 
