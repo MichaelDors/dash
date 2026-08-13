@@ -365,7 +365,7 @@
       const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
 
       const artHTML = albumArt ?
-        `<img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" />` :
+        `<div class="spotify-art-wrapper"><img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" /></div>` :
         `<div class="spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
 
       bodyHTML = `
@@ -560,7 +560,7 @@
       const pct = Math.min(100, (progressMs / durationMs) * 100);
 
       const artHTML = albumArt ?
-        `<img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" alt="Album Art" />` :
+        `<div class="fs-spotify-art-wrapper"><img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" alt="Album Art" /></div>` :
         `<div class="fs-spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
 
       html = `

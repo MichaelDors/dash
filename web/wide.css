@@ -20,7 +20,7 @@
   --text-muted: #94a3b8;
   --text-dim: #64748b;
 
-  --font-sans: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   --radius-lg: 20px;
@@ -140,29 +140,64 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.6rem 1.25rem;
-  border-radius: var(--radius-md);
+  padding: 0.6rem 1.1rem;
+  border-radius: 6rem;
   font-family: var(--font-sans);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-main);
   background: #121622;
-  border: 1px solid var(--border-card);
+  border: none;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  position: relative;
+  transition: all 0.5s ease;
   outline: none;
 }
 
-.touch-btn:active {
-  transform: scale(0.95);
+.touch-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6rem;
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.touch-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6rem;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.3);
+}
+
+.touch-btn:hover {
   background: #1c2336;
+}
+
+.touch-btn:active {
+  transform: translateY(1px);
+  background: #161b26;
 }
 
 .btn-primary {
   background: var(--accent-cyan);
-  border: none;
   color: #000;
   font-weight: 700;
+  border: 1px solid var(--accent-cyan);
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--accent-cyan) 90%, white);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
 }
 
 .btn-blue {
@@ -207,6 +242,7 @@ html, body {
 
 .slots-container {
   display: flex;
+  flex-direction: column;
   flex: 1;
   gap: 1.25rem;
   height: 100%;
@@ -218,30 +254,30 @@ html, body {
 }
 
 .slots-1 .time-hero-card {
-  width: 42%;
+  width: 50%;
 }
 .slots-1 .slots-container {
-  width: 58%;
+  width: 50%;
 }
 .slots-1 .widget-card {
   flex: 1;
 }
 
 .slots-2 .time-hero-card {
-  width: 34%;
+  width: 45%;
 }
 .slots-2 .slots-container {
-  width: 66%;
+  width: 55%;
 }
 .slots-2 .widget-card {
   flex: 1;
 }
 
 .slots-3 .time-hero-card {
-  width: 28%;
+  width: 40%;
 }
 .slots-3 .slots-container {
-  width: 72%;
+  width: 60%;
 }
 .slots-3 .widget-card {
   flex: 1;
@@ -423,14 +459,39 @@ html, body {
   height: 100%;
 }
 
-.spotify-art-thumb {
+.spotify-art-wrapper {
+  position: relative;
   width: 100px;
   height: 100px;
   border-radius: var(--radius-md);
-  object-fit: cover;
-  background: #161b26;
+  overflow: hidden;
   border: 1px solid var(--border-card);
   flex-shrink: 0;
+}
+
+.spotify-art-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 150%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transform: skewX(-25deg);
+  animation: sheen 4s infinite;
+}
+
+@keyframes sheen {
+  0% { left: -150%; }
+  20% { left: 150%; }
+  100% { left: 150%; }
+}
+
+.spotify-art-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .spotify-art-placeholder {
@@ -652,14 +713,40 @@ html, body {
   gap: 3.5rem;
 }
 
-.fs-spotify-art-large {
+.fs-spotify-art-wrapper {
+  position: relative;
   width: 380px;
   height: 380px;
   border-radius: var(--radius-lg);
-  object-fit: cover;
+  overflow: hidden;
   border: 1px solid var(--border-card);
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
   flex-shrink: 0;
+}
+
+.fs-spotify-art-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 150%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  transform: skewX(-25deg);
+  animation: sheen-large 5s infinite;
+}
+
+@keyframes sheen-large {
+  0% { left: -150%; }
+  20% { left: 150%; }
+  100% { left: 150%; }
+}
+
+.fs-spotify-art-large {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .fs-spotify-art-placeholder {
