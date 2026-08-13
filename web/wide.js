@@ -57,97 +57,60 @@
   const elHeroSeconds = document.getElementById("heroSeconds");
   const elHeroWeatherText = document.getElementById("heroWeatherText");
 
-  // Dynamic Color Extraction for Spotify Album Art (Cadence Inspired)
+  // Dynamic Color Extraction for Spotify Album Art (Fetch Blob Same-Origin Canvas)
   let currentAlbumArtUrl = null;
 
-  function sampleImageRegion(img, x, y, width, height) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = Math.max(1, width);
-    canvas.height = Math.max(1, height);
+  async function extractVibrantColorFromUrl(artUrl) {
+    if (!artUrl) return null;
     try {
-      ctx.drawImage(img, x, y, width, height, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const response = await fetch(artUrl, { mode: 'cors' });
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.src = objectUrl;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 40;
+      canvas.height = 40;
+      ctx.drawImage(img, 0, 0, 40, 40);
+      URL.revokeObjectURL(objectUrl);
+
+      const imageData = ctx.getImageData(0, 0, 40, 40);
       const data = imageData.data;
-      let r = 0, g = 0, b = 0, count = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count++;
-      }
-      return {
-        r: Math.round(r / count),
-        g: Math.round(g / count),
-        b: Math.round(b / count)
-      };
-    } catch (e) {
-      return null;
-    }
-  }
 
-  async function extractVibrantColor(img) {
-    try {
-      if (!img.complete || img.naturalWidth === 0) {
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-        });
-      }
-      const width = img.naturalWidth;
-      const height = img.naturalHeight;
-      if (width === 0 || height === 0) return null;
+      let bestHex = null;
+      let bestScore = -1;
 
-      const borderThickness = Math.max(5, Math.min(width, height) * 0.05);
-      const sampleSize = Math.min(width, height) * 0.2;
-      const regions = [
-        { x: 0, y: 0, w: width, h: borderThickness, isEdge: true },
-        { x: 0, y: height - borderThickness, w: width, h: borderThickness, isEdge: true },
-        { x: 0, y: 0, w: borderThickness, h: height, isEdge: true },
-        { x: width - borderThickness, y: 0, w: borderThickness, h: height, isEdge: true },
-        { x: width * 0.3, y: height * 0.3, w: width * 0.4, h: height * 0.4, isEdge: false },
-        { x: width * 0.1, y: height * 0.1, w: width * 0.3, h: height * 0.3, isEdge: false },
-        { x: width * 0.6, y: height * 0.1, w: width * 0.3, h: height * 0.3, isEdge: false },
-      ];
+      for (let i = 0; i < data.length; i += 8) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
 
-      const allColors = [];
-      for (const region of regions) {
-        const rgb = sampleImageRegion(img, Math.round(region.x), Math.round(region.y), Math.round(region.w), Math.round(region.h));
-        if (!rgb) continue;
-        const r = rgb.r, g = rgb.g, b = rgb.b;
         const brightness = (r * 299 + g * 587 + b * 114) / 1000;
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
-        const saturation = max === 0 ? 0 : (max - min) / max;
+        if (max === 0) continue;
+        const saturation = (max - min) / max;
+        const isGrey = Math.abs(r - g) < 18 && Math.abs(g - b) < 18 && Math.abs(r - b) < 18;
 
-        const hex = `#${[r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
-        allColors.push({ hex, r, g, b, brightness, saturation, isEdge: region.isEdge });
-      }
+        if (isGrey || brightness < 30 || brightness > 225 || saturation < 0.15) continue;
 
-      let bestColor = null;
-      let bestScore = 0;
-
-      for (const color of allColors) {
-        const isGrey = Math.abs(color.r - color.g) < 15 && Math.abs(color.g - color.b) < 15 && Math.abs(color.r - color.b) < 15;
-        const isBlack = color.brightness < 35;
-        const isWhite = color.brightness > 225;
-        const isBeige = color.brightness > 180 && color.saturation < 0.15;
-        if (isGrey || isBlack || isWhite || isBeige || color.saturation < 0.15) continue;
-
-        const edgeBonus = color.isEdge ? 0.15 : 0;
-        const brightnessScore = Math.min(color.brightness / 255, 1);
-        const brightnessPenalty = color.brightness > 200 ? 0.3 : 1;
-        const score = color.saturation * 0.85 + (brightnessScore * brightnessPenalty) * 0.1 + edgeBonus;
-
+        const score = saturation * 0.85 + (brightness / 255) * 0.15;
         if (score > bestScore) {
           bestScore = score;
-          bestColor = color;
+          bestHex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
         }
       }
-
-      if (bestColor) return bestColor.hex;
-      return null;
+      return bestHex;
     } catch (err) {
+      console.warn("Client color extraction notice:", err);
       return null;
     }
   }
@@ -160,10 +123,7 @@
     if (artUrl === currentAlbumArtUrl) return;
     currentAlbumArtUrl = artUrl;
 
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = artUrl;
-    extractVibrantColor(img).then(color => {
+    extractVibrantColorFromUrl(artUrl).then(color => {
       if (color) {
         document.documentElement.style.setProperty('--spotify-accent', color);
       } else {
@@ -843,8 +803,10 @@
       `;
     }
 
-    elOverlayContent.innerHTML = html;
-    attachOverlayEventListeners(appId, data);
+    if (elOverlayContent.innerHTML !== html) {
+      elOverlayContent.innerHTML = html;
+      attachOverlayEventListeners(appId, data);
+    }
   }
 
   // Attach Full Screen Overlay Action Handlers
