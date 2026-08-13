@@ -1025,3 +1025,79 @@ html, body {
   font-weight: 600;
   color: var(--accent-cyan);
 }
+
+/* Connection Lost Minimalist Screen */
+.connection-lost-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000000;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease-in-out;
+}
+
+.connection-lost-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.connection-lost-overlay.hidden {
+  display: none;
+}
+
+.lost-top-left {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
+}
+
+.lost-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.4));
+  display: block;
+}
+
+.lost-bottom-left {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  line-height: 1;
+}
+
+.spinner-ring {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0, 242, 254, 0.2);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spinnerRotate 0.8s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes spinnerRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.lost-text {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+}

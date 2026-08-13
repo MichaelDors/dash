@@ -57,6 +57,11 @@
   const elHeroSeconds = document.getElementById("heroSeconds");
   const elHeroWeatherText = document.getElementById("heroWeatherText");
 
+  // Connection state management
+  let failedFetchCount = 0;
+  let isOffline = false;
+  const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
+
   // Modal elements
   const elWidgetModal = document.getElementById("widgetModal");
   const elBtnCloseModal = document.getElementById("btnCloseModal");
@@ -74,13 +79,15 @@
   // Setup Event Listeners
   function setupEventListeners() {
     // Back from full screen app overlay
-    elBtnBackToDash.addEventListener("click", () => {
-      closeOverlayApp();
-    });
+    if (elBtnBackToDash) {
+      elBtnBackToDash.addEventListener("click", () => {
+        closeOverlayApp();
+      });
+    }
 
     // Settings overlay triggers
-    elBtnOpenSettings.addEventListener("click", openSettingsOverlay);
-    elBtnCloseSettings.addEventListener("click", closeSettingsOverlay);
+    if (elBtnOpenSettings) elBtnOpenSettings.addEventListener("click", openSettingsOverlay);
+    if (elBtnCloseSettings) elBtnCloseSettings.addEventListener("click", closeSettingsOverlay);
 
     // Settings Form & Control Listeners
     if (elBtnSimulateMotion) {
@@ -139,27 +146,52 @@
     }
 
     // Modal triggers
-    elBtnCloseModal.addEventListener("click", closeWidgetModal);
-    elWidgetModal.addEventListener("click", (e) => {
-      if (e.target === elWidgetModal) closeWidgetModal();
-    });
+    if (elBtnCloseModal) elBtnCloseModal.addEventListener("click", closeWidgetModal);
+    if (elWidgetModal) {
+      elWidgetModal.addEventListener("click", (e) => {
+        if (e.target === elWidgetModal) closeWidgetModal();
+      });
+    }
 
-    elBtnSaveConfig.addEventListener("click", saveWidgetConfig);
+    if (elBtnSaveConfig) elBtnSaveConfig.addEventListener("click", saveWidgetConfig);
   }
 
   // API Calls
   async function fetchState() {
     try {
-      const res = await fetch("/api/wide/state");
-      if (!res.ok) return;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch("/api/wide/state", { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       state.latestData = data;
       if (Array.isArray(data.slots)) {
         state.slots = data.slots;
       }
+      
+      failedFetchCount = 0;
+      if (isOffline) {
+        isOffline = false;
+        if (elConnectionLostOverlay) {
+          elConnectionLostOverlay.classList.remove("visible");
+          setTimeout(() => {
+            if (!isOffline) elConnectionLostOverlay.classList.add("hidden");
+          }, 800);
+        }
+      }
       renderUI();
     } catch (err) {
-      console.warn("Failed to fetch wide state:", err);
+      failedFetchCount++;
+      if (failedFetchCount >= 2 && !isOffline) {
+        isOffline = true;
+        if (elConnectionLostOverlay) {
+          elConnectionLostOverlay.classList.remove("hidden");
+          void elConnectionLostOverlay.offsetWidth;
+          elConnectionLostOverlay.classList.add("visible");
+        }
+      }
     }
   }
 
