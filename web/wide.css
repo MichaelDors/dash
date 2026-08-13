@@ -30,6 +30,11 @@
 
   --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   --transition-normal: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-fast: 180ms;
+  --motion-med: 420ms;
+  --motion-slow: 680ms;
 }
 
 * {
@@ -52,6 +57,23 @@ html, body {
   line-height: 1.4;
 }
 
+body {
+  animation: appBoot var(--motion-slow) var(--ease-apple) both;
+}
+
+@keyframes appBoot {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+    filter: blur(14px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
 /* Main Container */
 .app-container {
   position: relative;
@@ -62,6 +84,15 @@ html, body {
   padding: 1.25rem 1.75rem;
   background-color: #000000;
   z-index: 1;
+  transform-origin: center;
+  transition: transform var(--motion-med) var(--ease-apple), filter var(--motion-med) var(--ease-apple), opacity var(--motion-med) var(--ease-apple);
+}
+
+.app-container:has(+ .app-overlay-view.is-visible),
+.app-container:has(+ .app-overlay-view + .settings-overlay.is-visible) {
+  transform: scale(0.982);
+  filter: blur(12px) brightness(0.72);
+  opacity: 0.82;
 }
 
 /* Top Bar */
@@ -78,6 +109,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  animation: riseIn 520ms var(--ease-apple) 80ms both;
 }
 
 .brand-logo {
@@ -111,6 +143,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  animation: riseIn 520ms var(--ease-apple) 130ms both;
 }
 
 /* Touch Icon Buttons */
@@ -126,8 +159,14 @@ html, body {
   justify-content: center;
   font-size: 1.25rem;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
   outline: none;
+}
+
+.icon-touch-btn:hover {
+  transform: translateY(-1px) scale(1.04);
+  border-color: var(--border-card-hover);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 22px rgba(0, 242, 254, 0.12);
 }
 
 .icon-touch-btn:active {
@@ -152,7 +191,8 @@ html, body {
   border: none;
   cursor: pointer;
   position: relative;
-  transition: all 0.5s ease;
+  overflow: hidden;
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple), color var(--motion-fast) var(--ease-apple);
   outline: none;
 }
 
@@ -179,6 +219,8 @@ html, body {
 
 .touch-btn:hover {
   background: #1c2336;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
 }
 
 .touch-btn:active {
@@ -248,6 +290,7 @@ html, body {
   width: 100%;
   height: 100%;
   gap: 1.25rem;
+  animation: riseIn 620ms var(--ease-apple) 160ms both;
 }
 
 .slots-container {
@@ -305,17 +348,34 @@ html, body {
   padding: 1.35rem 1.5rem;
   overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-  transition: transform var(--transition-normal), border-color var(--transition-normal), background-color var(--transition-normal);
+  transform-origin: center;
+  animation: cardEnter 560ms var(--ease-apple) both;
+  transition: transform var(--motion-med) var(--ease-apple), border-color var(--motion-med) var(--ease-apple), background-color var(--motion-med) var(--ease-apple), box-shadow var(--motion-med) var(--ease-apple);
   cursor: pointer;
+  will-change: transform, opacity;
+}
+
+.slots-container .widget-card:nth-child(1) {
+  animation-delay: 90ms;
+}
+
+.slots-container .widget-card:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.slots-container .widget-card:nth-child(3) {
+  animation-delay: 210ms;
 }
 
 .widget-card:hover {
   background: var(--bg-card-hover);
   border-color: var(--border-card-hover);
+  transform: translateY(-3px) scale(1.006);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.72), 0 0 34px rgba(0, 242, 254, 0.08);
 }
 
 .widget-card:active {
-  transform: scale(0.988);
+  transform: translateY(0) scale(0.988);
 }
 
 .widget-card.holding {
@@ -332,11 +392,13 @@ html, body {
   height: 3px;
   background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
   opacity: 0;
-  transition: opacity var(--transition-normal);
+  transition: opacity var(--motion-med) var(--ease-apple), transform var(--motion-med) var(--ease-apple);
+  transform: translateX(-18%);
 }
 
 .widget-card:hover .card-glow {
   opacity: 1;
+  transform: translateX(18%);
 }
 
 /* Card Header */
@@ -455,6 +517,12 @@ html, body {
   font-size: 0.88rem;
   font-weight: 500;
   color: var(--text-main);
+  transition: transform var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple);
+}
+
+.meta-pill:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-card-hover);
 }
 
 .pill-icon {
@@ -478,6 +546,12 @@ html, body {
   border: 1px solid var(--border-card);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   flex-shrink: 0;
+  transition: transform var(--motion-med) var(--ease-apple), box-shadow var(--motion-med) var(--ease-apple);
+}
+
+.widget-card:hover .spotify-art-wrapper,
+.widget-card:hover .spotify-art-placeholder {
+  transform: scale(1.035);
 }
 
 .spotify-art-wrapper::after {
@@ -509,6 +583,10 @@ html, body {
   transform: skewX(-25deg);
   pointer-events: none;
   z-index: 2;
+  opacity: 0;
+}
+
+.art-sweep-flash.flash-active {
   animation: sweep-flash 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -524,6 +602,11 @@ html, body {
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform var(--motion-slow) var(--ease-soft), opacity var(--motion-med) var(--ease-apple);
+}
+
+.widget-card:hover .spotify-art-thumb {
+  transform: scale(1.045);
 }
 
 .spotify-art-placeholder {
@@ -537,7 +620,7 @@ html, body {
   justify-content: center;
   font-size: 2.2rem;
   color: var(--spotify-accent);
-  transition: color 0.8s ease;
+  transition: transform var(--motion-med) var(--ease-apple), color 0.8s ease, box-shadow var(--motion-med) var(--ease-apple);
   flex-shrink: 0;
 }
 
@@ -603,7 +686,13 @@ html, body {
   font-size: 1rem;
   cursor: pointer;
   position: relative;
-  transition: all var(--transition-fast);
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
+}
+
+.mini-ctrl-btn:hover {
+  transform: translateY(-1px) scale(1.06);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.36);
 }
 
 .mini-ctrl-btn:active {
@@ -695,11 +784,35 @@ html, body {
   display: flex;
   flex-direction: column;
   padding: 1.25rem 2rem;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(16px) scale(0.985);
+  transform-origin: center;
+  filter: blur(10px);
+  transition: opacity var(--motion-med) var(--ease-apple), transform var(--motion-med) var(--ease-apple), filter var(--motion-med) var(--ease-apple), visibility 0s linear var(--motion-med);
+  will-change: transform, opacity, filter;
 }
 
 .app-overlay-view.hidden {
   display: none;
   pointer-events: none;
+}
+
+.app-overlay-view.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition-delay: 0s;
+}
+
+.app-overlay-view.is-closing {
+  opacity: 0;
+  visibility: visible;
+  transform: translateY(10px) scale(0.988);
+  filter: blur(10px);
+  pointer-events: none;
+  transition-duration: 300ms;
 }
 
 .overlay-header {
@@ -710,6 +823,15 @@ html, body {
   border-bottom: 1px solid var(--border-card);
   padding-bottom: 0.85rem;
   flex-shrink: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity var(--motion-med) var(--ease-apple), transform var(--motion-med) var(--ease-apple);
+}
+
+.app-overlay-view.is-visible .overlay-header {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 80ms;
 }
 
 .overlay-title-group {
@@ -739,6 +861,10 @@ html, body {
   overflow-y: auto;
 }
 
+.app-overlay-view.is-visible .overlay-content > * {
+  animation: overlayContentIn 620ms var(--ease-apple) 120ms both;
+}
+
 /* Full Screen App Overlay View & Spotify Ambient Blurred Background (Spotify TV Style) */
 .app-overlay-view.spotify-active {
   overflow: hidden;
@@ -754,8 +880,15 @@ html, body {
   background-position: center 25%;
   filter: brightness(0.90) contrast(1.05);
   z-index: 0;
-  transition: opacity 0.8s ease, background-image 0.8s ease;
+  opacity: 0;
+  transform: scale(1.03);
+  transition: opacity var(--motion-slow) var(--ease-apple), transform 1400ms var(--ease-soft), background-image 0.8s ease;
   pointer-events: none;
+}
+
+.app-overlay-view.spotify-active.is-visible::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* Progressive Blur & Darkening Overlay: Sharp/unblurred top artist photo, progressive blur & fade down to playback controls */
@@ -812,6 +945,12 @@ html, body {
   border: 1px solid var(--border-card);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
   flex-shrink: 0;
+  transition: transform var(--motion-med) var(--ease-apple), box-shadow var(--motion-med) var(--ease-apple);
+}
+
+.fs-spotify-art-wrapper:hover {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.9), 0 0 44px color-mix(in srgb, var(--spotify-accent) 22%, transparent);
 }
 
 .fs-spotify-art-wrapper::after {
@@ -840,6 +979,11 @@ html, body {
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 900ms var(--ease-soft), opacity var(--motion-med) var(--ease-apple);
+}
+
+.fs-spotify-art-wrapper:hover .fs-spotify-art-large {
+  transform: scale(1.035);
 }
 
 .fs-spotify-art-placeholder {
@@ -943,7 +1087,13 @@ html, body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
+}
+
+.fs-ctrl-btn:hover {
+  transform: translateY(-2px) scale(1.055);
+  border-color: color-mix(in srgb, var(--spotify-accent) 70%, white);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.4);
 }
 
 .fs-ctrl-btn:active {
@@ -970,12 +1120,19 @@ html, body {
   gap: 2rem;
 }
 
-.fs-timer-digits {
+.fs-timer-digits,
+.fs-timer-display {
   font-family: var(--font-mono);
   font-size: clamp(6rem, 12vw, 10rem);
   font-weight: 800;
   color: var(--accent-purple);
   line-height: 0.9;
+}
+
+.fs-timer-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .fs-counter-digits {
@@ -1018,6 +1175,27 @@ html, body {
   flex-direction: column;
   gap: 1.25rem;
   overflow-y: auto;
+  transform-origin: center;
+  transition: transform var(--motion-med) var(--ease-apple), border-color var(--motion-med) var(--ease-apple), background-color var(--motion-med) var(--ease-apple), box-shadow var(--motion-med) var(--ease-apple);
+}
+
+.settings-overlay.is-visible .settings-card {
+  animation: settingsCardIn 560ms var(--ease-apple) both;
+}
+
+.settings-overlay.is-visible .settings-card:nth-child(1) { animation-delay: 80ms; }
+.settings-overlay.is-visible .settings-card:nth-child(2) { animation-delay: 120ms; }
+.settings-overlay.is-visible .settings-card:nth-child(3) { animation-delay: 160ms; }
+.settings-overlay.is-visible .settings-card:nth-child(4) { animation-delay: 200ms; }
+.settings-overlay.is-visible .settings-card:nth-child(5) { animation-delay: 240ms; }
+.settings-overlay.is-visible .settings-card:nth-child(6) { animation-delay: 280ms; }
+.settings-overlay.is-visible .settings-card:nth-child(7) { animation-delay: 320ms; }
+
+.settings-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-card-hover);
+  background: #0d111a;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
 }
 
 .settings-card-header {
@@ -1057,6 +1235,12 @@ html, body {
   background: #121622;
   border-radius: var(--radius-sm);
   font-size: 0.9rem;
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple);
+}
+
+.metric-row:hover {
+  transform: translateX(3px);
+  background: #171d2b;
 }
 
 .metric-label {
@@ -1065,11 +1249,32 @@ html, body {
 
 .metric-value {
   font-weight: 700;
+  transition: color var(--motion-med) var(--ease-apple), background-color var(--motion-med) var(--ease-apple), border-color var(--motion-med) var(--ease-apple), transform var(--motion-fast) var(--ease-apple);
 }
 
 .metric-value.mono {
   font-family: var(--font-mono);
   color: var(--accent-cyan);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(0, 242, 254, 0.1);
+  border: 1px solid rgba(0, 242, 254, 0.24);
+  color: var(--accent-cyan);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.ip-badge {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-card);
 }
 
 .settings-btn-cluster {
@@ -1083,6 +1288,53 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.settings-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-actions-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.settings-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-card);
+  background: #111520;
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  outline: none;
+  transition: transform var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
+}
+
+.settings-input:focus {
+  transform: translateY(-1px);
+  border-color: var(--accent-cyan);
+  background: #151b29;
+  box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.12);
+}
+
+.settings-range-input {
+  width: 100%;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+  transition: filter var(--motion-fast) var(--ease-apple), transform var(--motion-fast) var(--ease-apple);
+}
+
+.settings-range-input:hover {
+  filter: drop-shadow(0 0 12px rgba(0, 242, 254, 0.28));
+}
+
+.settings-range-input:active {
+  transform: scaleX(0.992);
 }
 
 .form-group {
@@ -1110,6 +1362,7 @@ html, body {
 
 .form-group input:focus {
   border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.12);
 }
 
 /* Modal Styling */
@@ -1124,11 +1377,33 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 200;
+  opacity: 0;
+  visibility: hidden;
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
+  transition: opacity var(--motion-med) var(--ease-apple), backdrop-filter var(--motion-med) var(--ease-apple), visibility 0s linear var(--motion-med);
 }
 
 .modal-backdrop.hidden {
   display: none;
   pointer-events: none;
+}
+
+.modal-backdrop.is-visible {
+  opacity: 1;
+  visibility: visible;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  transition-delay: 0s;
+}
+
+.modal-backdrop.is-closing {
+  opacity: 0;
+  visibility: visible;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
+  transition-duration: 260ms;
 }
 
 .modal-card {
@@ -1142,6 +1417,20 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  opacity: 0;
+  transform: translateY(22px) scale(0.96);
+  transition: opacity var(--motion-med) var(--ease-apple), transform var(--motion-med) var(--ease-apple);
+  will-change: transform, opacity;
+}
+
+.modal-backdrop.is-visible .modal-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.modal-backdrop.is-closing .modal-card {
+  opacity: 0;
+  transform: translateY(14px) scale(0.975);
 }
 
 .modal-header {
@@ -1169,6 +1458,12 @@ html, body {
   height: 38px;
   border-radius: 50%;
   cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple);
+}
+
+.modal-close-btn:hover {
+  transform: rotate(90deg) scale(1.06);
+  background: #222a3d;
 }
 
 .widget-picker-grid {
@@ -1186,12 +1481,34 @@ html, body {
   border: 2px solid var(--border-card);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
+}
+
+.modal-backdrop.is-visible .picker-item {
+  animation: pickerItemIn 440ms var(--ease-apple) both;
+}
+
+.modal-backdrop.is-visible .picker-item:nth-child(1) { animation-delay: 90ms; }
+.modal-backdrop.is-visible .picker-item:nth-child(2) { animation-delay: 120ms; }
+.modal-backdrop.is-visible .picker-item:nth-child(3) { animation-delay: 150ms; }
+.modal-backdrop.is-visible .picker-item:nth-child(4) { animation-delay: 180ms; }
+.modal-backdrop.is-visible .picker-item:nth-child(5) { animation-delay: 210ms; }
+.modal-backdrop.is-visible .picker-item:nth-child(6) { animation-delay: 240ms; }
+
+.picker-item:hover {
+  transform: translateY(-2px) scale(1.012);
+  border-color: var(--border-card-hover);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.38);
 }
 
 .picker-item.selected {
   background: rgba(0, 242, 254, 0.1);
   border-color: var(--accent-cyan);
+  box-shadow: inset 0 0 0 1px rgba(0, 242, 254, 0.2), 0 0 28px rgba(0, 242, 254, 0.08);
+}
+
+.picker-item:active {
+  transform: scale(0.982);
 }
 
 .picker-item-icon {
@@ -1286,6 +1603,69 @@ html, body {
   flex-shrink: 0;
 }
 
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.965);
+    filter: blur(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes overlayContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.975);
+    filter: blur(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes settingsCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes pickerItemIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes spinnerRotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -1297,4 +1677,16 @@ html, body {
   font-weight: 600;
   color: #cbd5e1;
   letter-spacing: 0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -201,6 +201,8 @@
   let failedFetchCount = 0;
   let isOffline = false;
   let isFetchingState = false;
+  let lastSuccessfulFetchTime = Date.now();
+  let stateFetchStartTime = 0;
   const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
 
   // Spotify auto open / auto close state management (mirroring OLED behavior)
@@ -270,12 +272,70 @@
     }
   }
 
+  function checkConnectionWatchdog() {
+    if (window.location.protocol === "file:") return;
+    const timeSinceLastFetch = Date.now() - lastSuccessfulFetchTime;
+    if (timeSinceLastFetch > 5000 && !isOffline) {
+      isOffline = true;
+      if (elConnectionLostOverlay) {
+        elConnectionLostOverlay.classList.remove("hidden");
+        void elConnectionLostOverlay.offsetWidth;
+        elConnectionLostOverlay.classList.add("visible");
+      }
+    }
+  }
+
   // Modal elements
   const elWidgetModal = document.getElementById("widgetModal");
   const elBtnCloseModal = document.getElementById("btnCloseModal");
   const elPickerGrid = document.getElementById("pickerGrid");
   const elSlotCountIndicator = document.getElementById("slotCountIndicator");
   const elBtnSaveConfig = document.getElementById("btnSaveConfig");
+  const CLOSE_TRANSITION_MS = 320;
+  const surfaceTimers = new WeakMap();
+
+  function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function revealSurface(el) {
+    if (!el) return;
+    const pendingTimer = surfaceTimers.get(el);
+    if (pendingTimer) {
+      window.clearTimeout(pendingTimer);
+      surfaceTimers.delete(el);
+    }
+    el.classList.remove("hidden", "is-closing");
+    el.classList.add("is-opening");
+    requestAnimationFrame(() => {
+      el.classList.remove("is-opening");
+      el.classList.add("is-visible");
+    });
+  }
+
+  function concealSurface(el, afterHidden) {
+    if (!el) {
+      if (afterHidden) afterHidden();
+      return;
+    }
+
+    if (el.classList.contains("hidden")) {
+      el.classList.remove("is-visible", "is-closing", "is-opening");
+      if (afterHidden) afterHidden();
+      return;
+    }
+
+    el.classList.remove("is-visible", "is-opening");
+    el.classList.add("is-closing");
+
+    const timer = window.setTimeout(() => {
+      el.classList.add("hidden");
+      el.classList.remove("is-closing");
+      surfaceTimers.delete(el);
+      if (afterHidden) afterHidden();
+    }, prefersReducedMotion() ? 0 : CLOSE_TRANSITION_MS);
+    surfaceTimers.set(el, timer);
+  }
 
   // Initialize App
   function init() {
@@ -283,6 +343,7 @@
     fetchState();
     setInterval(fetchState, 250);
     setInterval(tickRealtimeProgress, 100);
+    setInterval(checkConnectionWatchdog, 500);
   }
 
   // Setup Event Listeners
@@ -457,8 +518,13 @@
 
   // API Calls
   async function fetchState() {
+    const now = Date.now();
+    if (isFetchingState && (now - stateFetchStartTime > 3000)) {
+      isFetchingState = false;
+    }
     if (isFetchingState) return;
     isFetchingState = true;
+    stateFetchStartTime = now;
 
     try {
       const controller = new AbortController();
@@ -468,6 +534,7 @@
 
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
+      lastSuccessfulFetchTime = Date.now();
       state.latestData = data;
       lastSpotifyFetchTime = Date.now();
       if (Array.isArray(data.slots)) {
@@ -788,7 +855,7 @@
       const artHTML = albumArt ?
         `<div class="spotify-art-wrapper">
           <img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" />
-          <div class="art-sweep-flash"></div>
+          <div class="art-sweep-flash flash-active"></div>
         </div>` :
         `<div class="spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
 
@@ -934,7 +1001,7 @@
       if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = `Full Screen View`;
     }
 
-    elAppOverlayView.classList.remove("hidden");
+    revealSurface(elAppOverlayView);
     const dataToRender = state.latestData || MOCK_DEMO_DATA;
     renderOverlayAppContent(appId, dataToRender);
   }
@@ -949,8 +1016,10 @@
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
     } catch (e) { }
-    elAppOverlayView.classList.add("hidden");
-    elAppOverlayView.classList.remove("spotify-active");
+    concealSurface(elAppOverlayView, () => {
+      elAppOverlayView.classList.remove("spotify-active");
+      elOverlayContent.innerHTML = "";
+    });
   }
 
   // Settings Overlay Management
@@ -959,7 +1028,7 @@
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "settings" }));
     } catch (e) { }
-    elSettingsOverlayView.classList.remove("hidden");
+    revealSurface(elSettingsOverlayView);
     if (state.latestData) {
       updateSettingsMetrics(state.latestData);
     }
@@ -970,10 +1039,13 @@
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
     } catch (e) { }
-    elSettingsOverlayView.classList.add("hidden");
+    concealSurface(elSettingsOverlayView);
   }
 
   function updateSettingsMetrics(data) {
+    if (elCfgSoftwareVersion && data.version) {
+      elCfgSoftwareVersion.textContent = `v${data.version}`;
+    }
     if (elCfgDisplayState) elCfgDisplayState.textContent = (data.display_mode || 'on').toUpperCase();
     if (elCfgMotionState && data.motion) {
       elCfgMotionState.textContent = data.motion.motion_detected ? 'ACTIVE' : 'IDLE';
@@ -1078,7 +1150,7 @@
         <div class="fs-spotify-container" id="fsSpotifyContainer">
           <div class="fs-spotify-art-wrapper" id="fsSpotArtWrap">
             <img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" id="fsSpotArtImg" alt="Album Art" />
-            <div class="art-sweep-flash" id="fsSpotSweep"></div>
+            <div class="art-sweep-flash flash-active" id="fsSpotSweep"></div>
           </div>
           <div class="fs-spotify-details">
             <div>
@@ -1427,14 +1499,14 @@
       sessionStorage.setItem("dash_saved_modal", "widget_picker");
     } catch (e) { }
     renderPickerGrid();
-    elWidgetModal.classList.remove("hidden");
+    revealSurface(elWidgetModal);
   }
 
   function closeWidgetModal() {
     try {
       sessionStorage.removeItem("dash_saved_modal");
     } catch (e) { }
-    elWidgetModal.classList.add("hidden");
+    concealSurface(elWidgetModal);
   }
 
   function renderPickerGrid() {
