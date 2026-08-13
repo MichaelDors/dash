@@ -739,7 +739,6 @@ html, body {
 
 /* Full Screen App Overlay View & Spotify Ambient Blurred Background (Spotify TV Style) */
 .app-overlay-view.spotify-active {
-  position: relative;
   overflow: hidden;
   background: #000;
 }
