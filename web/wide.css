@@ -476,6 +476,7 @@ html, body {
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   flex-shrink: 0;
 }
 
@@ -578,7 +579,7 @@ html, body {
 .spotify-progress-fill {
   height: 100%;
   background: var(--spotify-accent);
-  transition: background-color 0.8s ease;
+  transition: width 0.3s linear, background-color 0.8s ease;
   width: 0%;
 }
 
@@ -777,6 +778,7 @@ html, body {
 .app-overlay-view.spotify-active .overlay-content {
   position: relative;
   z-index: 2;
+  overflow: visible;
 }
 
 .app-overlay-view.spotify-active .overlay-header {
@@ -797,7 +799,8 @@ html, body {
   align-items: flex-end;
   justify-content: flex-start;
   gap: 2.25rem;
-  padding: 0 0 1rem 1rem;
+  padding: 0.5rem 1rem 1.5rem 2.25rem;
+  overflow: visible;
 }
 
 .fs-spotify-art-wrapper {
@@ -807,7 +810,7 @@ html, body {
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border-card);
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
   flex-shrink: 0;
 }
 
@@ -899,7 +902,7 @@ html, body {
 .fs-scrub-fill, .fs-spotify-progress-fill {
   height: 100%;
   background: var(--spotify-accent);
-  transition: background-color 0.8s ease;
+  transition: width 0.3s linear, background-color 0.8s ease;
   width: 0%;
 }
 
@@ -1244,8 +1247,8 @@ html, body {
 
 .lost-top-left {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 1.25rem;
+  left: 1.75rem;
   margin: 0;
   padding: 0;
   line-height: 0;
@@ -1262,8 +1265,8 @@ html, body {
 
 .lost-bottom-left {
   position: absolute;
-  bottom: 0;
-  left: 0;
+  bottom: 1.25rem;
+  left: 1.75rem;
   margin: 0;
   padding: 0;
   display: flex;

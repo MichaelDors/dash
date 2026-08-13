@@ -200,7 +200,75 @@
   // Connection state management
   let failedFetchCount = 0;
   let isOffline = false;
+  let isFetchingState = false;
   const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
+
+  // Spotify auto open / auto close state management (mirroring OLED behavior)
+  let wasSpotifyPlaying = false;
+  let autoOpenedSpotifyOverlay = false;
+  let lastUserClosedSpotifyTime = 0;
+  let lastSpotifyFetchTime = 0;
+
+  function handleSpotifyAutoOpenClose(data) {
+    if (!data) return;
+    const sp = (data.apps && data.apps.spotify) || (data.widgets && data.widgets.spotify) || {};
+    const isPlaying = Boolean(sp.is_playing && sp.track_name);
+    const now = Date.now();
+
+    // 1. Auto Open when playback starts
+    if (!wasSpotifyPlaying && isPlaying) {
+      wasSpotifyPlaying = true;
+      if (state.activeOverlayApp !== "spotify" && (now - lastUserClosedSpotifyTime > 10000)) {
+        autoOpenedSpotifyOverlay = true;
+        openOverlayApp("spotify");
+      }
+    } else if (wasSpotifyPlaying && !isPlaying) {
+      wasSpotifyPlaying = false;
+      // 2. Auto Close when playback stops if it was auto opened
+      if (autoOpenedSpotifyOverlay && state.activeOverlayApp === "spotify") {
+        autoOpenedSpotifyOverlay = false;
+        closeOverlayApp();
+      }
+    } else if (isPlaying) {
+      wasSpotifyPlaying = true;
+    }
+
+    // 3. Auto Exit on Idle (5 minutes of paused idle while Spotify overlay is active)
+    if (state.activeOverlayApp === "spotify" && !isPlaying) {
+      if (!state.spotifyIdleStartTime) {
+        state.spotifyIdleStartTime = now;
+      } else if (now - state.spotifyIdleStartTime > 300000) { // 5 minutes
+        autoOpenedSpotifyOverlay = false;
+        closeOverlayApp();
+      }
+    } else {
+      state.spotifyIdleStartTime = null;
+    }
+  }
+
+  function tickRealtimeProgress() {
+    if (!state.latestData) return;
+    const sp = (state.latestData.apps && state.latestData.apps.spotify) || (state.latestData.widgets && state.latestData.widgets.spotify);
+    if (!sp || !sp.duration_ms || !sp.is_playing || !lastSpotifyFetchTime) return;
+
+    const elapsed = Date.now() - lastSpotifyFetchTime;
+    const estProgressMs = Math.min(sp.duration_ms, (sp.progress_ms || 0) + elapsed);
+    const pct = Math.min(100, Math.max(0, (estProgressMs / sp.duration_ms) * 100));
+
+    // Update mini widget progress fill
+    const spProg = document.getElementById("widget-spotify-progress");
+    if (spProg) spProg.style.width = `${pct}%`;
+
+    // Update full screen overlay progress fill & current time text
+    const fsSpProg = document.getElementById("fs-spotify-progress");
+    if (fsSpProg) fsSpProg.style.width = `${pct}%`;
+
+    const elCurTime = document.getElementById("fs-spotify-time-current");
+    if (elCurTime) {
+      const curText = formatMsToMinSec(estProgressMs);
+      if (elCurTime.innerText !== curText) elCurTime.innerText = curText;
+    }
+  }
 
   // Modal elements
   const elWidgetModal = document.getElementById("widgetModal");
@@ -214,6 +282,7 @@
     setupEventListeners();
     fetchState();
     setInterval(fetchState, 250);
+    setInterval(tickRealtimeProgress, 100);
   }
 
   // Setup Event Listeners
@@ -388,6 +457,9 @@
 
   // API Calls
   async function fetchState() {
+    if (isFetchingState) return;
+    isFetchingState = true;
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -397,9 +469,11 @@
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       state.latestData = data;
+      lastSpotifyFetchTime = Date.now();
       if (Array.isArray(data.slots)) {
         state.slots = data.slots;
       }
+      handleSpotifyAutoOpenClose(data);
 
       // Software update detection & auto-reload
       if (data.version) {
@@ -426,7 +500,7 @@
           elConnectionLostOverlay.classList.remove("visible");
           setTimeout(() => {
             if (!isOffline) elConnectionLostOverlay.classList.add("hidden");
-          }, 800);
+          }, 1200);
         }
       }
 
@@ -437,15 +511,12 @@
         restoreSavedScreenState();
       }
     } catch (err) {
-      const isLocalDev = window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.protocol === "file:";
+      // Only bypass network checks if running strictly via static file:// protocol without initial data
+      const isFileProtocol = window.location.protocol === "file:";
 
-      if (isLocalDev) {
-        if (!state.latestData) {
-          state.latestData = MOCK_DEMO_DATA;
-          state.slots = MOCK_DEMO_DATA.slots;
-        }
+      if (isFileProtocol && !state.latestData) {
+        state.latestData = MOCK_DEMO_DATA;
+        state.slots = MOCK_DEMO_DATA.slots;
         renderUI();
         if (isInitialLoad) {
           isInitialLoad = false;
@@ -463,6 +534,19 @@
           elConnectionLostOverlay.classList.add("visible");
         }
       }
+
+      // If initial load failed over HTTP, set mock data so DOM elements render beneath the overlay
+      if (!state.latestData) {
+        state.latestData = MOCK_DEMO_DATA;
+        state.slots = MOCK_DEMO_DATA.slots;
+        renderUI();
+        if (isInitialLoad) {
+          isInitialLoad = false;
+          restoreSavedScreenState();
+        }
+      }
+    } finally {
+      isFetchingState = false;
     }
   }
 
@@ -856,6 +940,10 @@
   }
 
   function closeOverlayApp() {
+    if (state.activeOverlayApp === "spotify") {
+      lastUserClosedSpotifyTime = Date.now();
+      autoOpenedSpotifyOverlay = false;
+    }
     state.activeOverlayApp = null;
     lastOverlayStateKey = "";
     try {
