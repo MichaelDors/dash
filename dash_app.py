@@ -2736,7 +2736,10 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path in {"/", "/index.html", "/wide", "/wide.html", "/touch"}:
+        if path in {"/", "/index.html"}:
+            self._serve_file("index.html", "text/html; charset=utf-8")
+            return
+        if path in {"/wide", "/wide.html", "/touch"}:
             self._serve_file("wide.html", "text/html; charset=utf-8")
             return
         if path == "/wide.css":
