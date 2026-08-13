@@ -896,39 +896,29 @@ body {
   background-repeat: no-repeat;
   will-change: opacity, transform, filter;
   pointer-events: none;
+  opacity: 0;
+  transform: scale(1.22);
+  filter: blur(28px) brightness(0.65) contrast(1.1);
+  transition: 
+    opacity 1800ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 2200ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 8000ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.spotify-bg-layer-current {
-  z-index: 1;
-  background-image: var(--spotify-bg-image-current, none);
+/* Active State for Visible Layer */
+.spotify-bg-layer.is-active {
+  z-index: 2;
   opacity: 1;
   transform: scale(1);
   filter: blur(0px) brightness(0.85) contrast(1.05);
-  transition: opacity 1600ms var(--ease-apple), filter 1600ms var(--ease-apple);
 }
 
-.spotify-bg-layer-next {
-  z-index: 2;
-  background-image: var(--spotify-bg-image-next, none);
+/* Outgoing State for Faded Layer */
+.spotify-bg-layer.is-outgoing {
+  z-index: 1;
   opacity: 0;
-  transform: scale(1.22); /* Starts zoomed in */
-  filter: blur(28px) brightness(0.65) contrast(1.1); /* Heavy blur at start */
-}
-
-/* Smooth Apple Blur Crossfade & Slow Zoom Out */
-.spotify-bg-stage.is-transitioning .spotify-bg-layer-current {
-  opacity: 0;
+  transform: scale(1);
   filter: blur(24px) brightness(0.45);
-}
-
-.spotify-bg-stage.is-transitioning .spotify-bg-layer-next {
-  opacity: 1;
-  transform: scale(1); /* Slowly zoom out to normal size */
-  filter: blur(0px) brightness(0.85) contrast(1.05); /* Smoothly unblur */
-  transition: 
-    opacity 1600ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 2200ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 8000ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Progressive Blur & Darkening Overlay: Sharp/unblurred top artist photo, progressive blur & fade down to playback controls */

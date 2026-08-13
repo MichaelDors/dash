@@ -2051,6 +2051,8 @@ class DashboardController:
         self._dial_ignore_release = False
         self._power_off_hold_active = False
         self._spotify_app_auto_opened = False
+        self._spotify_accumulated_play_time = 0.0
+        self._spotify_pause_start_time = 0.0
         self._previous_widget_index: Optional[int] = None
         self._power_off_progress = 0.0
         self._power_off_pressed_at: Optional[float] = None
@@ -2353,22 +2355,38 @@ class DashboardController:
                 self._update_exit_hold_locked(now, dt)
                 if isinstance(self.active_app, SpotifyApp):
                     if self.spotify_app is not None:
-                        stopped = self.spotify_app.consume_playback_stopped_event()
-                        if stopped and getattr(self, "_spotify_app_auto_opened", False):
+                        self.spotify_app.consume_playback_stopped_event()
+                        if not self.active_app.track_name and getattr(self, "_spotify_app_auto_opened", False):
                             self._exit_app_locked(ignore_release=False)
                             self._spotify_app_auto_opened = False
-                    if self.active_app is not None and not self.active_app.is_playing:
-                        idle_time = now - max(getattr(self.active_app, "_playback_stopped_time", 0), getattr(self.active_app, "_last_user_action_time", 0))
-                        if idle_time > 300.0:
-                            self._exit_app_locked(ignore_release=False)
-                            time_widget_index = next((idx for idx, w in enumerate(self.widgets) if isinstance(w, TimeWidget)), 0)
-                            self.current_widget_index = time_widget_index
+                            self._spotify_accumulated_play_time = 0.0
+                            self._spotify_pause_start_time = 0.0
+                    
+                    if self.active_app is not None:
+                        if self.active_app.is_playing:
+                            self._spotify_accumulated_play_time = min(300.0, self._spotify_accumulated_play_time + dt)
+                            self._spotify_pause_start_time = 0.0
+                        else:
+                            if self._spotify_pause_start_time == 0.0:
+                                self._spotify_pause_start_time = now
+                            
+                            if getattr(self, "_spotify_app_auto_opened", False) and self._spotify_pause_start_time > 0.0:
+                                dynamic_timeout = min(300.0, max(5.0, self._spotify_accumulated_play_time))
+                                if now - self._spotify_pause_start_time >= dynamic_timeout:
+                                    self._exit_app_locked(ignore_release=False)
+                                    self._spotify_app_auto_opened = False
+                                    self._spotify_accumulated_play_time = 0.0
+                                    self._spotify_pause_start_time = 0.0
+                                    time_widget_index = next((idx for idx, w in enumerate(self.widgets) if isinstance(w, TimeWidget)), 0)
+                                    self.current_widget_index = time_widget_index
             else:
                 if self.spotify_app is not None:
                     self.spotify_app.update_background(now, dt)
                     if self.spotify_app.consume_playback_started_event() and self._should_auto_switch_to_spotify_locked(now):
                         self._launch_app_locked("spotify")
                         self._spotify_app_auto_opened = True
+                        self._spotify_accumulated_play_time = 0.0
+                        self._spotify_pause_start_time = 0.0
                     else:
                         self.spotify_app.consume_playback_stopped_event()
                 self._dial_exit_progress = 0.0
@@ -2425,6 +2443,8 @@ class DashboardController:
         with self._lock:
             self._last_interaction_time = time.time()
             self._spotify_app_auto_opened = False
+            self._spotify_accumulated_play_time = 0.0
+            self._spotify_pause_start_time = 0.0
 
     def next_widget(self) -> None:
         if self.active_app is not None:

@@ -64,9 +64,8 @@
   // Dynamic Color Extraction for Spotify Album Art (Fetch Blob Same-Origin Canvas)
   let currentAlbumArtUrl = null;
   let currentSpotifyBackgroundUrl = null;
-  let spotifyBackgroundTransitionTimer = null;
+  let activeSpotifyBgLayer = "A";
   let spotifyBgPreloadToken = 0;
-  const SPOTIFY_BACKGROUND_ZOOM_MS = 8200;
 
   function toCssUrl(url) {
     return `url("${String(url).replace(/["\\\n\r]/g, "")}")`;
@@ -81,40 +80,44 @@
     stage.className = "spotify-bg-stage";
     stage.setAttribute("aria-hidden", "true");
     stage.innerHTML = `
-      <div class="spotify-bg-layer spotify-bg-layer-current"></div>
-      <div class="spotify-bg-layer spotify-bg-layer-next"></div>
+      <div id="spotifyBgLayerA" class="spotify-bg-layer is-active"></div>
+      <div id="spotifyBgLayerB" class="spotify-bg-layer"></div>
     `;
     elAppOverlayView.prepend(stage);
     return stage;
   }
 
   function updateSpotifyBackgroundImage(bgImageUrl) {
-    const root = document.documentElement;
-    const stage = ensureSpotifyBackgroundStage();
+    ensureSpotifyBackgroundStage();
+    const layerA = document.getElementById("spotifyBgLayerA");
+    const layerB = document.getElementById("spotifyBgLayerB");
 
     if (!bgImageUrl) {
       currentSpotifyBackgroundUrl = null;
       spotifyBgPreloadToken++;
-      root.style.setProperty('--spotify-bg-image-current', 'none');
-      root.style.setProperty('--spotify-bg-image-next', 'none');
-      root.style.setProperty('--spotify-bg-image', 'none');
-      if (stage) stage.classList.remove("is-transitioning");
-      if (spotifyBackgroundTransitionTimer) {
-        clearTimeout(spotifyBackgroundTransitionTimer);
-        spotifyBackgroundTransitionTimer = null;
-      }
+      if (layerA) { layerA.style.backgroundImage = 'none'; layerA.className = 'spotify-bg-layer'; }
+      if (layerB) { layerB.style.backgroundImage = 'none'; layerB.className = 'spotify-bg-layer'; }
       return;
     }
 
     if (currentSpotifyBackgroundUrl === bgImageUrl) return;
 
     const cssUrl = toCssUrl(bgImageUrl);
-    root.style.setProperty('--spotify-bg-image', cssUrl);
 
     if (!currentSpotifyBackgroundUrl) {
       currentSpotifyBackgroundUrl = bgImageUrl;
-      root.style.setProperty('--spotify-bg-image-current', cssUrl);
-      root.style.setProperty('--spotify-bg-image-next', cssUrl);
+      activeSpotifyBgLayer = "A";
+      if (layerA) {
+        layerA.style.backgroundImage = cssUrl;
+        layerA.className = "spotify-bg-layer is-active";
+        layerA.style.transition = "none";
+        void layerA.offsetWidth;
+        layerA.style.transition = "";
+      }
+      if (layerB) {
+        layerB.style.backgroundImage = "none";
+        layerB.className = "spotify-bg-layer";
+      }
       return;
     }
 
@@ -129,23 +132,24 @@
       if (handled || thisToken !== spotifyBgPreloadToken) return;
       handled = true;
 
-      root.style.setProperty('--spotify-bg-image-next', cssUrl);
-      if (!stage) return;
+      if (!layerA || !layerB) return;
 
-      if (spotifyBackgroundTransitionTimer) {
-        clearTimeout(spotifyBackgroundTransitionTimer);
-      }
+      const incoming = activeSpotifyBgLayer === "A" ? layerB : layerA;
+      const outgoing = activeSpotifyBgLayer === "A" ? layerA : layerB;
 
-      stage.classList.remove("is-transitioning");
-      void stage.offsetWidth;
-      stage.classList.add("is-transitioning");
+      // 1. Prepare incoming layer state with transition temporarily disabled
+      incoming.style.transition = "none";
+      incoming.style.backgroundImage = cssUrl;
+      incoming.className = "spotify-bg-layer"; // opacity 0, scale 1.22, blur 28px
+      void incoming.offsetWidth; // force reflow
 
-      spotifyBackgroundTransitionTimer = setTimeout(() => {
-        if (thisToken !== spotifyBgPreloadToken) return;
-        root.style.setProperty('--spotify-bg-image-current', cssUrl);
-        stage.classList.remove("is-transitioning");
-        spotifyBackgroundTransitionTimer = null;
-      }, SPOTIFY_BACKGROUND_ZOOM_MS);
+      // 2. Re-enable transition and trigger smooth zoom & blur transition
+      incoming.style.transition = "";
+      incoming.className = "spotify-bg-layer is-active";
+      outgoing.className = "spotify-bg-layer is-outgoing";
+
+      // 3. Swap active layer reference
+      activeSpotifyBgLayer = activeSpotifyBgLayer === "A" ? "B" : "A";
     };
 
     img.onload = startTransition;
@@ -296,46 +300,68 @@
   let stateFetchStartTime = 0;
   const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
 
-  // Spotify auto open / auto close state management (mirroring OLED behavior)
-  let wasSpotifyPlaying = false;
-  let autoOpenedSpotifyOverlay = false;
-  let lastUserClosedSpotifyTime = 0;
-  let lastSpotifyFetchTime = 0;
+  // Dynamic commitment tracking
+  let spotifyPlaybackLastTime = 0;
+  let spotifyAccumulatedPlayMs = 0;
+  let spotifyPauseStartMs = 0;
 
   function handleSpotifyAutoOpenClose(data) {
     if (!data) return;
     const sp = (data.apps && data.apps.spotify) || (data.widgets && data.widgets.spotify) || {};
     const isPlaying = Boolean(sp.is_playing && sp.track_name);
+    const hasTrack = Boolean(sp.track_name);
     const now = Date.now();
 
-    // 1. Auto Open when playback starts
+    // 1. Track Playback & Open when playback starts/resumes
     if (!wasSpotifyPlaying && isPlaying) {
       wasSpotifyPlaying = true;
+      spotifyPlaybackLastTime = now;
+      spotifyPauseStartMs = 0;
+
       if (state.activeOverlayApp !== "spotify" && (now - lastUserClosedSpotifyTime > 10000)) {
         autoOpenedSpotifyOverlay = true;
+        spotifyAccumulatedPlayMs = 0; // Reset play time commitment for new auto-open session
         openOverlayApp("spotify");
-      }
-    } else if (wasSpotifyPlaying && !isPlaying) {
-      wasSpotifyPlaying = false;
-      // 2. Auto Close when playback stops if it was auto opened
-      if (autoOpenedSpotifyOverlay && state.activeOverlayApp === "spotify") {
-        autoOpenedSpotifyOverlay = false;
-        closeOverlayApp(false);
       }
     } else if (isPlaying) {
       wasSpotifyPlaying = true;
+      if (spotifyPlaybackLastTime > 0) {
+        const delta = now - spotifyPlaybackLastTime;
+        spotifyAccumulatedPlayMs = Math.min(300000, spotifyAccumulatedPlayMs + delta); // Cap at 5 mins (300,000ms)
+      }
+      spotifyPlaybackLastTime = now;
+      spotifyPauseStartMs = 0;
+    } else if (!hasTrack) {
+      wasSpotifyPlaying = false;
+      spotifyPlaybackLastTime = 0;
+    } else {
+      // Paused / stopped
+      if (wasSpotifyPlaying) {
+        wasSpotifyPlaying = false;
+        spotifyPauseStartMs = now;
+      } else if (spotifyPauseStartMs === 0) {
+        spotifyPauseStartMs = now;
+      }
+      spotifyPlaybackLastTime = 0;
     }
 
-    // 3. Auto Exit on Idle (5 minutes of paused idle while Spotify overlay is active)
-    if (state.activeOverlayApp === "spotify" && !isPlaying) {
-      if (!state.spotifyIdleStartTime) {
-        state.spotifyIdleStartTime = now;
-      } else if (now - state.spotifyIdleStartTime > 300000) { // 5 minutes
+    // 2. Auto Exit based on dynamic played commitment (min 5s, max 5m, equal to play time)
+    if (state.activeOverlayApp === "spotify" && autoOpenedSpotifyOverlay) {
+      if (!hasTrack) {
         autoOpenedSpotifyOverlay = false;
+        spotifyAccumulatedPlayMs = 0;
+        spotifyPauseStartMs = 0;
         closeOverlayApp(false);
+      } else if (!isPlaying && spotifyPauseStartMs > 0) {
+        // Dynamic timeout equal to played commitment (floor 5s, ceiling 5m / 300s)
+        const dynamicTimeoutMs = Math.min(300000, Math.max(5000, spotifyAccumulatedPlayMs));
+        if (now - spotifyPauseStartMs >= dynamicTimeoutMs) {
+          autoOpenedSpotifyOverlay = false;
+          spotifyAccumulatedPlayMs = 0;
+          spotifyPauseStartMs = 0;
+          closeOverlayApp(false);
+        }
       }
-    } else {
-      state.spotifyIdleStartTime = null;
     }
   }
 
