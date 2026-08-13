@@ -746,27 +746,30 @@ html, body {
 .app-overlay-view.spotify-active::before {
   content: "";
   position: absolute;
-  inset: -60px;
+  inset: 0;
   background-image: var(--spotify-bg-image, none);
   background-size: cover;
-  background-position: center;
-  filter: blur(45px) brightness(0.5) contrast(1.1);
+  background-position: center 25%;
+  filter: brightness(0.90) contrast(1.05);
   z-index: 0;
-  transition: opacity 1s ease, background-image 1s ease;
+  transition: opacity 0.8s ease, background-image 0.8s ease;
   pointer-events: none;
 }
 
-/* Progressive Fade Overlay: Aggressive dark gradient around song title/controls & screen vignetting */
+/* Progressive Blur & Darkening Overlay: Sharp/unblurred top artist photo, progressive blur & fade down to playback controls */
 .app-overlay-view.spotify-active::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: 
-    linear-gradient(135deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.85) 40%, rgba(0, 0, 0, 0.35) 75%, transparent 100%),
-    radial-gradient(circle at 10% 90%, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.7) 50%, transparent 100%),
-    radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.9) 100%);
-  pointer-events: none;
   z-index: 1;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(35px);
+  backdrop-filter: blur(35px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.2) 28%, rgba(0, 0, 0, 0.75) 60%, #000 85%);
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.2) 28%, rgba(0, 0, 0, 0.75) 60%, #000 85%);
+  background: 
+    linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 30%, rgba(0, 0, 0, 0.75) 65%, rgba(0, 0, 0, 0.96) 100%),
+    radial-gradient(circle at 10% 90%, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.7) 55%, transparent 100%);
 }
 
 .app-overlay-view.spotify-active .overlay-header,

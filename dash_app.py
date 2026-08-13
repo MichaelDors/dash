@@ -1289,6 +1289,9 @@ class SpotifyClient:
             print(f"Spotify API Error: {e} for {url}")
             return None
 
+    def get_artist(self, artist_id: str) -> Optional[Dict]:
+        return self._api_request("GET", f"/artists/{artist_id}")
+
     def get_currently_playing(self) -> Optional[Dict]:
         return self._api_request("GET", "/me/player/currently-playing")
 
@@ -1328,6 +1331,8 @@ class SpotifyApp(App):
         self._fetch_in_flight = False
         self._playback_started_event = False
         self._playback_stopped_event = False
+        self._artist_image_cache: Dict[str, str] = {}
+        self.artist_image_url: str = ""
 
     def reset(self) -> None:
         self.track_name = ""
@@ -1356,17 +1361,37 @@ class SpotifyApp(App):
                     item = data.get("item")
                     if item:
                         self.track_name = item.get("name", "")
-                        self.artist_name = ", ".join(a.get("name", "") for a in item.get("artists", []))
+                        artists = item.get("artists", []) if isinstance(item.get("artists"), list) else []
+                        self.artist_name = ", ".join(a.get("name", "") for a in artists if isinstance(a, dict))
                         self.duration_ms = int(item.get("duration_ms", 0) or 0)
                         album_images = item.get("album", {}).get("images", []) if isinstance(item.get("album"), dict) else []
                         if album_images and len(album_images) > 0:
                             self.album_art_url = str(album_images[0].get("url", "") or "")
                         else:
                             self.album_art_url = ""
+
+                        # Fetch artist picture from Spotify API
+                        primary_artist_id = artists[0].get("id") if artists and isinstance(artists[0], dict) else None
+                        if primary_artist_id:
+                            if primary_artist_id not in self._artist_image_cache:
+                                try:
+                                    artist_data = self.client.get_artist(primary_artist_id)
+                                    if isinstance(artist_data, dict):
+                                        art_imgs = artist_data.get("images", [])
+                                        if art_imgs and len(art_imgs) > 0:
+                                            self._artist_image_cache[primary_artist_id] = str(art_imgs[0].get("url", "") or "")
+                                        else:
+                                            self._artist_image_cache[primary_artist_id] = ""
+                                except Exception:
+                                    self._artist_image_cache[primary_artist_id] = ""
+                            self.artist_image_url = self._artist_image_cache.get(primary_artist_id, "")
+                        else:
+                            self.artist_image_url = ""
                     elif can_apply_playback_state:
                         self.track_name = ""
                         self.artist_name = ""
                         self.album_art_url = ""
+                        self.artist_image_url = ""
                         self.duration_ms = 0
                         self.progress_ms = 0
 
@@ -1485,6 +1510,7 @@ class SpotifyApp(App):
             "track_name": self.track_name,
             "artist_name": self.artist_name,
             "album_art_url": getattr(self, "album_art_url", ""),
+            "artist_image_url": getattr(self, "artist_image_url", ""),
             "is_playing": self.is_playing,
             "progress_ms": progress_ms,
             "duration_ms": self.duration_ms,

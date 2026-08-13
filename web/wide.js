@@ -64,6 +64,56 @@
   // Dynamic Color Extraction for Spotify Album Art (Fetch Blob Same-Origin Canvas)
   let currentAlbumArtUrl = null;
 
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return [h, s, l];
+  }
+
+  function hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+
+  function ensureHighContrastColor(r, g, b) {
+    let [h, s, l] = rgbToHsl(r, g, b);
+    // Ensure vivid saturation (minimum 60%)
+    if (s < 0.50) s = 0.65;
+    // Ensure high contrast against dark background (lightness 58% - 72%)
+    if (l < 0.55) l = 0.62;
+    if (l > 0.78) l = 0.70;
+    const [fr, fg, fb] = hslToRgb(h, s, l);
+    return `#${((1 << 24) + (fr << 16) + (fg << 8) + fb).toString(16).slice(1)}`;
+  }
+
   async function extractVibrantColorFromUrl(artUrl) {
     if (!artUrl) return null;
     try {
@@ -89,7 +139,7 @@
       const imageData = ctx.getImageData(0, 0, 40, 40);
       const data = imageData.data;
 
-      let bestHex = null;
+      let bestR = 0, bestG = 242, bestB = 254;
       let bestScore = -1;
 
       for (let i = 0; i < data.length; i += 8) {
@@ -104,33 +154,39 @@
         const saturation = (max - min) / max;
         const isGrey = Math.abs(r - g) < 18 && Math.abs(g - b) < 18 && Math.abs(r - b) < 18;
 
-        if (isGrey || brightness < 30 || brightness > 225 || saturation < 0.15) continue;
+        if (isGrey || brightness < 25 || brightness > 230 || saturation < 0.15) continue;
 
         const score = saturation * 0.85 + (brightness / 255) * 0.15;
         if (score > bestScore) {
           bestScore = score;
-          bestHex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+          bestR = r;
+          bestG = g;
+          bestB = b;
         }
       }
-      return bestHex;
+      if (bestScore > -1) {
+        return ensureHighContrastColor(bestR, bestG, bestB);
+      }
+      return null;
     } catch (err) {
       console.warn("Client color extraction notice:", err);
       return null;
     }
   }
 
-  function updateSpotifyAccentColor(artUrl) {
-    if (!artUrl) {
+  function updateSpotifyAccentColor(bgImageUrl, colorExtractUrl) {
+    if (!bgImageUrl) {
       document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
       document.documentElement.style.setProperty('--spotify-bg-image', 'none');
       return;
     }
-    document.documentElement.style.setProperty('--spotify-bg-image', `url("${artUrl}")`);
+    document.documentElement.style.setProperty('--spotify-bg-image', `url("${bgImageUrl}")`);
 
-    if (artUrl === currentAlbumArtUrl) return;
-    currentAlbumArtUrl = artUrl;
+    const extractUrl = colorExtractUrl || bgImageUrl;
+    if (extractUrl === currentAlbumArtUrl) return;
+    currentAlbumArtUrl = extractUrl;
 
-    extractVibrantColorFromUrl(artUrl).then(color => {
+    extractVibrantColorFromUrl(extractUrl).then(color => {
       if (color) {
         document.documentElement.style.setProperty('--spotify-accent', color);
       } else {
@@ -283,6 +339,7 @@
         track_name: "Midnight City",
         artist_name: "M83",
         album_art_url: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=600&q=80",
+        artist_image_url: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=80",
         is_playing: true,
         progress_ms: 104000,
         duration_ms: 243000,
@@ -456,12 +513,14 @@
     const data = state.latestData;
     if (!data) return;
 
-    // Spotify Dynamic Color Extraction
+    // Spotify Dynamic Color Extraction & Background Image
     const spData = data.apps?.spotify || data.widgets?.spotify || {};
-    if (spData.album_art_url) {
-      updateSpotifyAccentColor(spData.album_art_url);
+    const bgImage = spData.artist_image_url || spData.album_art_url;
+    if (bgImage) {
+      updateSpotifyAccentColor(bgImage, spData.album_art_url || bgImage);
     } else {
       document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      document.documentElement.style.setProperty('--spotify-bg-image', 'none');
     }
 
     // Update Persistent Time Hero Card
