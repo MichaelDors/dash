@@ -363,8 +363,8 @@
   async function fetchState() {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const res = await fetch("/api/wide/state", { signal: controller.signal });
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch("/api/wide/state", { cache: "no-store", signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!res.ok) throw new Error("HTTP " + res.status);
@@ -800,22 +800,7 @@
       });
     });
 
-    const widgetScrub = document.getElementById("widgetScrubBar");
-    if (widgetScrub) {
-      widgetScrub.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const rect = widgetScrub.getBoundingClientRect();
-        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        const sp = state.latestData?.apps?.spotify || state.latestData?.widgets?.spotify || {};
-        const duration = sp.duration_ms || 1;
-        const targetMs = Math.round(ratio * duration);
-
-        const fill = document.getElementById("widget-spotify-progress");
-        if (fill) fill.style.width = `${ratio * 100}%`;
-
-        sendAction("spotify_seek", { position_ms: targetMs });
-      });
-    }
+    attachSeekHandler("widgetScrubBar", "widget-spotify-progress");
   }
 
   // Full Screen Overlay Management
@@ -1121,35 +1106,53 @@
     }
   }
 
+  function attachSeekHandler(barId, fillId) {
+    const bar = document.getElementById(barId);
+    if (!bar) return;
+
+    const handleSeek = (e) => {
+      if (e.type === "touchstart") {
+        e.preventDefault(); // Prevents ghost click event from firing 300ms later on touch screens!
+      }
+      e.stopPropagation();
+
+      const rect = bar.getBoundingClientRect();
+      let clientX = e.clientX;
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+      } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+      }
+
+      if (clientX === undefined || clientX === null || isNaN(clientX)) return;
+
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const sp = state.latestData?.apps?.spotify || state.latestData?.widgets?.spotify || {};
+      const duration = sp.duration_ms || 1;
+      const targetMs = Math.round(ratio * duration);
+
+      const fill = document.getElementById(fillId);
+      if (fill) fill.style.width = `${ratio * 100}%`;
+
+      sendAction("spotify_seek", { position_ms: targetMs });
+    };
+
+    bar.addEventListener("click", handleSeek);
+    bar.addEventListener("touchstart", handleSeek, { passive: false });
+  }
+
   // Attach Full Screen Overlay Action Handlers
   function attachOverlayEventListeners(appId, data) {
     if (appId === "spotify") {
       const btnPlay = document.getElementById("fsSpotPlay");
       const btnPrev = document.getElementById("fsSpotPrev");
       const btnNext = document.getElementById("fsSpotNext");
-      const scrubBar = document.getElementById("fsScrubBar");
 
       if (btnPlay) btnPlay.addEventListener("click", () => sendAction("spotify_toggle"));
       if (btnPrev) btnPrev.addEventListener("click", () => sendAction("spotify_prev"));
       if (btnNext) btnNext.addEventListener("click", () => sendAction("spotify_next"));
 
-      if (scrubBar) {
-        const handleSeek = (e) => {
-          const rect = scrubBar.getBoundingClientRect();
-          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-          const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-          const sp = data.apps?.spotify || data.widgets?.spotify || {};
-          const duration = sp.duration_ms || 1;
-          const targetMs = Math.round(ratio * duration);
-
-          const fill = document.getElementById("fs-spotify-progress");
-          if (fill) fill.style.width = `${ratio * 100}%`;
-
-          sendAction("spotify_seek", { position_ms: targetMs });
-        };
-        scrubBar.addEventListener("click", handleSeek);
-        scrubBar.addEventListener("touchstart", handleSeek, { passive: true });
-      }
+      attachSeekHandler("fsScrubBar", "fs-spotify-progress");
     } else if (appId === "timer") {
       const btnToggle = document.getElementById("fsTimerToggle");
       const btnReset = document.getElementById("fsTimerReset");

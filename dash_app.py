@@ -1858,6 +1858,7 @@ class DashboardController:
                 if pos is not None and self.spotify_app:
                     pos = int(pos)
                     self.spotify_app.progress_ms = pos
+                    self.spotify_app._last_user_action_time = time.time()
                     threading.Thread(target=self.spotify_client.seek, args=(pos,), daemon=True).start()
                 return True
             if action == "timer_toggle":
