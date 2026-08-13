@@ -113,6 +113,19 @@ SERVER_BIND_RETRY_DELAY = 1.0
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
 
+def get_local_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "127.0.0.1"
+
 try:
     from oled_driver import (
         DISPLAY_DIM_BRIGHTNESS,
@@ -481,6 +494,7 @@ class TimerWidget(Widget):
             "flash": self.flash_state,
             "minutes": mins,
             "seconds": secs,
+            "set_minutes": self.set_minutes,
             "time_text": f"{mins:02d}:{secs:02d}",
         }
 
@@ -1478,7 +1492,7 @@ class SettingsApp(App):
         
         self.current_view = "main"
         self.main_menu_idx = 0
-        self.main_menu_options = ["Max Brightness", "Dim Brightness", "Motion Sensor", "Updates"]
+        self.main_menu_options = ["Max Brightness", "Dim Brightness", "Motion Sensor", "Updates", "IP Address"]
         
         self.brightness_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         self.motion_options = [True, False]
@@ -1516,7 +1530,9 @@ class SettingsApp(App):
     def on_dial_press(self) -> None:
         if self.current_view == "main":
             selected = self.main_menu_options[self.main_menu_idx]
-            if selected == "Max Brightness":
+            if selected == "IP Address":
+                self.current_view = "ip_address"
+            elif selected == "Max Brightness":
                 self.current_view = "max_brightness"
                 try:
                     self.sub_menu_idx = self.brightness_options.index(self.settings.max_brightness)
@@ -1535,6 +1551,8 @@ class SettingsApp(App):
                 self.current_view = "updates"
                 self.updates_focused = 0
                 self._check_updates()
+        elif self.current_view == "ip_address":
+            self.current_view = "main"
         elif self.current_view == "max_brightness":
             self.settings.max_brightness = self.brightness_options[self.sub_menu_idx]
             self.settings.save()
@@ -1588,17 +1606,21 @@ class SettingsApp(App):
         payload["type"] = "settings"
         payload["current_view"] = self.current_view
         payload["main_menu_idx"] = self.main_menu_idx
+        ip_addr = get_local_ip()
+        payload["ip_address"] = ip_addr
         
         main_options = []
         for opt in self.main_menu_options:
             val = ""
-            if opt == "Max Brightness":
+            if opt == "IP Address":
+                val = ip_addr
+            elif opt == "Max Brightness":
                 val = str(self.settings.max_brightness)
             elif opt == "Dim Brightness":
                 val = str(self.settings.dim_brightness)
             elif opt == "Motion Sensor":
                 val = "On" if self.settings.motion_sensor else "Off"
-            main_options.append({"name": opt, "value": val, "is_subpage": opt == "Updates"})
+            main_options.append({"name": opt, "value": val, "is_subpage": opt in ("Updates", "IP Address")})
         payload["main_menu_options"] = main_options
         
         if self.current_view == "max_brightness":
@@ -1668,11 +1690,174 @@ class DashboardController:
         self.button2_last_press = 0.0
         self.button_cooldown = 0.1
 
+        self.wide_slots: List[str] = ["spotify", "weather"]
         self._lock = threading.Lock()
         
         self._state_dirty = False
         self._last_save_time = 0.0
         self.load_widget_state()
+        self.load_wide_widget_state()
+
+    def mark_state_dirty(self) -> None:
+        self._state_dirty = True
+
+    def load_widget_state(self) -> None:
+        try:
+            path = BASE_DIR / "widget_state.json"
+            if path.exists():
+                state = json.loads(path.read_text())
+                for widget in self.widgets:
+                    if widget.widget_id in state:
+                        widget.set_state(state[widget.widget_id])
+                if "current_widget_index" in state:
+                    idx = int(state["current_widget_index"])
+                    if 0 <= idx < len(self.widgets):
+                        self.current_widget_index = idx
+        except Exception as exc:
+            print(f"Error loading widget state: {exc}")
+
+    def load_wide_widget_state(self) -> None:
+        try:
+            path = BASE_DIR / "widget_state_wide.json"
+            if path.exists():
+                data = json.loads(path.read_text())
+                if isinstance(data, dict) and "slots" in data and isinstance(data["slots"], list):
+                    self.wide_slots = [str(s) for s in data["slots"] if isinstance(s, str)][:3]
+        except Exception as exc:
+            print(f"Error loading wide widget state: {exc}")
+
+    def save_wide_slots(self, slots: List[str]) -> List[str]:
+        valid_apps = {"spotify", "weather", "timer", "click_counter", "photo", "motion_status", "version_status"}
+        filtered = [s for s in slots if isinstance(s, str) and s in valid_apps][:3]
+        with self._lock:
+            self.wide_slots = filtered
+        try:
+            path = BASE_DIR / "widget_state_wide.json"
+            tmp_path = path.with_suffix('.tmp')
+            tmp_path.write_text(json.dumps({"slots": self.wide_slots}))
+            tmp_path.replace(path)
+        except Exception as exc:
+            print(f"Error saving wide widget state: {exc}")
+        return self.wide_slots
+
+    def get_wide_slots(self) -> List[str]:
+        with self._lock:
+            return list(self.wide_slots)
+
+    def get_wide_snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            widget_payloads = {}
+            for w in self.widgets:
+                widget_payloads[w.widget_id] = w.to_payload()
+
+            app_payloads = {}
+            for app in self.apps:
+                app_payloads[app.app_id] = app.to_payload()
+
+            motion = self.motion_manager.get_status()
+            display_mode = "on"
+            if motion["display_off"]:
+                display_mode = "off"
+            elif motion["display_dimmed"]:
+                display_mode = "dim"
+
+            spotify_status = {
+                "configured": self.spotify_client.is_configured(),
+                "authenticated": self.spotify_client.is_authenticated()
+            }
+
+            return {
+                "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "display_mode": display_mode,
+                "motion": motion,
+                "spotify_status": spotify_status,
+                "slots": self.wide_slots,
+                "widgets": widget_payloads,
+                "apps": app_payloads
+            }
+
+    def dispatch_wide_action(self, action: str, params: Dict[str, Any]) -> bool:
+        with self._lock:
+            if action == "spotify_toggle":
+                if self.spotify_app:
+                    self.spotify_app.on_dial_press()
+                return True
+            if action == "spotify_play":
+                if self.spotify_app and self.spotify_client.is_authenticated():
+                    threading.Thread(target=self.spotify_client.play, daemon=True).start()
+                    self.spotify_app.is_playing = True
+                return True
+            if action == "spotify_pause":
+                if self.spotify_app and self.spotify_client.is_authenticated():
+                    threading.Thread(target=self.spotify_client.pause, daemon=True).start()
+                    self.spotify_app.is_playing = False
+                return True
+            if action == "spotify_next":
+                if self.spotify_app:
+                    self.spotify_app.on_button1()
+                return True
+            if action == "spotify_prev":
+                if self.spotify_app:
+                    self.spotify_app.on_button2()
+                return True
+            if action == "spotify_seek":
+                pos = params.get("position_ms")
+                if pos is not None and self.spotify_app:
+                    pos = int(pos)
+                    self.spotify_app.progress_ms = pos
+                    threading.Thread(target=self.spotify_client.seek, args=(pos,), daemon=True).start()
+                return True
+            if action == "timer_toggle":
+                if self.timer_widget:
+                    self.timer_widget.on_button_press()
+                return True
+            if action == "timer_start":
+                if self.timer_widget:
+                    self.timer_widget._start_timer()
+                return True
+            if action == "timer_pause":
+                if self.timer_widget:
+                    self.timer_widget._pause_timer()
+                return True
+            if action == "timer_reset":
+                if self.timer_widget:
+                    self.timer_widget.running = False
+                    self.timer_widget.remaining_seconds = self.timer_widget.set_minutes * 60
+                return True
+            if action == "timer_add_min":
+                if self.timer_widget:
+                    self.timer_widget.add_minute()
+                return True
+            if action == "timer_sub_min":
+                if self.timer_widget:
+                    self.timer_widget.subtract_minute()
+                return True
+            if action == "timer_set_min":
+                mins = params.get("minutes")
+                if mins is not None and self.timer_widget:
+                    self.timer_widget.set_minutes = max(1, min(99, int(mins)))
+                    self.timer_widget.remaining_seconds = self.timer_widget.set_minutes * 60
+                    self.timer_widget.running = False
+                return True
+            if action == "counter_inc":
+                counter = next((w for w in self.widgets if isinstance(w, ClickCounterWidget)), None)
+                if counter:
+                    counter.on_button_press()
+                return True
+            if action == "counter_dec":
+                counter = next((w for w in self.widgets if isinstance(w, ClickCounterWidget)), None)
+                if counter:
+                    counter.click_count = max(0, counter.click_count - 1)
+                return True
+            if action == "counter_reset":
+                counter = next((w for w in self.widgets if isinstance(w, ClickCounterWidget)), None)
+                if counter:
+                    counter.on_button_hold_start()
+                return True
+            if action == "simulate_motion":
+                self.simulate_motion()
+                return True
+        return False
 
     def mark_state_dirty(self) -> None:
         self._state_dirty = True
@@ -2510,11 +2695,20 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         if path == "/styles.css":
             self._serve_file("styles.css", "text/css; charset=utf-8")
             return
-        if path == "/app.js":
-            self._serve_file("app.js", "application/javascript; charset=utf-8")
+        if path in {"/wide", "/wide.html", "/touch"}:
+            self._serve_file("wide.html", "text/html; charset=utf-8")
             return
-        if path == "/api/state":
-            self._send_json(self.controller.snapshot())
+        if path == "/wide.css":
+            self._serve_file("wide.css", "text/css; charset=utf-8")
+            return
+        if path == "/wide.js":
+            self._serve_file("wide.js", "application/javascript; charset=utf-8")
+            return
+        if path == "/api/wide/state":
+            self._send_json(self.controller.get_wide_snapshot())
+            return
+        if path == "/api/wide/config":
+            self._send_json({"slots": self.controller.get_wide_slots()})
             return
 
         if path == "/api/spotify/status":
@@ -2593,6 +2787,25 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             self.controller.spotify_client.save_config(client_id, client_secret, redirect_uri=redirect_uri)
             auth_url = self.controller.spotify_client.get_auth_url(redirect_uri)
             self._send_json({"auth_url": auth_url})
+            return
+
+        if parsed.path == "/api/wide/config":
+            body = self._read_json_body() or {}
+            slots = body.get("slots", [])
+            if not isinstance(slots, list):
+                self._send_json({"error": "slots must be a list"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            saved_slots = self.controller.save_wide_slots(slots)
+            self._send_json({"status": "ok", "slots": saved_slots})
+            return
+
+        if parsed.path == "/api/wide/action":
+            body = self._read_json_body() or {}
+            action = str(body.get("action", "")).strip().lower()
+            if not self.controller.dispatch_wide_action(action, body):
+                self._send_json({"error": f"Unsupported action: {action}"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(self.controller.get_wide_snapshot())
             return
 
         if parsed.path != "/api/action":
@@ -3033,6 +3246,16 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
                     draw.text((128 - 4 - vw, y + 2), val, fill=text_fill, font=font)
                     y += 15
                     
+            elif view == "ip_address":
+                ip = str(app.get("ip_address") or "Unknown")
+                vw, vh = _text_size("< Back", font)
+                draw.rectangle((2, 1, 6 + vw, 3 + vh), fill=1)
+                draw.text((4, 2), "< Back", fill=0, font=font)
+                
+                draw.text((4, 18), "IP Address:", fill=1, font=small_font)
+                draw.text((4, 32), ip, fill=1, font=font)
+                draw.text((4, 48), f"Port: {HTTP_PORT}", fill=1, font=small_font)
+
             elif view == "updates":
                 focused = int(app.get("updates_focused", 0))
                 status = str(app.get("update_status") or "Checking...")

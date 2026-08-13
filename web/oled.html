@@ -152,6 +152,14 @@
                 '</div>';
             });
             content += '</div>';
+          } else if (view === "ip_address") {
+            const ip = app.ip_address || "Unknown";
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding:2px;">' +
+              '<div style="font-size:10px; padding:0 4px; width: fit-content; background:#fff; color:#000;">&lt; Back</div>' +
+              '<div style="font-size:9px; margin-top:4px; color:#aaa;">IP Address:</div>' +
+              '<div style="font-size:10px; font-weight:bold; margin-top:2px; color:#fff;">' + ip + '</div>' +
+              '<div style="font-size:9px; margin-top:4px; color:#888;">Port: 8080</div>' +
+              '</div>';
           } else if (view === "updates") {
             const focused = app.updates_focused || 0;
             const arrowStyle = focused === 0 ? 'background:#fff;color:#000;' : 'color:#fff;';

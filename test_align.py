@@ -5,7 +5,7 @@ img = Image.new("1", (128, 64), 0)
 draw = ImageDraw.Draw(img)
 
 try:
-    font = ImageFont.truetype("SF-Compact-Rounded-Light.otf", 12)
+    font = ImageFont.truetype("leggie-12.bdf", 12)
 except Exception:
     font = ImageFont.load_default()
 

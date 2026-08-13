@@ -1,0 +1,11 @@
+gpiozero not available; keyboard/web controls only.
+Motion monitor loop running.
+Motion manager started.
+Web dashboard is running.
+Open http://localhost:8080 on this machine (preview).
+Or open http://<raspberry-pi-ip>:8080 from another device.
+No activity threshold reached: display set to DIM state.
+No activity threshold reached: display set to OFF state.
+Shutdown signal received.
+Error saving widget state: [Errno 2] No such file or directory: '/Users/admin/Documents/GitHub/dash/widget_state.tmp' -> '/Users/admin/Documents/GitHub/dash/widget_state.json'
+Motion manager stopped.
