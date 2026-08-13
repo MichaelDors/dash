@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Dash Wi-Fi Setup</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --card-hover: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --border-color: #334155;
+      --success: #22c55e;
+      --error: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px 16px; }
+    .container { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 20px; }
+    .header { text-align: center; margin-top: 10px; margin-bottom: 5px; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .header p { font-size: 0.9rem; color: var(--text-sub); }
+    .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 18px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; background: rgba(56, 189, 248, 0.1); color: var(--accent); }
+    .status-badge.connected { background: rgba(34, 197, 94, 0.1); color: var(--success); }
+    .status-badge.connecting { background: rgba(234, 179, 8, 0.1); color: #eab308; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .section-title { font-size: 0.95rem; font-weight: 600; color: var(--text-sub); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center; }
+    .refresh-btn { background: none; border: none; color: var(--accent); font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+    .refresh-btn:hover { background: rgba(56, 189, 248, 0.1); }
+    .wifi-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; padding-right: 2px; }
+    .wifi-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; cursor: pointer; transition: all 0.2s ease; }
+    .wifi-item:hover, .wifi-item:active { background: var(--card-hover); border-color: var(--accent); }
+    .wifi-info { display: flex; flex-direction: column; gap: 2px; }
+    .wifi-name { font-size: 0.95rem; font-weight: 600; color: var(--text-main); }
+    .wifi-meta { font-size: 0.78rem; color: var(--text-sub); display: flex; align-items: center; gap: 8px; }
+    .wifi-signal { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+    .bar { width: 3px; background: var(--border-color); border-radius: 1px; }
+    .bar.active { background: var(--accent); }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 20px; padding: 24px; width: 100%; max-width: 380px; box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5); }
+    .modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; }
+    .modal-sub { font-size: 0.85rem; color: var(--text-sub); margin-bottom: 16px; }
+    .input-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+    .input-group label { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); text-transform: uppercase; }
+    .input-wrapper { position: relative; }
+    .input-field { width: 100%; padding: 12px 14px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-main); font-size: 1rem; outline: none; }
+    .input-field:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }
+    .toggle-pass { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-sub); font-size: 0.8rem; cursor: pointer; }
+    .btn-group { display: flex; gap: 10px; }
+    .btn { flex: 1; padding: 12px; border-radius: 10px; font-size: 0.95rem; font-weight: 600; border: none; cursor: pointer; transition: background 0.2s; }
+    .btn-primary { background: var(--accent); color: #0f172a; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: transparent; color: var(--text-sub); border: 1px solid var(--border-color); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+    .alert { padding: 10px 14px; border-radius: 10px; font-size: 0.85rem; font-weight: 500; display: none; margin-bottom: 12px; }
+    .alert-error { background: rgba(239, 68, 68, 0.15); border: 1px solid var(--error); color: #fca5a5; }
+    .alert-success { background: rgba(34, 197, 94, 0.15); border: 1px solid var(--success); color: #86efac; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        Dash Setup
+      </h1>
+      <p>Connect your Dash device to Wi-Fi</p>
+    </div>
+
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.9rem; color: var(--text-sub);">Status</span>
+        <div id="statusBadge" class="status-badge">
+          <span class="dot"></span>
+          <span id="statusText">Checking...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <span>Available Networks</span>
+        <button class="refresh-btn" onclick="scanNetworks()">Scan</button>
+      </div>
+      <div id="wifiList" class="wifi-list">
+        <div style="text-align: center; padding: 20px; color: var(--text-sub); font-size: 0.9rem;">Scanning for networks...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="connectModal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-title" id="modalSSID">Network Name</div>
+      <div class="modal-sub">Enter the Wi-Fi password to connect</div>
+      <div id="modalAlert" class="alert"></div>
+      <div class="input-group">
+        <label>Password</label>
+        <div class="input-wrapper">
+          <input type="password" id="wifiPassword" class="input-field" placeholder="Wi-Fi Password" autocomplete="off" />
+          <button type="button" class="toggle-pass" onclick="togglePasswordVisibility()">Show</button>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="connectBtn" onclick="submitConnection()">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let selectedSSID = "";
+
+    function renderSignal(signal) {
+      const bars = [25, 50, 75, 100];
+      return '<div class="wifi-signal">' +
+        bars.map(threshold => '<div class="bar ' + (signal >= threshold ? 'active' : '') + '" style="height:' + (threshold * 0.12) + 'px;"></div>').join('') +
+        '</div>';
+    }
+
+    function scanNetworks() {
+      const listEl = document.getElementById("wifiList");
+      listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-sub); font-size: 0.9rem;">Scanning...</div>';
+      
+      fetch("/api/wifi/scan")
+        .then(r => r.json())
+        .then(data => {
+          updateStatus(data.status || {});
+          const networks = data.networks || [];
+          if (!networks.length) {
+            listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-sub); font-size: 0.9rem;">No networks found</div>';
+            return;
+          }
+          listEl.innerHTML = networks.map(net => `
+            <div class="wifi-item" onclick="openConnectModal('${escapeHtml(net.ssid)}')">
+              <div class="wifi-info">
+                <div class="wifi-name">${escapeHtml(net.ssid)} ${net.in_use ? '<span style="font-size:0.75rem; color:var(--success); margin-left:4px;">(Connected)</span>' : ''}</div>
+                <div class="wifi-meta">
+                  <span>${net.security || 'WPA2'}</span>
+                  <span>•</span>
+                  <span>${net.signal}%</span>
+                </div>
+              </div>
+              ${renderSignal(net.signal)}
+            </div>
+          `).join('');
+        })
+        .catch(err => {
+          listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error); font-size: 0.9rem;">Failed to scan networks</div>';
+        });
+    }
+
+    function updateStatus(statusData) {
+      const badge = document.getElementById("statusBadge");
+      const text = document.getElementById("statusText");
+      if (statusData.connected) {
+        badge.className = "status-badge connected";
+        text.innerText = "Connected to " + (statusData.ssid || "Wi-Fi");
+      } else if (statusData.ap_active) {
+        badge.className = "status-badge connecting";
+        text.innerText = "Setup Hotspot Active";
+      } else {
+        badge.className = "status-badge";
+        text.innerText = "Disconnected";
+      }
+    }
+
+    function openConnectModal(ssid) {
+      selectedSSID = ssid;
+      document.getElementById("modalSSID").innerText = ssid;
+      document.getElementById("wifiPassword").value = "";
+      document.getElementById("modalAlert").style.display = "none";
+      document.getElementById("connectModal").classList.add("active");
+      setTimeout(() => document.getElementById("wifiPassword").focus(), 100);
+    }
+
+    function closeModal() {
+      document.getElementById("connectModal").classList.remove("active");
+    }
+
+    function togglePasswordVisibility() {
+      const field = document.getElementById("wifiPassword");
+      const btn = event.target;
+      if (field.type === "password") {
+        field.type = "text";
+        btn.innerText = "Hide";
+      } else {
+        field.type = "password";
+        btn.innerText = "Show";
+      }
+    }
+
+    function submitConnection() {
+      const pass = document.getElementById("wifiPassword").value;
+      const alertEl = document.getElementById("modalAlert");
+      const connectBtn = document.getElementById("connectBtn");
+      
+      alertEl.className = "alert alert-success";
+      alertEl.innerText = "Connecting to " + selectedSSID + "...";
+      alertEl.style.display = "block";
+      connectBtn.disabled = true;
+
+      fetch("/api/wifi/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ssid: selectedSSID, password: pass })
+      })
+      .then(r => r.json())
+      .then(data => {
+        connectBtn.disabled = false;
+        if (data.success) {
+          alertEl.className = "alert alert-success";
+          alertEl.innerText = "Successfully connected!";
+          setTimeout(() => {
+            closeModal();
+            scanNetworks();
+          }, 1500);
+        } else {
+          alertEl.className = "alert alert-error";
+          alertEl.innerText = data.message || "Failed to connect";
+        }
+      })
+      .catch(err => {
+        connectBtn.disabled = false;
+        alertEl.className = "alert alert-error";
+        alertEl.innerText = "Error connecting to device";
+      });
+    }
+
+    function escapeHtml(str) {
+      return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    scanNetworks();
+  </script>
+</body>
+</html>

@@ -161,6 +161,225 @@ def setup_gpio_pins() -> bool:
         return False
 
 
+def generate_qr_base64(data_str: str) -> str:
+    """Generate a base64 encoded PNG of a QR code encoding data_str."""
+    try:
+        import qrcode
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=2,
+            border=2,
+        )
+        qr.add_data(data_str)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        print(f"Error generating QR code: {e}")
+        try:
+            from PIL import Image, ImageDraw
+            img = Image.new("RGB", (50, 50), "white")
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([5, 5, 45, 45], outline="black", width=2)
+            draw.text((10, 18), "QR", fill="black")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+        except Exception:
+            return ""
+
+
+class WifiManager:
+    """Manages Wi-Fi scanning, connection, saved networks, and AP hotspot mode."""
+
+    def __init__(self, settings_store: Optional[SettingsStore] = None):
+        self.settings_store = settings_store
+        self.ap_mode_active = False
+        self.ap_ssid = "Dash-Setup"
+        self.connecting = False
+        self.last_status_message = ""
+        self._lock = threading.Lock()
+        self.mock_mode = not self._has_linux_wifi_tools()
+        self.mock_networks = [
+            {"ssid": "Home_Network_5G", "signal": 92, "security": "WPA2", "in_use": True},
+            {"ssid": "Hotel_Guest_WiFi", "signal": 75, "security": "WPA2", "in_use": False},
+            {"ssid": "Coffee_Shop", "signal": 40, "security": "Open", "in_use": False},
+            {"ssid": "Phone_Hotspot", "signal": 85, "security": "WPA2", "in_use": False},
+        ]
+        self.connected_ssid = "Home_Network_5G" if self.mock_mode else ""
+        self.saved_networks = ["Home_Network_5G", "Phone_Hotspot"]
+
+    def _has_linux_wifi_tools(self) -> bool:
+        if sys.platform != "linux":
+            return False
+        import shutil
+        return (shutil.which("nmcli") is not None or 
+                shutil.which("wpa_cli") is not None or 
+                shutil.which("iwlist") is not None)
+
+    def scan_networks(self) -> List[Dict[str, Any]]:
+        """Scan nearby Wi-Fi networks."""
+        if self.mock_mode:
+            return self.mock_networks
+
+        networks: List[Dict[str, Any]] = []
+        try:
+            import shutil, subprocess
+            if shutil.which("nmcli"):
+                res = subprocess.run(
+                    ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "yes"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if res.returncode == 0:
+                    seen = set()
+                    for line in res.stdout.strip().splitlines():
+                        parts = line.split(":")
+                        if len(parts) >= 4:
+                            in_use = (parts[0].strip() == "*")
+                            ssid = parts[1].strip()
+                            if not ssid or ssid in seen:
+                                continue
+                            seen.add(ssid)
+                            try:
+                                signal = int(parts[2])
+                            except ValueError:
+                                signal = 50
+                            sec = parts[3].strip() or "Open"
+                            networks.append({
+                                "ssid": ssid,
+                                "signal": signal,
+                                "security": sec,
+                                "in_use": in_use
+                            })
+                            if in_use:
+                                self.connected_ssid = ssid
+            elif shutil.which("wpa_cli"):
+                subprocess.run(["wpa_cli", "scan"], capture_output=True, timeout=5)
+                time.sleep(1)
+                res = subprocess.run(["wpa_cli", "scan_results"], capture_output=True, text=True, timeout=5)
+                if res.returncode == 0:
+                    lines = res.stdout.strip().splitlines()
+                    seen = set()
+                    for line in lines[1:]:
+                        parts = line.split("\t")
+                        if len(parts) >= 5:
+                            ssid = parts[4].strip()
+                            if not ssid or ssid in seen:
+                                continue
+                            seen.add(ssid)
+                            try:
+                                dbm = int(parts[2])
+                                signal = max(0, min(100, 2 * (dbm + 100)))
+                            except ValueError:
+                                signal = 50
+                            sec = "WPA2" if "WPA" in parts[3] else ("WEP" if "WEP" in parts[3] else "Open")
+                            networks.append({
+                                "ssid": ssid,
+                                "signal": signal,
+                                "security": sec,
+                                "in_use": (ssid == self.connected_ssid)
+                            })
+        except Exception as e:
+            print(f"Error scanning Wi-Fi: {e}")
+
+        if not networks and self.connected_ssid:
+            networks.append({"ssid": self.connected_ssid, "signal": 80, "security": "WPA2", "in_use": True})
+        return networks
+
+    def get_saved_networks(self) -> List[str]:
+        if self.mock_mode:
+            return self.saved_networks
+        try:
+            import shutil, subprocess
+            if shutil.which("nmcli"):
+                res = subprocess.run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"], capture_output=True, text=True, timeout=5)
+                if res.returncode == 0:
+                    saved = []
+                    for line in res.stdout.strip().splitlines():
+                        parts = line.split(":")
+                        if len(parts) >= 2 and "wireless" in parts[1]:
+                            saved.append(parts[0])
+                    return saved
+        except Exception as e:
+            print(f"Error fetching saved networks: {e}")
+        return [self.connected_ssid] if self.connected_ssid else []
+
+    def connect_network(self, ssid: str, password: str = "") -> Tuple[bool, str]:
+        """Attempt to connect to a Wi-Fi network."""
+        with self._lock:
+            self.connecting = True
+            self.last_status_message = f"Connecting to {ssid}..."
+        
+        try:
+            if self.mock_mode:
+                time.sleep(1.2)
+                self.connected_ssid = ssid
+                if ssid not in self.saved_networks:
+                    self.saved_networks.append(ssid)
+                for net in self.mock_networks:
+                    net["in_use"] = (net["ssid"] == ssid)
+                with self._lock:
+                    self.connecting = False
+                    self.last_status_message = f"Connected to {ssid}"
+                if self.ap_mode_active:
+                    self.disable_ap_mode()
+                return True, f"Connected to {ssid}"
+
+            import shutil, subprocess
+            if shutil.which("nmcli"):
+                cmd = ["nmcli", "dev", "wifi", "connect", ssid]
+                if password:
+                    cmd.extend(["password", password])
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+                if res.returncode == 0:
+                    self.connected_ssid = ssid
+                    if self.ap_mode_active:
+                        self.disable_ap_mode()
+                    with self._lock:
+                        self.connecting = False
+                        self.last_status_message = f"Connected to {ssid}"
+                    return True, f"Connected to {ssid}"
+                else:
+                    err = res.stderr.strip() or res.stdout.strip() or "Connection failed"
+                    with self._lock:
+                        self.connecting = False
+                        self.last_status_message = f"Error: {err}"
+                    return False, err
+        except Exception as e:
+            err = str(e)
+            with self._lock:
+                self.connecting = False
+                self.last_status_message = f"Error: {err}"
+            return False, err
+
+    def enable_ap_mode(self) -> Tuple[bool, str]:
+        self.ap_mode_active = True
+        if not self.mock_mode:
+            try:
+                import shutil, subprocess
+                if shutil.which("nmcli"):
+                    subprocess.run(
+                        ["nmcli", "device", "wifi", "hotspot", "ifname", "wlan0", "ssid", self.ap_ssid],
+                        capture_output=True, timeout=10
+                    )
+            except Exception as e:
+                print(f"AP mode start warning: {e}")
+        return True, f"AP Hotspot active: {self.ap_ssid}"
+
+    def disable_ap_mode(self) -> None:
+        self.ap_mode_active = False
+        if not self.mock_mode:
+            try:
+                import shutil, subprocess
+                if shutil.which("nmcli"):
+                    subprocess.run(["nmcli", "connection", "down", "Hotspot"], capture_output=True, timeout=10)
+            except Exception as e:
+                print(f"AP mode stop warning: {e}")
+
+
 class SettingsStore:
     def __init__(self, filepath: Path):
         self.filepath = filepath
@@ -1535,6 +1754,9 @@ class SpotifyApp(App):
         }
 
 
+KEYBOARD_CHARS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>/? ") + ["BACK", "DONE"]
+
+
 class SettingsApp(App):
     def __init__(self, controller: "DashboardController", settings_store: SettingsStore):
         super().__init__("settings", "Settings")
@@ -1543,7 +1765,7 @@ class SettingsApp(App):
         
         self.current_view = "main"
         self.main_menu_idx = 0
-        self.main_menu_options = ["Max Brightness", "Dim Brightness", "Motion Sensor", "Updates", "IP Address"]
+        self.main_menu_options = ["Wi-Fi", "Max Brightness", "Dim Brightness", "Motion Sensor", "Updates", "IP Address"]
         
         self.brightness_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         self.motion_options = [True, False]
@@ -1558,16 +1780,36 @@ class SettingsApp(App):
         self.remote_newer = False
         self.updates_focused = 0 # 0 for back arrow, 1 for update button
 
+        # Wi-Fi sub-view states
+        self.wifi_menu_idx = 0
+        self.wifi_menu_options = ["Scan Networks", "Phone QR Setup", "Saved Networks", "Manual Keyboard", "< Back"]
+        self.wifi_scanned_networks: List[Dict[str, Any]] = []
+        self.wifi_list_idx = 0
+        self.wifi_saved_networks: List[str] = []
+        self.wifi_saved_idx = 0
+        self.wifi_selected_ssid = ""
+        self.wifi_password_buffer = ""
+        self.wifi_keyboard_idx = 0
+        self.wifi_scanning = False
+
     def reset(self) -> None:
         self.current_view = "main"
         self.main_menu_idx = 0
+
+    def _trigger_wifi_scan(self) -> None:
+        self.wifi_scanning = True
+        def do_scan():
+            networks = self.controller.wifi_manager.scan_networks()
+            self.wifi_scanned_networks = networks
+            self.wifi_scanning = False
+            self.controller.mark_state_dirty()
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def on_encoder(self, delta: int) -> None:
         if self.current_view == "main":
             self.main_menu_idx = (self.main_menu_idx + delta) % len(self.main_menu_options)
         elif self.current_view in ("max_brightness", "dim_brightness"):
             self.sub_menu_idx = max(0, min(len(self.brightness_options) - 1, self.sub_menu_idx + delta))
-            # Preview brightness
             val = self.brightness_options[self.sub_menu_idx]
             if self.controller.motion_manager._display_set_brightness:
                 self.controller.motion_manager._display_set_brightness(int(val / 100 * 255))
@@ -1576,12 +1818,25 @@ class SettingsApp(App):
         elif self.current_view == "updates":
             if self.remote_newer:
                 self.updates_focused = (self.updates_focused + delta) % 2
+        elif self.current_view == "wifi_main":
+            self.wifi_menu_idx = (self.wifi_menu_idx + delta) % len(self.wifi_menu_options)
+        elif self.current_view == "wifi_list":
+            total = len(self.wifi_scanned_networks) + 1  # 0 is < Back
+            self.wifi_list_idx = max(0, min(total - 1, self.wifi_list_idx + delta))
+        elif self.current_view == "wifi_saved":
+            total = len(self.wifi_saved_networks) + 1
+            self.wifi_saved_idx = max(0, min(total - 1, self.wifi_saved_idx + delta))
+        elif self.current_view == "wifi_keyboard":
+            self.wifi_keyboard_idx = (self.wifi_keyboard_idx + delta) % len(KEYBOARD_CHARS)
         self.controller.mark_state_dirty()
 
     def on_dial_press(self) -> None:
         if self.current_view == "main":
             selected = self.main_menu_options[self.main_menu_idx]
-            if selected == "IP Address":
+            if selected == "Wi-Fi":
+                self.current_view = "wifi_main"
+                self.wifi_menu_idx = 0
+            elif selected == "IP Address":
                 self.current_view = "ip_address"
             elif selected == "Max Brightness":
                 self.current_view = "max_brightness"
@@ -1602,6 +1857,70 @@ class SettingsApp(App):
                 self.current_view = "updates"
                 self.updates_focused = 0
                 self._check_updates()
+
+        elif self.current_view == "wifi_main":
+            selected = self.wifi_menu_options[self.wifi_menu_idx]
+            if selected == "Scan Networks":
+                self.current_view = "wifi_list"
+                self.wifi_list_idx = 0
+                self._trigger_wifi_scan()
+            elif selected == "Phone QR Setup":
+                self.controller.wifi_manager.enable_ap_mode()
+                self.current_view = "wifi_qr"
+            elif selected == "Saved Networks":
+                self.wifi_saved_networks = self.controller.wifi_manager.get_saved_networks()
+                self.wifi_saved_idx = 0
+                self.current_view = "wifi_saved"
+            elif selected == "Manual Keyboard":
+                self.current_view = "wifi_keyboard"
+                self.wifi_password_buffer = ""
+                self.wifi_keyboard_idx = 0
+            elif selected == "< Back":
+                self.current_view = "main"
+
+        elif self.current_view == "wifi_list":
+            if self.wifi_list_idx == 0:
+                self.current_view = "wifi_main"
+            else:
+                net_idx = self.wifi_list_idx - 1
+                if net_idx < len(self.wifi_scanned_networks):
+                    net = self.wifi_scanned_networks[net_idx]
+                    self.wifi_selected_ssid = net.get("ssid", "")
+                    self.wifi_password_buffer = ""
+                    self.wifi_keyboard_idx = 0
+                    self.current_view = "wifi_keyboard"
+
+        elif self.current_view == "wifi_saved":
+            if self.wifi_saved_idx == 0:
+                self.current_view = "wifi_main"
+            else:
+                idx = self.wifi_saved_idx - 1
+                if idx < len(self.wifi_saved_networks):
+                    ssid = self.wifi_saved_networks[idx]
+                    def connect_saved():
+                        self.controller.wifi_manager.connect_network(ssid)
+                        self.controller.mark_state_dirty()
+                    threading.Thread(target=connect_saved, daemon=True).start()
+                    self.current_view = "wifi_main"
+
+        elif self.current_view == "wifi_qr":
+            self.current_view = "wifi_main"
+
+        elif self.current_view == "wifi_keyboard":
+            char = KEYBOARD_CHARS[self.wifi_keyboard_idx]
+            if char == "BACK":
+                self.wifi_password_buffer = self.wifi_password_buffer[:-1]
+            elif char == "DONE":
+                ssid = self.wifi_selected_ssid or self.controller.wifi_manager.connected_ssid or "Wi-Fi"
+                passw = self.wifi_password_buffer
+                def connect_bg():
+                    self.controller.wifi_manager.connect_network(ssid, passw)
+                    self.controller.mark_state_dirty()
+                threading.Thread(target=connect_bg, daemon=True).start()
+                self.current_view = "wifi_main"
+            else:
+                self.wifi_password_buffer += char
+
         elif self.current_view == "ip_address":
             self.current_view = "main"
         elif self.current_view == "max_brightness":
@@ -1613,7 +1932,6 @@ class SettingsApp(App):
         elif self.current_view == "dim_brightness":
             self.settings.dim_brightness = self.brightness_options[self.sub_menu_idx]
             self.settings.save()
-            # Restore max brightness
             if self.controller.motion_manager._display_set_brightness:
                 self.controller.motion_manager._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
             self.current_view = "main"
@@ -1665,13 +1983,15 @@ class SettingsApp(App):
             val = ""
             if opt == "IP Address":
                 val = ip_addr
+            elif opt == "Wi-Fi":
+                val = self.controller.wifi_manager.connected_ssid or ("AP Setup" if self.controller.wifi_manager.ap_mode_active else "Off")
             elif opt == "Max Brightness":
                 val = str(self.settings.max_brightness)
             elif opt == "Dim Brightness":
                 val = str(self.settings.dim_brightness)
             elif opt == "Motion Sensor":
                 val = "On" if self.settings.motion_sensor else "Off"
-            main_options.append({"name": opt, "value": val, "is_subpage": opt in ("Updates", "IP Address")})
+            main_options.append({"name": opt, "value": val, "is_subpage": opt in ("Wi-Fi", "Updates", "IP Address")})
         payload["main_menu_options"] = main_options
         
         if self.current_view == "max_brightness":
@@ -1692,14 +2012,37 @@ class SettingsApp(App):
             payload["remote_newer"] = self.remote_newer
             payload["updates_focused"] = self.updates_focused
             payload["branch"] = os.getenv("GITHUB_BRANCH", "main").strip() or "main"
+        elif self.current_view == "wifi_main":
+            payload["wifi_menu_options"] = self.wifi_menu_options
+            payload["wifi_menu_idx"] = self.wifi_menu_idx
+            payload["wifi_status"] = self.controller.wifi_manager.last_status_message
+            payload["wifi_connected_ssid"] = self.controller.wifi_manager.connected_ssid
+        elif self.current_view == "wifi_list":
+            payload["wifi_scanned_networks"] = self.wifi_scanned_networks
+            payload["wifi_list_idx"] = self.wifi_list_idx
+            payload["wifi_scanning"] = self.wifi_scanning
+        elif self.current_view == "wifi_saved":
+            payload["wifi_saved_networks"] = self.wifi_saved_networks
+            payload["wifi_saved_idx"] = self.wifi_saved_idx
+        elif self.current_view == "wifi_qr":
+            url_target = f"http://{ip_addr}:8080/wifi" if ip_addr != "127.0.0.1" else "http://192.168.4.1:8080/wifi"
+            payload["wifi_qr_b64"] = generate_qr_base64(url_target)
+            payload["wifi_ap_ssid"] = self.controller.wifi_manager.ap_ssid
+        elif self.current_view == "wifi_keyboard":
+            payload["wifi_selected_ssid"] = self.wifi_selected_ssid
+            payload["wifi_password_buffer"] = self.wifi_password_buffer
+            payload["wifi_keyboard_idx"] = self.wifi_keyboard_idx
+            payload["wifi_keyboard_char"] = KEYBOARD_CHARS[self.wifi_keyboard_idx]
         
         return payload
+
 
 class DashboardController:
     """Coordinates widgets, motion state, and hardware/button actions."""
 
     def __init__(self, sensor_available: bool, spotify_client: Optional[SpotifyClient] = None):
         self.settings = SettingsStore(BASE_DIR / "settings.json")
+        self.wifi_manager = WifiManager(self.settings)
         self.motion_manager = MotionSensorManager(sensor_available, self.settings)
         self.spotify_client = spotify_client or SpotifyClient(BASE_DIR / "spotify_tokens.json")
         self.apps: List[App] = [
@@ -2615,6 +2958,59 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
                         f'<div style="font-size:9px; margin-top:2px;">Checked: {time_str}</div>'
                     )
                 content += '</div>'
+            elif view == "wifi_main":
+                idx = app.get("wifi_menu_idx", 0)
+                options = app.get("wifi_menu_options", [])
+                connected = _escape_html(app.get("wifi_connected_ssid") or "Disconnected")
+                content = f'<div style="font-size:9px; padding:1px 4px; color:#aaa;">Wi-Fi: {connected}</div>'
+                content += '<div style="display:flex; flex-direction:column; width:100%; box-sizing:border-box;">'
+                for i, opt in enumerate(options):
+                    active = 'background:#fff;color:#000;' if i == idx else 'color:#fff;'
+                    content += f'<div style="padding:1px 4px; font-size:10px; {active}">{_escape_html(opt)}</div>'
+                content += '</div>'
+            elif view == "wifi_list":
+                networks = app.get("wifi_scanned_networks", [])
+                idx = app.get("wifi_list_idx", 0)
+                items = ["< Back"] + [f"{net.get('ssid','')} ({net.get('signal',0)}%)" for net in networks]
+                display_count = min(len(items), 4)
+                start_idx = max(0, min(idx - 1, len(items) - display_count))
+                end_idx = start_idx + display_count
+                content = '<div style="display:flex; flex-direction:column; width:100%; box-sizing:border-box; padding-top:2px;">'
+                for i in range(start_idx, end_idx):
+                    active = 'background:#fff;color:#000;' if i == idx else 'color:#fff;'
+                    content += f'<div style="padding:1px 4px; font-size:9px; {active}">{_escape_html(items[i])}</div>'
+                content += '</div>'
+            elif view == "wifi_qr":
+                b64 = app.get("wifi_qr_b64", "")
+                ssid = _escape_html(app.get("wifi_ap_ssid", "Dash-Setup"))
+                content = (
+                    '<div style="display:flex; align-items:center; justify-content:space-between; width:100%; height:100%; padding:2px; box-sizing:border-box;">'
+                    f'<img src="data:image/png;base64,{b64}" style="width:52px; height:52px;" />'
+                    f'<div style="font-size:8px; line-height:1.2; text-align:left; max-width:68px;">Connect:<br/><b style="color:#fff;">{ssid}</b><br/>Scan for Portal</div>'
+                    '</div>'
+                )
+            elif view == "wifi_saved":
+                saved = app.get("wifi_saved_networks", [])
+                idx = app.get("wifi_saved_idx", 0)
+                items = ["< Back"] + saved
+                content = '<div style="display:flex; flex-direction:column; width:100%; box-sizing:border-box; padding-top:2px;">'
+                for i, opt in enumerate(items[:4]):
+                    active = 'background:#fff;color:#000;' if i == idx else 'color:#fff;'
+                    content += f'<div style="padding:1px 4px; font-size:10px; {active}">{_escape_html(opt)}</div>'
+                content += '</div>'
+            elif view == "wifi_keyboard":
+                ssid = _escape_html(app.get("wifi_selected_ssid") or "Wi-Fi")
+                passw = _escape_html(app.get("wifi_password_buffer") or "")
+                char = _escape_html(app.get("wifi_keyboard_char", "A"))
+                content = (
+                    '<div style="display:flex; flex-direction:column; width:100%; height:100%; padding:2px; box-sizing:border-box;">'
+                    f'<div style="font-size:8px; color:#aaa;">{ssid} Pass:</div>'
+                    f'<div style="font-size:10px; font-weight:bold; border-bottom:1px solid #fff; white-space:nowrap; overflow:hidden;">{passw}_</div>'
+                    f'<div style="display:flex; justify-content:center; align-items:center; margin-top:4px;">'
+                    f'<div style="font-size:16px; font-weight:bold; background:#fff; color:#000; padding:2px 8px; border-radius:3px;">{char}</div>'
+                    f'</div>'
+                    '</div>'
+                )
             else:
                 idx = app.get("sub_menu_idx", 0)
                 options = app.get("sub_menu_options", [])
@@ -2796,6 +3192,35 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if path in {"/wifi", "/wifi.html"}:
+            self._serve_file("wifi.html", "text/html; charset=utf-8")
+            return
+        if path == "/api/wifi/scan":
+            networks = self.controller.wifi_manager.scan_networks()
+            status = {
+                "connected": bool(self.controller.wifi_manager.connected_ssid),
+                "ssid": self.controller.wifi_manager.connected_ssid,
+                "ap_active": self.controller.wifi_manager.ap_mode_active,
+                "status_message": self.controller.wifi_manager.last_status_message,
+            }
+            self._send_json({"networks": networks, "status": status})
+            return
+        if path == "/api/wifi/status":
+            self._send_json({
+                "connected": bool(self.controller.wifi_manager.connected_ssid),
+                "ssid": self.controller.wifi_manager.connected_ssid,
+                "ap_active": self.controller.wifi_manager.ap_mode_active,
+                "status_message": self.controller.wifi_manager.last_status_message,
+                "connecting": self.controller.wifi_manager.connecting,
+            })
+            return
+
+        if self.controller.wifi_manager.ap_mode_active and path in {"/generate_204", "/hotspot-detect.html", "/ncsi.txt", "/canonical.html"}:
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/wifi")
+            self.end_headers()
+            return
+
         if path == "/favicon.ico":
             # Avoid noisy 404s in browsers; fall back to the logo if present.
             if self._try_serve_static("favicon.ico"):
@@ -2814,6 +3239,18 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/wifi/connect":
+            body = self._read_json_body() or {}
+            ssid = body.get("ssid")
+            password = body.get("password", "")
+            if not ssid:
+                self._send_json({"success": False, "message": "Missing SSID"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            success, msg = self.controller.wifi_manager.connect_network(ssid, password)
+            self.controller.mark_state_dirty()
+            self._send_json({"success": success, "message": msg})
+            return
 
         if parsed.path == "/api/photo/upload":
             self._handle_photo_upload()

@@ -294,6 +294,33 @@
       });
     }
 
+    const elBtnScanWifi = document.getElementById("btnScanWifi");
+    if (elBtnScanWifi) {
+      elBtnScanWifi.addEventListener("click", () => {
+        const listEl = document.getElementById("cfgWifiList");
+        if (listEl) listEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; padding:4px;">Scanning...</div>';
+        fetch("/api/wifi/scan")
+          .then(r => r.json())
+          .then(res => {
+            const nets = res.networks || [];
+            if (listEl) {
+              if (!nets.length) {
+                listEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; padding:4px;">No networks found</div>';
+                return;
+              }
+              listEl.innerHTML = nets.map(net => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:8px; font-size:0.85rem;">
+                  <span>${escapeHTML(net.ssid)} (${net.signal}%) ${net.in_use ? '<span style="color:var(--accent-green); margin-left:4px;">(Connected)</span>' : ''}</span>
+                  <span style="color:var(--text-muted); font-size:0.75rem;">${net.security || 'WPA2'}</span>
+                </div>
+              `).join('');
+            }
+          }).catch(() => {
+            if (listEl) listEl.innerHTML = '<div style="color:var(--accent-red); font-size:0.85rem; padding:4px;">Scan failed</div>';
+          });
+      });
+    }
+
     // Modal triggers
     if (elBtnCloseModal) elBtnCloseModal.addEventListener("click", closeWidgetModal);
     if (elWidgetModal) {
@@ -879,6 +906,17 @@
         elCfgSpotifyStatus.textContent = "Status: Not configured. Enter Client ID & Secret below.";
         elCfgSpotifyStatus.style.color = "var(--text-muted)";
       }
+    }
+
+    const elCfgWifiStatus = document.getElementById("cfgWifiStatus");
+    const elCfgWifiSSID = document.getElementById("cfgWifiSSID");
+    if (elCfgWifiStatus || elCfgWifiSSID) {
+      fetch("/api/wifi/status")
+        .then(r => r.json())
+        .then(st => {
+          if (elCfgWifiStatus) elCfgWifiStatus.textContent = st.connected ? "Connected" : (st.ap_active ? "Setup AP Active" : "Disconnected");
+          if (elCfgWifiSSID) elCfgWifiSSID.textContent = st.ssid || (st.ap_active ? "Dash-Setup" : "--");
+        }).catch(() => {});
     }
   }
 

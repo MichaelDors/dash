@@ -186,6 +186,58 @@
                           '<div style="font-size:9px; margin-top:2px;">Checked: ' + timeStr + '</div>';
             }
             content += '</div>';
+          } else if (view === "wifi_main") {
+            const idx = app.wifi_menu_idx || 0;
+            const options = app.wifi_menu_options || [];
+            const conn = app.wifi_connected_ssid || "Disconnected";
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding:2px;">' +
+              '<div style="font-size:9px; color:#aaa; margin-bottom:2px;">Wi-Fi: ' + conn + '</div>';
+            options.forEach(function(opt, i) {
+              const active = i === idx ? 'background:#fff;color:#000;' : 'color:#fff;';
+              content += '<div style="padding:1px 4px; font-size:10px; line-height:13px; ' + active + '">' + opt + '</div>';
+            });
+            content += '</div>';
+          } else if (view === "wifi_list") {
+            const networks = app.wifi_scanned_networks || [];
+            const idx = app.wifi_list_idx || 0;
+            const items = ["< Back"].concat(networks.map(n => n.ssid + " (" + (n.signal || 0) + "%)"));
+            const displayCount = Math.min(items.length, 4);
+            const startIdx = Math.max(0, Math.min(idx - 1, items.length - displayCount));
+            const endIdx = startIdx + displayCount;
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding-top:2px;">';
+            for (let i = startIdx; i < endIdx; i++) {
+              const active = i === idx ? 'background:#fff;color:#000;' : 'color:#fff;';
+              content += '<div style="padding:1px 4px; font-size:9px; ' + active + '">' + items[i] + '</div>';
+            }
+            content += '</div>';
+          } else if (view === "wifi_qr") {
+            const b64 = app.wifi_qr_b64 || "";
+            const apSsid = app.wifi_ap_ssid || "Dash-Setup";
+            content = '<div style="display:flex; align-items:center; justify-content:space-between; width:100%; height:100%; padding:2px; box-sizing:border-box;">' +
+              '<img src="data:image/png;base64,' + b64 + '" style="width:52px; height:52px;" />' +
+              '<div style="font-size:8px; line-height:1.2; text-align:left; max-width:68px;">Connect:<br/><b style="color:#fff;">' + apSsid + '</b><br/>Scan for Portal</div>' +
+              '</div>';
+          } else if (view === "wifi_saved") {
+            const saved = app.wifi_saved_networks || [];
+            const idx = app.wifi_saved_idx || 0;
+            const items = ["< Back"].concat(saved);
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box; padding-top:2px;">';
+            items.slice(0, 4).forEach(function(opt, i) {
+              const active = i === idx ? 'background:#fff;color:#000;' : 'color:#fff;';
+              content += '<div style="padding:1px 4px; font-size:10px; ' + active + '">' + opt + '</div>';
+            });
+            content += '</div>';
+          } else if (view === "wifi_keyboard") {
+            const ssid = app.wifi_selected_ssid || "Wi-Fi";
+            const passw = app.wifi_password_buffer || "";
+            const char = app.wifi_keyboard_char || "A";
+            content = '<div style="display:flex; flex-direction:column; width:100%; height:100%; padding:2px; box-sizing:border-box;">' +
+              '<div style="font-size:8px; color:#aaa;">' + ssid + ' Pass:</div>' +
+              '<div style="font-size:10px; font-weight:bold; border-bottom:1px solid #fff; white-space:nowrap; overflow:hidden;">' + passw + '_</div>' +
+              '<div style="display:flex; justify-content:center; align-items:center; margin-top:4px;">' +
+              '<div style="font-size:16px; font-weight:bold; background:#fff; color:#000; padding:2px 8px; border-radius:3px;">' + char + '</div>' +
+              '</div>' +
+              '</div>';
           } else {
             const idx = app.sub_menu_idx;
             const options = app.sub_menu_options || [];

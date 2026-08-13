@@ -171,7 +171,30 @@
         </form>
       </div>
 
-      <!-- Section 4: System Actions -->
+      <!-- Section 4: Wi-Fi Network Controls -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-wifi"></i>
+          <h3>Wi-Fi Network Settings</h3>
+        </div>
+        <div class="settings-metrics-list" style="margin-bottom: 12px;">
+          <div class="metric-row">
+            <span class="metric-label">Status:</span>
+            <span class="metric-value badge" id="cfgWifiStatus">Checking...</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Network:</span>
+            <span class="metric-value badge ip-badge" id="cfgWifiSSID">--</span>
+          </div>
+        </div>
+        <div class="settings-actions-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 8px;">
+          <button class="touch-btn" id="btnScanWifi"><i class="fa-solid fa-arrows-rotate"></i> Scan Networks</button>
+          <a href="/wifi" target="_blank" class="touch-btn" style="text-decoration:none; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:6px;"><i class="fa-solid fa-qrcode"></i> QR Setup</a>
+        </div>
+        <div id="cfgWifiList" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;"></div>
+      </div>
+
+      <!-- Section 5: System Actions -->
       <div class="settings-card">
         <div class="settings-card-header">
           <i class="fa-solid fa-power-off"></i>
