@@ -23,6 +23,10 @@
   let longPressTimer = null;
   let isLongPress = false;
 
+  // State key refs to prevent innerHTML tearing
+  let lastSlotsStateKey = "";
+  let lastOverlayStateKey = "";
+
   // DOM Elements
   const elAppGrid = document.getElementById("dashboardGrid");
   const elSlotsContainer = document.getElementById("slotsContainer");
@@ -118,8 +122,11 @@
   function updateSpotifyAccentColor(artUrl) {
     if (!artUrl) {
       document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      document.documentElement.style.setProperty('--spotify-bg-image', 'none');
       return;
     }
+    document.documentElement.style.setProperty('--spotify-bg-image', `url("${artUrl}")`);
+
     if (artUrl === currentAlbumArtUrl) return;
     currentAlbumArtUrl = artUrl;
 
@@ -377,7 +384,12 @@
       html += createWidgetCardHTML(appId, data);
     });
 
-    if (elSlotsContainer.innerHTML !== html) {
+    // State key diffing to guarantee innerHTML is NEVER overwritten on 250ms polls unless track/state actually changed
+    const sp = data.apps.spotify || data.widgets.spotify || {};
+    const stateKey = JSON.stringify(activeSlots) + "_" + (sp.track_name || "") + "_" + (sp.album_art_url || "") + "_" + (sp.is_playing ? "1" : "0");
+
+    if (lastSlotsStateKey !== stateKey) {
+      lastSlotsStateKey = stateKey;
       elSlotsContainer.innerHTML = html;
 
       // Attach Long Press & Click handlers to cards
@@ -479,7 +491,7 @@
               <h3 class="spotify-track-title">${escapeHTML(track)}</h3>
               <p class="spotify-artist-name">${escapeHTML(artist)}</p>
             </div>
-            <div class="spotify-progress-bar-wrap">
+            <div class="spotify-progress-bar-wrap" id="widgetScrubBar" style="cursor: pointer;">
               <div class="spotify-progress-fill" id="widget-spotify-progress"></div>
             </div>
             <div class="spotify-mini-controls">
@@ -589,6 +601,23 @@
         sendAction(act);
       });
     });
+
+    const widgetScrub = document.getElementById("widgetScrubBar");
+    if (widgetScrub) {
+      widgetScrub.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rect = widgetScrub.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const sp = state.latestData?.apps?.spotify || state.latestData?.widgets?.spotify || {};
+        const duration = sp.duration_ms || 1;
+        const targetMs = Math.round(ratio * duration);
+
+        const fill = document.getElementById("widget-spotify-progress");
+        if (fill) fill.style.width = `${ratio * 100}%`;
+
+        sendAction("spotify_seek", { position_ms: targetMs });
+      });
+    }
   }
 
   // Full Screen Overlay Management
@@ -686,7 +715,7 @@
               <h2 class="fs-spotify-artist">${escapeHTML(artist)}</h2>
             </div>
             <div class="fs-spotify-scrub-wrap">
-              <div class="fs-spotify-progress">
+              <div class="fs-spotify-progress" id="fsScrubBar" style="cursor: pointer;">
                 <div class="fs-spotify-progress-fill" id="fs-spotify-progress"></div>
               </div>
               <div class="fs-spotify-time-row">
@@ -803,7 +832,11 @@
       `;
     }
 
-    if (elOverlayContent.innerHTML !== html) {
+    const sp = data.apps.spotify || data.widgets.spotify || {};
+    const overlayStateKey = appId + "_" + (sp.track_name || "") + "_" + (sp.album_art_url || "") + "_" + (sp.is_playing ? "1" : "0");
+
+    if (lastOverlayStateKey !== overlayStateKey) {
+      lastOverlayStateKey = overlayStateKey;
       elOverlayContent.innerHTML = html;
       attachOverlayEventListeners(appId, data);
     }
@@ -822,15 +855,21 @@
       if (btnNext) btnNext.addEventListener("click", () => sendAction("spotify_next"));
 
       if (scrubBar) {
-        scrubBar.addEventListener("click", (e) => {
+        const handleSeek = (e) => {
           const rect = scrubBar.getBoundingClientRect();
-          const clickX = e.clientX - rect.left;
-          const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-          const sp = data.apps.spotify || data.widgets.spotify || {};
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+          const sp = data.apps?.spotify || data.widgets?.spotify || {};
           const duration = sp.duration_ms || 1;
           const targetMs = Math.round(ratio * duration);
+
+          const fill = document.getElementById("fs-spotify-progress");
+          if (fill) fill.style.width = `${ratio * 100}%`;
+
           sendAction("spotify_seek", { position_ms: targetMs });
-        });
+        };
+        scrubBar.addEventListener("click", handleSeek);
+        scrubBar.addEventListener("touchstart", handleSeek, { passive: true });
       }
     } else if (appId === "timer") {
       const btnToggle = document.getElementById("fsTimerToggle");

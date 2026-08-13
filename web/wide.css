@@ -21,7 +21,7 @@
   --text-muted: #94a3b8;
   --text-dim: #64748b;
 
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: 'Google Sans Flex', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   --radius-lg: 20px;
@@ -145,7 +145,7 @@ html, body {
   border-radius: 6rem;
   font-family: var(--font-sans);
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-main);
   background: #121622;
   border: none;
@@ -188,7 +188,7 @@ html, body {
 .btn-primary {
   background: var(--accent-cyan);
   color: #000;
-  font-weight: 700;
+  font-weight: 600;
   border: 1px solid var(--accent-cyan);
 }
 
@@ -548,8 +548,8 @@ html, body {
 }
 
 .spotify-track-title {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.2rem;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -557,8 +557,8 @@ html, body {
 }
 
 .spotify-artist-name {
-  font-size: 0.95rem;
-  font-weight: 500;
+  font-size: 0.92rem;
+  font-weight: 450;
   color: var(--spotify-accent);
   transition: color 0.8s ease;
   white-space: nowrap;
@@ -738,6 +738,45 @@ html, body {
   overflow-y: auto;
 }
 
+/* Full Screen App Overlay View & Spotify Ambient Blurred Background (Spotify TV Style) */
+.app-overlay-view.spotify-active {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+
+.app-overlay-view.spotify-active::before {
+  content: "";
+  position: absolute;
+  inset: -60px;
+  background-image: var(--spotify-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(45px) brightness(0.5) contrast(1.1);
+  z-index: 0;
+  transition: opacity 1s ease, background-image 1s ease;
+  pointer-events: none;
+}
+
+/* Progressive Fade Overlay: Aggressive dark gradient around song title/controls & screen vignetting */
+.app-overlay-view.spotify-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: 
+    linear-gradient(135deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.85) 40%, rgba(0, 0, 0, 0.35) 75%, transparent 100%),
+    radial-gradient(circle at 10% 90%, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.7) 50%, transparent 100%),
+    radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.9) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.app-overlay-view.spotify-active .overlay-header,
+.app-overlay-view.spotify-active .overlay-content {
+  position: relative;
+  z-index: 2;
+}
+
 .app-overlay-view.spotify-active .overlay-header {
   border-bottom: none;
 }
@@ -826,14 +865,14 @@ html, body {
 
 .fs-spotify-title {
   font-size: clamp(2rem, 3.5vw, 3.2rem);
-  font-weight: 800;
+  font-weight: 650;
   line-height: 1.15;
   color: #fff;
 }
 
 .fs-spotify-artist {
   font-size: clamp(1.2rem, 1.8vw, 1.6rem);
-  font-weight: 600;
+  font-weight: 450;
   color: var(--spotify-accent);
   transition: color 0.8s ease;
   margin-top: 0.3rem;
