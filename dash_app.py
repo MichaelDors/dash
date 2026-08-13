@@ -1366,11 +1366,12 @@ class SpotifyApp(App):
                         self.duration_ms = int(item.get("duration_ms", 0) or 0)
                         album_images = item.get("album", {}).get("images", []) if isinstance(item.get("album"), dict) else []
                         if album_images and len(album_images) > 0:
-                            self.album_art_url = str(album_images[0].get("url", "") or "")
+                            sorted_album_imgs = sorted(album_images, key=lambda img: img.get("width", 0) or 0, reverse=True)
+                            self.album_art_url = str(sorted_album_imgs[0].get("url", "") or "")
                         else:
                             self.album_art_url = ""
 
-                        # Fetch artist picture from Spotify API
+                        # Fetch max resolution artist picture from Spotify API
                         primary_artist_id = artists[0].get("id") if artists and isinstance(artists[0], dict) else None
                         if primary_artist_id:
                             if primary_artist_id not in self._artist_image_cache:
@@ -1379,7 +1380,8 @@ class SpotifyApp(App):
                                     if isinstance(artist_data, dict):
                                         art_imgs = artist_data.get("images", [])
                                         if art_imgs and len(art_imgs) > 0:
-                                            self._artist_image_cache[primary_artist_id] = str(art_imgs[0].get("url", "") or "")
+                                            sorted_art_imgs = sorted(art_imgs, key=lambda img: img.get("width", 0) or 0, reverse=True)
+                                            self._artist_image_cache[primary_artist_id] = str(sorted_art_imgs[0].get("url", "") or "")
                                         else:
                                             self._artist_image_cache[primary_artist_id] = ""
                                 except Exception:
@@ -1387,20 +1389,23 @@ class SpotifyApp(App):
                             self.artist_image_url = self._artist_image_cache.get(primary_artist_id, "")
                         else:
                             self.artist_image_url = ""
-                    elif can_apply_playback_state:
+                    else:
                         self.track_name = ""
                         self.artist_name = ""
                         self.album_art_url = ""
                         self.artist_image_url = ""
                         self.duration_ms = 0
                         self.progress_ms = 0
+                        self.is_playing = False
 
-                    if can_apply_playback_state:
+                    if can_apply_playback_state and item:
                         self.progress_ms = int(data.get("progress_ms", 0) or 0)
                         self.is_playing = bool(data.get("is_playing", False))
                 elif can_apply_playback_state:
                     self.is_playing = False
                     self.progress_ms = 0
+                    self.track_name = ""
+                    self.artist_name = ""
 
                 if not previous_playing and self.is_playing:
                     self._playback_started_event = True
@@ -1416,7 +1421,7 @@ class SpotifyApp(App):
         if not self.client.is_authenticated():
             return
 
-        if now - self.last_fetch_time > 2.0 and self._scrub_target is None:
+        if now - self.last_fetch_time > 1.0 and self._scrub_target is None:
             self._fetch_now()
             self.last_fetch_time = now
             
@@ -1503,6 +1508,15 @@ class SpotifyApp(App):
 
     def to_payload(self) -> Dict[str, Any]:
         progress_ms = self._scrub_target if self._scrub_target is not None else self.progress_ms
+        if not self.client.is_configured():
+            conn_state = "not_configured"
+        elif not self.client.is_authenticated():
+            conn_state = "not_authenticated"
+        elif not self.track_name:
+            conn_state = "idle"
+        else:
+            conn_state = "active"
+
         return {
             "id": self.app_id,
             "name": self.name,
@@ -1516,7 +1530,8 @@ class SpotifyApp(App):
             "duration_ms": self.duration_ms,
             "progress_text": _format_duration_ms(progress_ms),
             "duration_text": _format_duration_ms(self.duration_ms),
-            "authenticated": self.client.is_authenticated()
+            "authenticated": self.client.is_authenticated(),
+            "connection_state": conn_state
         }
 
 

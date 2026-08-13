@@ -1,4 +1,4 @@
-(function() {
+(function () {
   "use strict";
 
   // Available apps definition using Font Awesome Icon Classes
@@ -89,16 +89,16 @@
       const hue2rgb = (p, q, t) => {
         if (t < 0) t += 1;
         if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
         return p;
       };
       const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
       const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
+      r = hue2rgb(p, q, h + 1 / 3);
       g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
+      b = hue2rgb(p, q, h - 1 / 3);
     }
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   }
@@ -391,7 +391,7 @@
         window.location.reload();
         return;
       }
-      
+
       failedFetchCount = 0;
       if (isOffline) {
         isOffline = false;
@@ -410,9 +410,9 @@
         restoreSavedScreenState();
       }
     } catch (err) {
-      const isLocalDev = window.location.hostname === "localhost" || 
-                         window.location.hostname === "127.0.0.1" || 
-                         window.location.protocol === "file:";
+      const isLocalDev = window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.protocol === "file:";
 
       if (isLocalDev) {
         if (!state.latestData) {
@@ -440,9 +440,9 @@
   }
 
   async function sendAction(action, payload = {}) {
-    const isLocalDev = window.location.hostname === "localhost" || 
-                       window.location.hostname === "127.0.0.1" || 
-                       window.location.protocol === "file:";
+    const isLocalDev = window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.protocol === "file:";
 
     try {
       const res = await fetch("/api/wide/action", {
@@ -809,7 +809,7 @@
     lastOverlayStateKey = "";
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "app", id: appId }));
-    } catch (e) {}
+    } catch (e) { }
 
     const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
 
@@ -833,7 +833,7 @@
     lastOverlayStateKey = "";
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
-    } catch (e) {}
+    } catch (e) { }
     elAppOverlayView.classList.add("hidden");
     elAppOverlayView.classList.remove("spotify-active");
   }
@@ -843,7 +843,7 @@
     state.settingsOpen = true;
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "settings" }));
-    } catch (e) {}
+    } catch (e) { }
     elSettingsOverlayView.classList.remove("hidden");
     if (state.latestData) {
       updateSettingsMetrics(state.latestData);
@@ -854,7 +854,7 @@
     state.settingsOpen = false;
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
-    } catch (e) {}
+    } catch (e) { }
     elSettingsOverlayView.classList.add("hidden");
   }
 
@@ -892,8 +892,53 @@
 
   function updateFullScreenSpotifyUI(data) {
     const sp = data.apps?.spotify || data.widgets?.spotify || {};
+    const isAuthenticated = sp.authenticated;
+    const connState = sp.connection_state || (isAuthenticated ? (sp.track_name ? "active" : "idle") : "not_authenticated");
+
+    if (!isAuthenticated || connState === "not_authenticated" || connState === "not_configured") {
+      document.documentElement.style.setProperty('--spotify-bg-image', 'none');
+      document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
+      elOverlayContent.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; gap:1.5rem;">
+          <i class="fa-brands fa-spotify" style="font-size:5rem; color:#1db954;"></i>
+          <div>
+            <h1 style="font-size:2rem; font-weight:700; margin-bottom:0.5rem;">Spotify Not Connected</h1>
+            <p style="color:var(--text-muted); font-size:1.1rem; max-width:500px;">Connect your Spotify account in Settings to view full-screen playback, artwork, and controls.</p>
+          </div>
+          <button class="touch-btn btn-primary" id="fsOpenSettingsBtn" style="font-size:1.2rem; padding:0.8rem 2.2rem; margin-top:0.5rem;">
+            <i class="fa-solid fa-gear"></i> Open System Settings
+          </button>
+        </div>
+      `;
+      const btnSettings = document.getElementById("fsOpenSettingsBtn");
+      if (btnSettings) {
+        btnSettings.addEventListener("click", () => {
+          closeOverlayApp();
+          openSettingsOverlay();
+        });
+      }
+      return;
+    }
+
+    if (!sp.track_name || connState === "idle") {
+      document.documentElement.style.setProperty('--spotify-bg-image', 'none');
+      document.documentElement.style.setProperty('--spotify-accent', '#1db954');
+      elOverlayContent.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; gap:1.5rem;">
+          <div style="width:100px; height:100px; border-radius:50%; background:rgba(29,185,84,0.1); border:2px solid rgba(29,185,84,0.3); display:flex; align-items:center; justify-content:center;">
+            <i class="fa-brands fa-spotify" style="font-size:3.5rem; color:#1db954;"></i>
+          </div>
+          <div>
+            <h1 style="font-size:2.2rem; font-weight:700; color:#ffffff; margin-bottom:0.5rem;">Nothing Playing</h1>
+            <p style="color:var(--text-muted); font-size:1.15rem; max-width:520px; line-height:1.5;">Play music on any phone, desktop app, or smart speaker</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     const track = sp.track_name || "No Track Playing";
-    const artist = sp.artist_name || "Connect Spotify in Settings";
+    const artist = sp.artist_name || "Unknown Artist";
     const isPlaying = sp.is_playing;
     const albumArt = sp.album_art_url || "";
     const progressMs = sp.progress_ms || 0;
@@ -1214,7 +1259,7 @@
       const sp = data.apps.spotify || data.widgets.spotify || {};
       const pct = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
       fsSpProg.style.width = `${pct}%`;
-      
+
       const elCur = document.getElementById("fs-spotify-time-current");
       if (elCur) elCur.innerText = formatMs(sp.progress_ms || 0);
       const elDur = document.getElementById("fs-spotify-time-duration");
@@ -1254,7 +1299,7 @@
     state.pickerSelected = [...state.slots];
     try {
       sessionStorage.setItem("dash_saved_modal", "widget_picker");
-    } catch (e) {}
+    } catch (e) { }
     renderPickerGrid();
     elWidgetModal.classList.remove("hidden");
   }
@@ -1262,7 +1307,7 @@
   function closeWidgetModal() {
     try {
       sessionStorage.removeItem("dash_saved_modal");
-    } catch (e) {}
+    } catch (e) { }
     elWidgetModal.classList.add("hidden");
   }
 
