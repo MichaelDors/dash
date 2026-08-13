@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <!-- Font Awesome 6.5.1 Vector Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <link rel="stylesheet" href="/wide.css" />
+  <link rel="stylesheet" href="/wide.css?v=1.7.0" />
 </head>
 <body>
   <div id="appContainer" class="app-container">
@@ -66,114 +66,6 @@
       </div>
     </main>
 
-    <!-- Full Screen App Overlay View -->
-    <div id="appOverlayView" class="app-overlay-view hidden">
-      <header class="overlay-header">
-        <button class="touch-btn btn-back" id="btnBackToDash">
-          <i class="fa-solid fa-arrow-left"></i>
-          <span>Dashboard</span>
-        </button>
-        <div class="overlay-title-group">
-          <h2 id="overlayAppTitle">App Title</h2>
-          <span class="overlay-subtitle" id="overlayAppSubtitle">Full Screen View</span>
-        </div>
-        <div class="overlay-header-spacer"></div>
-      </header>
-
-      <section id="appOverlayContent" class="overlay-content">
-        <!-- Rendered Full Screen App UI -->
-      </section>
-    </div>
-
-    <!-- Dedicated Touch Settings Overlay View -->
-    <div id="settingsOverlayView" class="app-overlay-view settings-overlay hidden">
-      <header class="overlay-header">
-        <button class="touch-btn btn-back" id="btnCloseSettings">
-          <i class="fa-solid fa-arrow-left"></i>
-          <span>Dashboard</span>
-        </button>
-        <div class="overlay-title-group">
-          <h2><i class="fa-solid fa-gear"></i> System & Integration Settings</h2>
-          <span class="overlay-subtitle">Device Diagnostics & Web Controls</span>
-        </div>
-        <div class="overlay-header-spacer"></div>
-      </header>
-
-      <section class="settings-page-grid">
-        <!-- Section 1: OLED & System Status -->
-        <div class="settings-card">
-          <div class="settings-card-header">
-            <i class="fa-solid fa-microchip"></i>
-            <h3>OLED & Hardware Diagnostics</h3>
-          </div>
-          <div class="settings-metrics-list">
-            <div class="metric-row">
-              <span class="metric-label">OLED Display Mode:</span>
-              <span class="metric-value badge" id="cfgDisplayState">ON</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-label">Motion Sensor:</span>
-              <span class="metric-value badge" id="cfgMotionState">IDLE</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-label">Device IP Address:</span>
-              <span class="metric-value mono" id="cfgIpAddress">--.--.--.--</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-label">Software Version:</span>
-              <span class="metric-value mono" id="cfgSoftwareVersion">1.6.5</span>
-            </div>
-          </div>
-          <div class="settings-btn-cluster">
-            <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
-            <button class="touch-btn btn-blue" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update Software</button>
-            <button class="touch-btn btn-warning" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart</button>
-            <button class="touch-btn btn-danger" id="btnShutdownDevice"><i class="fa-solid fa-power-off"></i> Shut Down</button>
-          </div>
-        </div>
-
-        <!-- Section 2: Spotify Credentials Integration -->
-        <div class="settings-card">
-          <div class="settings-card-header">
-            <i class="fa-brands fa-spotify"></i>
-            <h3>Spotify Integration</h3>
-          </div>
-          <p class="settings-card-desc" id="cfgSpotifyStatus">Checking Spotify status...</p>
-          <form id="cfgSpotifyForm" class="settings-form">
-            <div class="form-group">
-              <label>Client ID</label>
-              <input type="text" id="cfgSpotifyClientId" placeholder="Spotify Client ID" required />
-            </div>
-            <div class="form-group">
-              <label>Client Secret</label>
-              <input type="password" id="cfgSpotifyClientSecret" placeholder="Spotify Client Secret" required />
-            </div>
-            <div class="form-group">
-              <label>Redirect URI (Optional)</label>
-              <input type="text" id="cfgSpotifyRedirectUri" placeholder="http://<ip>:8080/api/spotify/callback" />
-            </div>
-            <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
-          </form>
-        </div>
-
-        <!-- Section 3: Weather Location Settings -->
-        <div class="settings-card">
-          <div class="settings-card-header">
-            <i class="fa-solid fa-cloud-sun"></i>
-            <h3>Weather Location</h3>
-          </div>
-          <p class="settings-card-desc">Set location for current temperature and forecast.</p>
-          <form id="cfgWeatherForm" class="settings-form">
-            <div class="form-group">
-              <label>City, State or ZIP Code</label>
-              <input type="text" id="cfgWeatherLocation" placeholder="e.g. New York, NY or 10001" required />
-            </div>
-            <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
-          </form>
-        </div>
-      </section>
-    </div>
-
     <!-- Widget Selector Modal -->
     <div id="widgetModal" class="modal-backdrop hidden">
       <div class="modal-card">
@@ -194,18 +86,108 @@
           <button class="touch-btn btn-primary" id="btnSaveConfig">Save Dashboard Layout</button>
         </div>
       </div>
-    <!-- Connection Lost Overlay -->
-    <div id="connectionLostOverlay" class="connection-lost-overlay hidden">
-      <div class="lost-top-left">
-        <img src="/logo.png" alt="Nano logo" class="lost-logo" />
-      </div>
-      <div class="lost-bottom-left">
-        <div class="spinner-ring"></div>
-        <span class="lost-text">connection lost... searching</span>
-      </div>
     </div>
   </div>
 
-  <script src="/wide.js"></script>
+  <!-- Full Screen App Overlay View -->
+  <div id="appOverlayView" class="app-overlay-view hidden">
+    <header class="overlay-header">
+      <button class="touch-btn btn-back" id="btnBackToDash">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Dashboard</span>
+      </button>
+      <div class="overlay-title-group">
+        <h2 id="overlayAppTitle">App Title</h2>
+        <span class="overlay-subtitle" id="overlayAppSubtitle">Full Screen View</span>
+      </div>
+      <div class="overlay-header-spacer"></div>
+    </header>
+
+    <section id="appOverlayContent" class="overlay-content">
+      <!-- Rendered Full Screen App UI -->
+    </section>
+  </div>
+
+  <!-- Dedicated Touch Settings Overlay View -->
+  <div id="settingsOverlayView" class="app-overlay-view settings-overlay hidden">
+    <header class="overlay-header">
+      <button class="touch-btn btn-back" id="btnCloseSettings">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Dashboard</span>
+      </button>
+      <div class="overlay-title-group">
+        <h2><i class="fa-solid fa-gear"></i> System & Integration Settings</h2>
+        <span class="overlay-subtitle">Device Diagnostics & Web Controls</span>
+      </div>
+      <div class="overlay-header-spacer"></div>
+    </header>
+
+    <section class="settings-page-grid">
+      <!-- Section 1: OLED & System Status -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-microchip"></i>
+          <h3>OLED & Hardware Diagnostics</h3>
+        </div>
+        <div class="settings-metrics-list">
+          <div class="metric-row">
+            <span class="metric-label">OLED Display Mode:</span>
+            <span class="metric-value badge" id="cfgDisplayState">ON</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Motion Sensor:</span>
+            <span class="metric-value badge" id="cfgMotionState">IDLE</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Device IP Address:</span>
+            <span class="metric-value badge ip-badge" id="cfgIpAddress">127.0.0.1</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Spotify Credentials & Status -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-brands fa-spotify"></i>
+          <h3>Spotify Integration Settings</h3>
+        </div>
+        <p class="settings-status-text" id="cfgSpotifyStatus">Status: Checking...</p>
+        <form id="cfgSpotifyForm" class="settings-form-col">
+          <input type="text" id="cfgClientId" placeholder="Spotify Client ID" class="settings-input" />
+          <input type="password" id="cfgClientSecret" placeholder="Spotify Client Secret" class="settings-input" />
+          <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
+        </form>
+      </div>
+
+      <!-- Section 3: Weather Location Config -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-cloud-sun"></i>
+          <h3>Weather Location</h3>
+        </div>
+        <form id="cfgWeatherForm" class="settings-form-col">
+          <input type="text" id="cfgWeatherLocation" placeholder="Enter City, State (e.g. San Francisco, CA)" class="settings-input" />
+          <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
+        </form>
+      </div>
+
+      <!-- Section 4: System Actions -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-power-off"></i>
+          <h3>System Controls</h3>
+        </div>
+        <div class="settings-actions-grid">
+          <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload Page</button>
+          <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
+          <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update Software</button>
+          <button class="touch-btn" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart Device</button>
+          <button class="touch-btn" id="btnShutdownDevice"><i class="fa-solid fa-power-off"></i> Shutdown</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/wide.js?v=1.7.0" defer></script>
 </body>
 </html>

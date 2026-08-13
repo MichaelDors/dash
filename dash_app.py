@@ -1776,8 +1776,22 @@ class DashboardController:
                 "authenticated": self.spotify_client.is_authenticated()
             }
 
+            version_str = "1.7.0"
+            try:
+                version_file = BASE_DIR / "VERSION"
+                if version_file.exists():
+                    version_str = version_file.read_text().strip()
+            except Exception:
+                pass
+
+            reload_req = getattr(self, "_reload_web_requested", False)
+            if reload_req:
+                self._reload_web_requested = False
+
             return {
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "version": version_str,
+                "reload_requested": reload_req,
                 "display_mode": display_mode,
                 "motion": motion,
                 "spotify_status": spotify_status,
@@ -1788,6 +1802,9 @@ class DashboardController:
 
     def dispatch_wide_action(self, action: str, params: Dict[str, Any]) -> bool:
         with self._lock:
+            if action == "reload_web_interface" or action == "reload_page":
+                self._reload_web_requested = True
+                return True
             if action == "spotify_toggle":
                 if self.spotify_app:
                     self.spotify_app.on_dial_press()
@@ -2693,19 +2710,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path in {"/", "/index.html"}:
-            self._serve_file("index.html", "text/html; charset=utf-8")
-            return
-        if path == "/oled":
-            self._serve_oled_page()
-            return
-        if path == "/oled.css":
-            self._serve_file("oled.css", "text/css; charset=utf-8")
-            return
-        if path == "/styles.css":
-            self._serve_file("styles.css", "text/css; charset=utf-8")
-            return
-        if path in {"/wide", "/wide.html", "/touch"}:
+        if path in {"/", "/index.html", "/wide", "/wide.html", "/touch"}:
             self._serve_file("wide.html", "text/html; charset=utf-8")
             return
         if path == "/wide.css":

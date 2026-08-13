@@ -172,6 +172,15 @@
     // Settings overlay triggers
     if (elBtnOpenSettings) elBtnOpenSettings.addEventListener("click", openSettingsOverlay);
     if (elBtnCloseSettings) elBtnCloseSettings.addEventListener("click", closeSettingsOverlay);
+    if (elBtnBackToDash) elBtnBackToDash.addEventListener("click", closeOverlayApp);
+
+    const btnReloadWeb = document.getElementById("btnReloadWebInterface");
+    if (btnReloadWeb) {
+      btnReloadWeb.addEventListener("click", () => {
+        sendAction("reload_web_interface");
+        setTimeout(() => window.location.reload(), 200);
+      });
+    }
 
     // Settings Form & Control Listeners
     if (elBtnSimulateMotion) {
@@ -240,11 +249,64 @@
     if (elBtnSaveConfig) elBtnSaveConfig.addEventListener("click", saveWidgetConfig);
   }
 
+  // Mock Demo Data for Localhost / Preview fallback when real data is unavailable
+  const MOCK_DEMO_DATA = {
+    slots: ["spotify", "weather", "timer"],
+    display_mode: "on",
+    widgets: {
+      time: {
+        day_name: "THURSDAY",
+        month: "AUG",
+        day: 13,
+        year: 2026,
+        time_main: "16:11",
+        seconds: "42"
+      },
+      weather: {
+        temperature_f: 74,
+        condition: "Partly Cloudy",
+        location: "San Francisco, CA"
+      },
+      timer: {
+        running: false,
+        time_text: "05:00"
+      },
+      click_counter: {
+        count: 42
+      },
+      photo: {
+        has_image: false
+      }
+    },
+    apps: {
+      spotify: {
+        track_name: "Midnight City",
+        artist_name: "M83",
+        album_art_url: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=600&q=80",
+        is_playing: true,
+        progress_ms: 104000,
+        duration_ms: 243000,
+        authenticated: true
+      }
+    },
+    motion: {
+      motion_detected: false,
+      idle: "02:15"
+    },
+    spotify_status: {
+      configured: true,
+      authenticated: true
+    }
+  };
+
+  let lastSoftwareVersion = null;
+  let isInitialLoad = true;
+
   // API Calls
   async function fetchState() {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
       const res = await fetch("/api/wide/state", { signal: controller.signal });
       clearTimeout(timeoutId);
 
@@ -253,6 +315,24 @@
       state.latestData = data;
       if (Array.isArray(data.slots)) {
         state.slots = data.slots;
+      }
+
+      // Software update detection & auto-reload
+      if (data.version) {
+        if (lastSoftwareVersion && lastSoftwareVersion !== data.version) {
+          console.log(`Software update detected (${lastSoftwareVersion} -> ${data.version}). Reloading interface...`);
+          lastSoftwareVersion = data.version;
+          window.location.reload();
+          return;
+        }
+        lastSoftwareVersion = data.version;
+      }
+
+      // Remote reload requested from backend action
+      if (data.reload_requested) {
+        console.log("Remote reload requested by server. Reloading interface...");
+        window.location.reload();
+        return;
       }
       
       failedFetchCount = 0;
@@ -265,8 +345,31 @@
           }, 800);
         }
       }
+
       renderUI();
+
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        restoreSavedScreenState();
+      }
     } catch (err) {
+      const isLocalDev = window.location.hostname === "localhost" || 
+                         window.location.hostname === "127.0.0.1" || 
+                         window.location.protocol === "file:";
+
+      if (isLocalDev) {
+        if (!state.latestData) {
+          state.latestData = MOCK_DEMO_DATA;
+          state.slots = MOCK_DEMO_DATA.slots;
+        }
+        renderUI();
+        if (isInitialLoad) {
+          isInitialLoad = false;
+          restoreSavedScreenState();
+        }
+        return;
+      }
+
       failedFetchCount++;
       if (failedFetchCount >= 2 && !isOffline) {
         isOffline = true;
@@ -280,6 +383,10 @@
   }
 
   async function sendAction(action, payload = {}) {
+    const isLocalDev = window.location.hostname === "localhost" || 
+                       window.location.hostname === "127.0.0.1" || 
+                       window.location.protocol === "file:";
+
     try {
       const res = await fetch("/api/wide/action", {
         method: "POST",
@@ -290,9 +397,39 @@
         const data = await res.json();
         state.latestData = data;
         renderUI();
+        return;
       }
     } catch (err) {
-      console.error("Action failed:", err);
+      console.warn("Action network call failed, falling back to local simulation:", err);
+    }
+
+    if (isLocalDev && state.latestData) {
+      if (action === "spotify_toggle") {
+        if (state.latestData.apps.spotify) {
+          state.latestData.apps.spotify.is_playing = !state.latestData.apps.spotify.is_playing;
+        }
+      } else if (action === "spotify_seek") {
+        if (state.latestData.apps.spotify && payload.position_ms != null) {
+          state.latestData.apps.spotify.progress_ms = payload.position_ms;
+        }
+      } else if (action === "counter_inc") {
+        if (state.latestData.widgets.click_counter) {
+          state.latestData.widgets.click_counter.count = (state.latestData.widgets.click_counter.count || 0) + 1;
+        }
+      } else if (action === "counter_dec") {
+        if (state.latestData.widgets.click_counter) {
+          state.latestData.widgets.click_counter.count = Math.max(0, (state.latestData.widgets.click_counter.count || 0) - 1);
+        }
+      } else if (action === "counter_reset") {
+        if (state.latestData.widgets.click_counter) {
+          state.latestData.widgets.click_counter.count = 0;
+        }
+      } else if (action === "timer_toggle") {
+        if (state.latestData.widgets.timer) {
+          state.latestData.widgets.timer.running = !state.latestData.widgets.timer.running;
+        }
+      }
+      renderUI();
     }
   }
 
@@ -418,49 +555,51 @@
     }
   }
 
-  // Gesture Handler: Long Press (>600ms) opens Widget Modal, Short Tap opens App
+  // Gesture Handler: Long Press (>700ms) opens Widget Modal, Short Click/Tap opens App Overlay
   function setupCardTouchGestures(cardEl, appId) {
+    let pressTimer = null;
+    let isLongPress = false;
+
+    cardEl.addEventListener("click", (e) => {
+      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input") || e.target.closest(".spotify-progress-bar-wrap")) {
+        return;
+      }
+      if (!isLongPress) {
+        console.log("Card clicked, opening overlay for:", appId);
+        openOverlayApp(appId);
+      }
+      isLongPress = false;
+    });
+
     const startPress = (e) => {
-      // Don't trigger long press if user tapped a control button inside card
-      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input")) {
+      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input") || e.target.closest(".spotify-progress-bar-wrap")) {
         return;
       }
       isLongPress = false;
       cardEl.classList.add("holding");
-      longPressTimer = setTimeout(() => {
+      pressTimer = setTimeout(() => {
         isLongPress = true;
         cardEl.classList.remove("holding");
         if (navigator.vibrate) navigator.vibrate(40);
         openWidgetModal();
-      }, 600);
+      }, 700);
     };
 
-    const cancelPress = () => {
+    const endPress = () => {
       cardEl.classList.remove("holding");
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
       }
-    };
-
-    const handleTap = (e) => {
-      cancelPress();
-      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input")) {
-        return;
-      }
-      if (!isLongPress) {
-        openOverlayApp(appId);
-      }
-      isLongPress = false;
     };
 
     cardEl.addEventListener("touchstart", startPress, { passive: true });
-    cardEl.addEventListener("touchend", handleTap);
-    cardEl.addEventListener("touchcancel", cancelPress);
+    cardEl.addEventListener("touchend", endPress);
+    cardEl.addEventListener("touchcancel", endPress);
 
     cardEl.addEventListener("mousedown", startPress);
-    cardEl.addEventListener("mouseup", handleTap);
-    cardEl.addEventListener("mouseleave", cancelPress);
+    cardEl.addEventListener("mouseup", endPress);
+    cardEl.addEventListener("mouseleave", endPress);
   }
 
   // Create Card HTML for Dashboard Grid
@@ -623,6 +762,11 @@
   // Full Screen Overlay Management
   function openOverlayApp(appId) {
     state.activeOverlayApp = appId;
+    lastOverlayStateKey = "";
+    try {
+      sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "app", id: appId }));
+    } catch (e) {}
+
     const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
 
     if (appId === "spotify") {
@@ -636,13 +780,16 @@
     }
 
     elAppOverlayView.classList.remove("hidden");
-    if (state.latestData) {
-      renderOverlayAppContent(appId, state.latestData);
-    }
+    const dataToRender = state.latestData || MOCK_DEMO_DATA;
+    renderOverlayAppContent(appId, dataToRender);
   }
 
   function closeOverlayApp() {
     state.activeOverlayApp = null;
+    lastOverlayStateKey = "";
+    try {
+      sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
+    } catch (e) {}
     elAppOverlayView.classList.add("hidden");
     elAppOverlayView.classList.remove("spotify-active");
   }
@@ -650,6 +797,9 @@
   // Settings Overlay Management
   function openSettingsOverlay() {
     state.settingsOpen = true;
+    try {
+      sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "settings" }));
+    } catch (e) {}
     elSettingsOverlayView.classList.remove("hidden");
     if (state.latestData) {
       updateSettingsMetrics(state.latestData);
@@ -658,6 +808,9 @@
 
   function closeSettingsOverlay() {
     state.settingsOpen = false;
+    try {
+      sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
+    } catch (e) {}
     elSettingsOverlayView.classList.add("hidden");
   }
 
@@ -948,14 +1101,39 @@
     }
   }
 
+  // Screen Restoration after Reload
+  function restoreSavedScreenState() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("dash_saved_screen") || "null");
+      if (saved && saved.type === "app" && saved.id) {
+        openOverlayApp(saved.id);
+      } else if (saved && saved.type === "settings") {
+        openSettingsOverlay();
+      }
+
+      const savedModal = sessionStorage.getItem("dash_saved_modal");
+      if (savedModal === "widget_picker") {
+        openWidgetModal();
+      }
+    } catch (e) {
+      console.warn("Could not restore saved screen state:", e);
+    }
+  }
+
   // Modal Widget Picker Handlers
   function openWidgetModal() {
     state.pickerSelected = [...state.slots];
+    try {
+      sessionStorage.setItem("dash_saved_modal", "widget_picker");
+    } catch (e) {}
     renderPickerGrid();
     elWidgetModal.classList.remove("hidden");
   }
 
   function closeWidgetModal() {
+    try {
+      sessionStorage.removeItem("dash_saved_modal");
+    } catch (e) {}
     elWidgetModal.classList.add("hidden");
   }
 

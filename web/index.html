@@ -2,88 +2,192 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dash Control Surface</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Dash 2180 — Touch Dashboard</title>
   <link rel="icon" href="/logo.png" type="image/png" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome 6.5.1 Vector Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="/wide.css?v=1.7.0" />
 </head>
 <body>
-  <div class="ambient ambient-a"></div>
-  <div class="ambient ambient-b"></div>
-  <main class="shell">
-    <header class="topbar">
+  <div id="appContainer" class="app-container">
+    <!-- Top Bar -->
+    <header class="top-bar">
       <div class="brand">
-        <img src="/logo.png" alt="Nano logo" class="brand-mark" />
-        <div class="brand-text">
-          <p class="eyebrow">Dash Display</p>
-          <h1>Live Control Surface</h1>
+        <img src="/logo.png" alt="Dash logo" class="brand-logo" />
+        <div class="brand-info">
+          <span class="brand-eyebrow">NANO // DASH</span>
+          <h1 class="brand-title">2180 Touch</h1>
         </div>
       </div>
-      <div class="status-cluster">
-        <span class="badge" id="displayMode">DISPLAY ON</span>
-        <span class="badge badge-soft" id="motionState">MOTION --</span>
-        <span class="stamp" id="lastUpdate">--</span>
+
+      <div class="top-actions">
+        <button class="icon-touch-btn" id="btnOpenSettings" title="System Settings">
+          <i class="fa-solid fa-gear"></i>
+        </button>
       </div>
     </header>
 
-    <section class="main-grid">
-      <nav class="widget-nav">
-        <h2>Widgets & Apps</h2>
-        <div id="widgetTabs" class="widget-tabs"></div>
-      </nav>
+    <!-- Main Dashboard View -->
+    <main id="dashboardView" class="dashboard-view">
+      <div id="dashboardGrid" class="dashboard-grid slots-2">
+        <!-- Persistent Time & Date Hero Card -->
+        <article class="widget-card time-hero-card" id="cardTime" data-app-id="time">
+          <div class="card-glow"></div>
+          <div class="time-hero-content">
+            <div class="time-header-line">
+              <span class="time-day" id="heroDay">THURSDAY</span>
+              <span class="time-date" id="heroDate">AUG 13, 2026</span>
+            </div>
+            <div class="time-main-display">
+              <span class="time-digits" id="heroTime">14:35</span>
+              <span class="time-seconds" id="heroSeconds">:40</span>
+            </div>
+            <div class="time-footer-meta" id="heroMeta">
+              <div class="meta-pill" id="heroWeatherPill">
+                <i class="fa-solid fa-cloud-sun pill-icon"></i>
+                <span class="pill-text" id="heroWeatherText">--°F</span>
+              </div>
+              <div class="meta-pill">
+                <i class="fa-solid fa-bolt pill-icon"></i>
+                <span class="pill-text">Live Touch Surface</span>
+              </div>
+            </div>
+          </div>
+        </article>
 
-      <article class="widget-panel" id="widgetPanel">
-        <div class="widget-header">
-          <h2 id="widgetName">Loading...</h2>
-          <p id="widgetHint">Waiting for backend state.</p>
+        <!-- Dynamic User App Slots Container -->
+        <div id="slotsContainer" class="slots-container">
+          <!-- Slots rendered dynamically via JS -->
         </div>
-        <div id="widgetBody" class="widget-body"></div>
-      </article>
-    </section>
+      </div>
+    </main>
 
-    <section class="controls">
-      <button data-action="previous">Previous</button>
-      <button data-action="next">Next</button>
-      <button data-action="press" class="accent">Dial Press</button>
-      <button data-action="hold">Hold Dial</button>
-      <button data-action="add_minute">+1 Minute</button>
-      <button data-action="subtract_minute">-1 Minute</button>
-      <button data-action="simulate_motion" class="accent-soft">Sim Motion</button>
-      <button data-action="update_software" class="accent-soft" style="background-color: #3498db; color: #fff; border-color: #3498db;">Update Software</button>
-      <button data-action="restart" class="accent-soft" style="background-color: #f39c12; color: #fff; border-color: #f39c12;">Restart</button>
-      <button data-action="shutdown" class="accent-soft" style="background-color: #c0392b; color: #fff; border-color: #c0392b;">Shut Down</button>
-    </section>
-    <section class="spotify-settings" id="spotifySettings" style="margin-top: 2rem; padding: 1.5rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
-      <h3>Spotify Integration</h3>
-      <p id="spotifyStatus" style="color: var(--text-muted);">Checking status...</p>
-      <form id="spotifyForm" style="display: none; flex-direction: column; gap: 0.75rem; margin-top: 1rem; max-width: 300px;">
-        <input type="text" id="spotifyClientId" placeholder="Client ID" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.5); color: #fff;" required />
-        <input type="password" id="spotifyClientSecret" placeholder="Client Secret" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.5); color: #fff;" required />
-        <input type="text" id="spotifyRedirectUri" placeholder="Redirect URI (optional)" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.5); color: #fff;" />
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">If blank, defaults to local IP. Set this to match Spotify Dashboard exactly if you use a custom domain or localhost.</p>
-        <button type="submit" class="accent">Connect Spotify</button>
-      </form>
-    </section>
+    <!-- Widget Selector Modal -->
+    <div id="widgetModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h3>Customize Dashboard Grid</h3>
+            <p>Select up to 3 app widgets to feature alongside Time & Date</p>
+          </div>
+          <button class="modal-close-btn" id="btnCloseModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="widget-picker-grid" id="pickerGrid">
+            <!-- App Choices rendered via JS -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span class="slot-count-indicator" id="slotCountIndicator">0 / 3 selected</span>
+          <button class="touch-btn btn-primary" id="btnSaveConfig">Save Dashboard Layout</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <section class="weather-settings" style="margin-top: 1rem; padding: 1.5rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
-      <h3>Weather Location</h3>
-      <form id="globalWeatherForm" style="display: flex; gap: 0.5rem; margin-top: 1rem; max-width: 300px;">
-        <input type="text" id="globalWeatherLocation" placeholder="City, State or ZIP" style="flex: 1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.5); color: #fff;" />
-        <button type="submit" class="accent">Set</button>
-      </form>
+  <!-- Full Screen App Overlay View -->
+  <div id="appOverlayView" class="app-overlay-view hidden">
+    <header class="overlay-header">
+      <button class="touch-btn btn-back" id="btnBackToDash">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Dashboard</span>
+      </button>
+      <div class="overlay-title-group">
+        <h2 id="overlayAppTitle">App Title</h2>
+        <span class="overlay-subtitle" id="overlayAppSubtitle">Full Screen View</span>
+      </div>
+      <div class="overlay-header-spacer"></div>
+    </header>
+
+    <section id="appOverlayContent" class="overlay-content">
+      <!-- Rendered Full Screen App UI -->
     </section>
+  </div>
 
-    <p class="keyboard-hint">
-      Keyboard: Left/Right switch widgets, Space = dial press, hold H = dial hold, + / - adjust timer.
-    </p>
-    <p class="keyboard-hint">
-      Apps: select the launcher widget and press the dial to start. Hold the dial 3s to exit.
-    </p>
-    <p class="keyboard-hint">
-      <a href="/oled" target="_blank" rel="noopener">Preview OLED view (128×64)</a>
-    </p>
-  </main>
+  <!-- Dedicated Touch Settings Overlay View -->
+  <div id="settingsOverlayView" class="app-overlay-view settings-overlay hidden">
+    <header class="overlay-header">
+      <button class="touch-btn btn-back" id="btnCloseSettings">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Dashboard</span>
+      </button>
+      <div class="overlay-title-group">
+        <h2><i class="fa-solid fa-gear"></i> System & Integration Settings</h2>
+        <span class="overlay-subtitle">Device Diagnostics & Web Controls</span>
+      </div>
+      <div class="overlay-header-spacer"></div>
+    </header>
 
-  <script src="/app.js"></script>
+    <section class="settings-page-grid">
+      <!-- Section 1: OLED & System Status -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-microchip"></i>
+          <h3>OLED & Hardware Diagnostics</h3>
+        </div>
+        <div class="settings-metrics-list">
+          <div class="metric-row">
+            <span class="metric-label">OLED Display Mode:</span>
+            <span class="metric-value badge" id="cfgDisplayState">ON</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Motion Sensor:</span>
+            <span class="metric-value badge" id="cfgMotionState">IDLE</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Device IP Address:</span>
+            <span class="metric-value badge ip-badge" id="cfgIpAddress">127.0.0.1</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Spotify Credentials & Status -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-brands fa-spotify"></i>
+          <h3>Spotify Integration Settings</h3>
+        </div>
+        <p class="settings-status-text" id="cfgSpotifyStatus">Status: Checking...</p>
+        <form id="cfgSpotifyForm" class="settings-form-col">
+          <input type="text" id="cfgClientId" placeholder="Spotify Client ID" class="settings-input" />
+          <input type="password" id="cfgClientSecret" placeholder="Spotify Client Secret" class="settings-input" />
+          <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
+        </form>
+      </div>
+
+      <!-- Section 3: Weather Location Config -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-cloud-sun"></i>
+          <h3>Weather Location</h3>
+        </div>
+        <form id="cfgWeatherForm" class="settings-form-col">
+          <input type="text" id="cfgWeatherLocation" placeholder="Enter City, State (e.g. San Francisco, CA)" class="settings-input" />
+          <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
+        </form>
+      </div>
+
+      <!-- Section 4: System Actions -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <i class="fa-solid fa-power-off"></i>
+          <h3>System Controls</h3>
+        </div>
+        <div class="settings-actions-grid">
+          <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload Page</button>
+          <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
+          <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update Software</button>
+          <button class="touch-btn" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart Device</button>
+          <button class="touch-btn" id="btnShutdownDevice"><i class="fa-solid fa-power-off"></i> Shutdown</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/wide.js?v=1.7.0" defer></script>
 </body>
 </html>
