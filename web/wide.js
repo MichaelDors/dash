@@ -300,6 +300,12 @@
   let stateFetchStartTime = 0;
   const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
 
+  // Spotify auto open / auto close state management (mirroring OLED behavior)
+  let wasSpotifyPlaying = false;
+  let autoOpenedSpotifyOverlay = false;
+  let lastUserClosedSpotifyTime = 0;
+  let lastSpotifyFetchTime = 0;
+
   // Dynamic commitment tracking
   let spotifyPlaybackLastTime = 0;
   let spotifyAccumulatedPlayMs = 0;
