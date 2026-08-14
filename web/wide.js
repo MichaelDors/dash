@@ -361,7 +361,7 @@
         overlayHideTimeout = setTimeout(() => {
           if (!isOffline) elConnectionLostOverlay.classList.add("hidden");
           overlayHideTimeout = null;
-        }, 1200);
+        }, 350);
       }
     }
   }
@@ -467,11 +467,11 @@
     const timeSinceLastFetch = now - lastSuccessfulFetchTime;
     const timeSinceLastClockChange = now - lastClockChangeTime;
 
-    // Show searching/connection lost overlay if:
-    // 1. Fetch hasn't succeeded in > 3.5 seconds
-    // 2. Clock/data hasn't ticked/changed in > 4 seconds
-    // 3. Consecutive fetch failure with > 2 seconds since last success
-    if (timeSinceLastFetch > 3500 || timeSinceLastClockChange > 4000 || (failedFetchCount >= 1 && timeSinceLastFetch > 2000)) {
+    // Show searching/connection lost overlay immediately if:
+    // 1. Fetch hasn't succeeded in > 2.0 seconds
+    // 2. Clock/data hasn't ticked/changed in > 2.0 seconds
+    // 3. Any fetch failure occurs (failedFetchCount >= 1)
+    if (timeSinceLastFetch > 2000 || timeSinceLastClockChange > 2000 || failedFetchCount >= 1) {
       showConnectionLostOverlay();
     }
   }
@@ -793,7 +793,7 @@
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
       const res = await fetch("/api/wide/state", { cache: "no-store", signal: controller.signal });
       clearTimeout(timeoutId);
 
@@ -839,8 +839,8 @@
         return;
       }
 
-      // Hide connection lost overlay if clock has ticked within 4s
-      if (nowMs - lastClockChangeTime <= 4000) {
+      // Hide connection lost overlay if fetch succeeded AND clock has ticked within 2s
+      if (nowMs - lastClockChangeTime <= 2000 && nowMs - lastSuccessfulFetchTime <= 2000) {
         hideConnectionLostOverlay();
       } else {
         showConnectionLostOverlay();
@@ -868,10 +868,7 @@
       }
 
       failedFetchCount++;
-      const timeSinceLastSuccess = Date.now() - lastSuccessfulFetchTime;
-      if (failedFetchCount >= 1 && (timeSinceLastSuccess > 2000 || Date.now() - lastClockChangeTime > 4000)) {
-        showConnectionLostOverlay();
-      }
+      showConnectionLostOverlay();
 
       // If initial load failed over HTTP, set mock data so DOM elements render beneath the overlay
       if (!state.latestData) {
