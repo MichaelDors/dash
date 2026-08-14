@@ -2088,9 +2088,17 @@ body {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
   position: relative;
   box-sizing: border-box;
+}
+
+/* Let static 1–2 line titles/artists breathe; clip only during marquee */
+.marquee-clip-box:not(:has(.marquee-container)) {
+  overflow: visible;
+}
+
+.marquee-clip-box:has(.marquee-container) {
+  overflow: hidden;
 }
 
 /* Soft edge fade only while marquee is active; each side fades in/out with scroll position */

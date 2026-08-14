@@ -1143,6 +1143,11 @@
     const fontFamily = cs.fontFamily;
     const fontWeight = cs.fontWeight;
     const letterSpacing = cs.letterSpacing;
+    const lineHeightRaw = parseFloat(cs.lineHeight);
+    const fontSizePx = parseFloat(fontSize);
+    const lineHeight = (!isNaN(lineHeightRaw) && lineHeightRaw > 0)
+      ? lineHeightRaw
+      : fontSizePx * (maxLines === 2 ? 1.25 : 1.2);
 
     const measureSpan = document.createElement("span");
     measureSpan.style.cssText = [
@@ -1150,42 +1155,49 @@
       "top:-9999px",
       "left:-9999px",
       "visibility:hidden",
-      "white-space:nowrap",
       `font-size:${fontSize}`,
       `font-family:${fontFamily}`,
       `font-weight:${fontWeight}`,
       `letter-spacing:${letterSpacing}`,
-      "width:auto",
-      "max-width:none",
+      `line-height:${cs.lineHeight}`,
+      "width:" + parentWidth + "px",
+      "max-width:" + parentWidth + "px",
       "margin:0",
       "padding:0",
-      "border:none"
+      "border:none",
+      "white-space:normal",
+      "word-break:break-word"
     ].join(";");
     measureSpan.textContent = textContent;
     document.body.appendChild(measureSpan);
+
+    let exceedsAllowedLines;
+    if (maxLines === 2) {
+      // Title: keep full 2-line layout; marquee only if content overflows a 2-line clamp
+      measureSpan.style.display = "-webkit-box";
+      measureSpan.style.webkitBoxOrient = "vertical";
+      measureSpan.style.overflow = "hidden";
+      measureSpan.style.webkitLineClamp = "2";
+      exceedsAllowedLines = measureSpan.scrollHeight > measureSpan.clientHeight + 1;
+    } else {
+      // Artist: marquee only if text would wrap to more than one line
+      measureSpan.style.display = "block";
+      measureSpan.style.overflow = "visible";
+      measureSpan.style.webkitLineClamp = "unset";
+      const wrappedHeight = measureSpan.getBoundingClientRect().height;
+      exceedsAllowedLines = wrappedHeight > lineHeight * 1.15;
+    }
+
+    measureSpan.style.whiteSpace = "nowrap";
+    measureSpan.style.display = "inline-block";
+    measureSpan.style.width = "auto";
+    measureSpan.style.maxWidth = "none";
+    measureSpan.style.webkitLineClamp = "unset";
     const singleLineWidth = measureSpan.getBoundingClientRect().width;
-
-    measureSpan.style.whiteSpace = "normal";
-    measureSpan.style.wordBreak = "break-word";
-    measureSpan.style.display = "block";
-    measureSpan.style.width = `${parentWidth}px`;
-    measureSpan.style.maxWidth = `${parentWidth}px`;
-
-    let lineHeight = parseFloat(cs.lineHeight);
-    const fontSizePx = parseFloat(fontSize);
-    if (isNaN(lineHeight) || lineHeight <= 0) lineHeight = fontSizePx * 1.2;
-
-    const naturalHeight = measureSpan.getBoundingClientRect().height;
-    const lineCount = naturalHeight / lineHeight;
     document.body.removeChild(measureSpan);
 
-    // Artist (maxLines=1): marquee only if text would use more than one line
-    // Title (maxLines=2): marquee only if text would use more than two lines
-    const exceedsAllowedLines = maxLines === 1
-      ? lineCount > 1.08
-      : lineCount > 2.08;
-    const needsScroll = singleLineWidth > parentWidth + 2;
-    const shouldMarquee = exceedsAllowedLines && needsScroll;
+    const needsHorizontalScroll = singleLineWidth > parentWidth + 2;
+    const shouldMarquee = exceedsAllowedLines && needsHorizontalScroll;
 
     if (shouldMarquee) {
       el.classList.add("marquee-container");
