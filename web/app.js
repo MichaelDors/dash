@@ -417,12 +417,12 @@ function renderSpotify(app, exitState) {
   const exitProgress = Math.max(0, Math.min(1, exitProgressRaw));
 
   const trackHtml = `
-    <div style="width: calc(100% - 60px); overflow: hidden;">
-      <h2 class="\${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">\${trackName}</h2>
+    <div class="marquee-clip-box" style="width: calc(100% - 60px);">
+      <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
     </div>`;
 
   const artistHtml = `
-    <div style="width: 100%; overflow: hidden;">
+    <div class="marquee-clip-box" style="width: 100%;">
       <p class="${artistName.length > 25 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">${artistName}</p>
     </div>`;
 
@@ -642,12 +642,12 @@ function renderWidget(widget, motion) {
       const hint = preview.authenticated ? "Press dial to open" : "Connect in web UI";
       
       const trackHtml = `
-        <div style="width: calc(100% - 60px); overflow: hidden;">
+        <div class="marquee-clip-box" style="width: calc(100% - 60px);">
           <h2 class="${trackName.length > 18 ? 'marquee-container' : ''}" style="--marquee-width: calc(100% - 60px); margin: 0; font-size: 1.2rem; white-space: nowrap;">${trackName}</h2>
         </div>`;
       
       const artistHtml = `
-        <div style="width: 100%; overflow: hidden;">
+        <div class="marquee-clip-box" style="width: 100%;">
           <p class="${artistName.length > 25 ? 'marquee-container' : ''}" style="--marquee-width: 100%; margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">${artistName}</p>
         </div>`;
 

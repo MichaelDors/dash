@@ -1158,10 +1158,19 @@ body {
   margin: 0;
 }
 
-.fs-spotify-artist:not(.marquee-container) {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.fs-spotify-artist,
+.fs-spotify-artist *,
+.spotify-artist-name,
+.spotify-artist-name * {
+  white-space: nowrap !important;
+}
+
+.fs-spotify-artist:not(.marquee-container),
+.spotify-artist-name:not(.marquee-container) {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
 }
 
 .fs-spotify-scrub-wrap {
@@ -2046,8 +2055,8 @@ body {
   color: #cbd5e1;
 /* OLED-Matching Marquee Animation & Container Styles */
 @keyframes marquee-ping-pong {
-  0%, 25% { transform: translateX(0); }
-  50%, 75% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
+  0%, 20% { transform: translateX(0); }
+  50%, 70% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
   100% { transform: translateX(0); }
 }
 
@@ -2058,26 +2067,26 @@ body {
   overflow: hidden !important;
   position: relative !important;
   box-sizing: border-box !important;
+  mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%) !important;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%) !important;
 }
 
-.marquee-clip-box:has(.marquee-container),
-.marquee-container {
-  mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
-}
-
-.marquee-container {
+.marquee-container,
+.marquee-container * {
   display: inline-block !important;
   white-space: nowrap !important;
   width: max-content !important;
   min-width: max-content !important;
   max-width: none !important;
+}
+
+.marquee-container {
   animation: marquee-ping-pong 12s linear infinite !important;
   will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.marquee-container),
   *::before,
   *::after {
     animation-duration: 1ms !important;

@@ -772,3 +772,35 @@ a:hover {
     height: 32px;
   }
 }
+
+/* OLED-Matching Marquee Animation & Edge Mask Styles */
+@keyframes marquee-ping-pong {
+  0%, 25% { transform: translateX(0); }
+  50%, 75% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
+  100% { transform: translateX(0); }
+}
+
+.marquee-clip-box {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  position: relative !important;
+  box-sizing: border-box !important;
+}
+
+.marquee-clip-box:has(.marquee-container),
+.marquee-container {
+  mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+}
+
+.marquee-container {
+  display: inline-block !important;
+  white-space: nowrap !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  animation: marquee-ping-pong 12s linear infinite !important;
+  will-change: transform;
+}

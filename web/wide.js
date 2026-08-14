@@ -535,6 +535,7 @@
     setInterval(fetchState, 250);
     setInterval(tickRealtimeProgress, 100);
     setInterval(checkConnectionWatchdog, 250);
+    setInterval(updateAllWideMarquees, 500);
   }
 
   // Setup Event Listeners
@@ -1117,34 +1118,49 @@
     const parentBox = el.closest(".marquee-clip-box") || el.parentElement;
     if (!parentBox) return;
 
-    const parentWidth = parentBox.clientWidth;
-    if (parentWidth === 0) return;
-
-    el.classList.remove("marquee-container");
-    const prevStyle = el.getAttribute("style") || "";
-
-    // 1. Measure single-line un-truncated width via inline cssText override
-    el.style.cssText = "display: inline-block !important; white-space: nowrap !important; width: max-content !important; min-width: max-content !important; max-width: none !important; position: absolute !important; visibility: hidden !important;";
-    const singleLineWidth = el.getBoundingClientRect().width || el.scrollWidth;
-
-    // 2. Measure natural multi-line wrapped height inside parent width
-    el.style.cssText = `display: block !important; white-space: normal !important; width: ${parentWidth}px !important; max-width: ${parentWidth}px !important; position: absolute !important; visibility: hidden !important; word-break: break-word !important;`;
-    const cs = window.getComputedStyle(el);
-    let lh = parseFloat(cs.lineHeight);
-    const fs = parseFloat(cs.fontSize);
-    if (isNaN(lh) || lh <= 0) lh = fs * 1.2;
-
-    const naturalHeight = el.scrollHeight;
-    const lineCount = naturalHeight / lh;
-
-    // Restore original inline style attribute
-    if (prevStyle) {
-      el.setAttribute("style", prevStyle);
-    } else {
-      el.removeAttribute("style");
+    let parentWidth = parentBox.clientWidth;
+    if (parentWidth === 0) {
+      requestAnimationFrame(() => {
+        if (el.closest(".marquee-clip-box")?.clientWidth > 0) {
+          updateMarqueeForElement(el, maxLines);
+        }
+      });
+      return;
     }
 
-    // 3. Determine marquee threshold:
+    const textContent = el.textContent || "";
+    if (!textContent.trim()) return;
+
+    // Get computed font properties of target element
+    const cs = window.getComputedStyle(el);
+    const fontSize = cs.fontSize;
+    const fontFamily = cs.fontFamily;
+    const fontWeight = cs.fontWeight;
+    const letterSpacing = cs.letterSpacing;
+
+    // 1. Measure single-line text width in an off-screen span
+    const measureSpan = document.createElement("span");
+    measureSpan.style.cssText = `position: absolute !important; top: -9999px !important; left: -9999px !important; visibility: hidden !important; white-space: nowrap !important; font-size: ${fontSize} !important; font-family: ${fontFamily} !important; font-weight: ${fontWeight} !important; letter-spacing: ${letterSpacing} !important; width: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; border: none !important;`;
+    measureSpan.textContent = textContent;
+    document.body.appendChild(measureSpan);
+    const singleLineWidth = measureSpan.getBoundingClientRect().width;
+
+    // 2. Measure wrapped multi-line text height in an off-screen box
+    measureSpan.style.whiteSpace = "normal";
+    measureSpan.style.wordBreak = "break-word";
+    measureSpan.style.display = "block";
+    measureSpan.style.width = `${parentWidth}px`;
+    measureSpan.style.maxWidth = `${parentWidth}px`;
+
+    let lh = parseFloat(cs.lineHeight);
+    const fs = parseFloat(fontSize);
+    if (isNaN(lh) || lh <= 0) lh = fs * 1.2;
+
+    const naturalHeight = measureSpan.getBoundingClientRect().height;
+    const lineCount = naturalHeight / lh;
+    document.body.removeChild(measureSpan);
+
+    // 3. Determine if marquee is required:
     // Artist (maxLines = 1): marquees if text takes > 1 line OR singleLineWidth exceeds parentWidth
     // Song Title (maxLines = 2): marquees if text takes > 2 lines AND singleLineWidth exceeds parentWidth
     const exceedsLines = maxLines === 1 ?
@@ -1345,6 +1361,7 @@
         updateMarqueeForElement(document.getElementById("fsSpotTitle"), 2);
         updateMarqueeForElement(document.getElementById("fsSpotArtist"), 1);
       });
+      setTimeout(updateAllWideMarquees, 350);
     }
   }
 
