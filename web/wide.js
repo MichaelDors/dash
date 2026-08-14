@@ -557,7 +557,7 @@
         } else {
           wakeSpotifyUi();
         }
-      }, 1500);
+      }, 3500);
     };
 
     elAppOverlayView.addEventListener("click", wakeSpotifyUi);
