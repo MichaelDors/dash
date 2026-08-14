@@ -15,6 +15,7 @@
     slots: ["spotify", "weather"],
     activeOverlayApp: null,
     settingsOpen: false,
+    settingsSubpage: "main",
     latestData: null,
     pickerSelected: ["spotify", "weather"]
   };
@@ -471,6 +472,19 @@
 
   // Setup Event Listeners
   function setupEventListeners() {
+    // Global auto-blur for buttons on tablet touch/click to prevent sticky selection state
+    const autoUnselectButton = (e) => {
+      const btn = e.target.closest("button, .touch-btn, .mini-ctrl-btn, .fs-ctrl-btn, .icon-touch-btn");
+      if (btn) {
+        btn.blur();
+      }
+    };
+    document.addEventListener("click", autoUnselectButton);
+    document.addEventListener("touchend", (e) => {
+      autoUnselectButton(e);
+      setTimeout(() => autoUnselectButton(e), 50);
+    }, { passive: true });
+
     // Back from full screen app overlay
     if (elBtnBackToDash) {
       elBtnBackToDash.addEventListener("click", () => {
@@ -482,6 +496,55 @@
     if (elBtnOpenSettings) elBtnOpenSettings.addEventListener("click", openSettingsOverlay);
     if (elBtnCloseSettings) elBtnCloseSettings.addEventListener("click", closeSettingsOverlay);
     if (elBtnBackToDash) elBtnBackToDash.addEventListener("click", closeOverlayApp);
+
+    // OLED Settings Subpage Navigation
+    const btnOpenOled = document.getElementById("btnOpenOledSubpage");
+    if (btnOpenOled) {
+      btnOpenOled.addEventListener("click", () => showSettingsSubpage("oled"));
+      btnOpenOled.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          showSettingsSubpage("oled");
+        }
+      });
+    }
+
+    const btnBackToMain = document.getElementById("btnBackToMainSettings");
+    if (btnBackToMain) {
+      btnBackToMain.addEventListener("click", () => showSettingsSubpage("main"));
+    }
+
+    // Hardware OLED Settings Controls
+    const rangeMaxBright = document.getElementById("cfgMaxBrightnessRange");
+    const valMaxBright = document.getElementById("cfgMaxBrightnessVal");
+    if (rangeMaxBright) {
+      rangeMaxBright.addEventListener("input", (e) => {
+        const v = e.target.value;
+        if (valMaxBright) valMaxBright.textContent = `${v}%`;
+      });
+      rangeMaxBright.addEventListener("change", (e) => {
+        sendAction("set_max_brightness", { value: parseInt(e.target.value, 10) });
+      });
+    }
+
+    const rangeDimBright = document.getElementById("cfgDimBrightnessRange");
+    const valDimBright = document.getElementById("cfgDimBrightnessVal");
+    if (rangeDimBright) {
+      rangeDimBright.addEventListener("input", (e) => {
+        const v = e.target.value;
+        if (valDimBright) valDimBright.textContent = `${v}%`;
+      });
+      rangeDimBright.addEventListener("change", (e) => {
+        sendAction("set_dim_brightness", { value: parseInt(e.target.value, 10) });
+      });
+    }
+
+    const btnToggleMotion = document.getElementById("btnToggleMotionSensor");
+    if (btnToggleMotion) {
+      btnToggleMotion.addEventListener("click", () => {
+        sendAction("toggle_motion_sensor");
+      });
+    }
 
     const btnReloadWeb = document.getElementById("btnReloadWebInterface");
     if (btnReloadWeb) {
@@ -589,6 +652,13 @@
   const MOCK_DEMO_DATA = {
     slots: ["spotify", "weather", "timer"],
     display_mode: "on",
+    settings: {
+      max_brightness: 100,
+      dim_brightness: 10,
+      motion_sensor: true,
+      dim_delay: 30,
+      off_delay: 90
+    },
     widgets: {
       time: {
         day_name: "THURSDAY",
@@ -1096,9 +1166,13 @@
     document.querySelectorAll("[data-act]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
+        btn.blur();
         const act = btn.getAttribute("data-act");
         sendAction(act);
       });
+      btn.addEventListener("touchend", () => {
+        btn.blur();
+      }, { passive: true });
     });
 
     attachSeekHandler("widgetScrubBar", "widget-spotify-progress");
@@ -1147,9 +1221,35 @@
     });
   }
 
+  // Subpage Navigation Helper
+  function showSettingsSubpage(subpageName) {
+    const elMain = document.getElementById("settingsMainPage");
+    const elOled = document.getElementById("settingsOledSubpage");
+    const elHeaderBack = document.getElementById("settingsHeaderBackText");
+    const elHeaderTitle = document.getElementById("settingsHeaderTitle");
+    const elHeaderSubtitle = document.getElementById("settingsHeaderSubtitle");
+
+    if (subpageName === "oled") {
+      state.settingsSubpage = "oled";
+      if (elMain) elMain.className = "settings-subpage subpage-hidden-left";
+      if (elOled) elOled.className = "settings-subpage subpage-active";
+      if (elHeaderBack) elHeaderBack.textContent = "Settings";
+      if (elHeaderTitle) elHeaderTitle.innerHTML = '<i class="fa-solid fa-tv"></i> OLED Display Settings';
+      if (elHeaderSubtitle) elHeaderSubtitle.textContent = "Hardware Panel & Motion Controls";
+    } else {
+      state.settingsSubpage = "main";
+      if (elMain) elMain.className = "settings-subpage subpage-active";
+      if (elOled) elOled.className = "settings-subpage subpage-hidden-right";
+      if (elHeaderBack) elHeaderBack.textContent = "Dashboard";
+      if (elHeaderTitle) elHeaderTitle.innerHTML = '<i class="fa-solid fa-gear"></i> System & Integration Settings';
+      if (elHeaderSubtitle) elHeaderSubtitle.textContent = "Device Diagnostics & Web Controls";
+    }
+  }
+
   // Settings Overlay Management
   function openSettingsOverlay() {
     state.settingsOpen = true;
+    showSettingsSubpage("main");
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "settings" }));
     } catch (e) { }
@@ -1160,6 +1260,10 @@
   }
 
   function closeSettingsOverlay() {
+    if (state.settingsSubpage === "oled") {
+      showSettingsSubpage("main");
+      return;
+    }
     state.settingsOpen = false;
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
@@ -1178,6 +1282,43 @@
     if (elCfgIpAddress) {
       elCfgIpAddress.textContent = window.location.hostname || "127.0.0.1";
     }
+
+    // Hardware Settings Metrics
+    const st = data.settings || {};
+    const rangeMax = document.getElementById("cfgMaxBrightnessRange");
+    const valMax = document.getElementById("cfgMaxBrightnessVal");
+    if (rangeMax && st.max_brightness != null && document.activeElement !== rangeMax) {
+      rangeMax.value = st.max_brightness;
+      if (valMax) valMax.textContent = `${st.max_brightness}%`;
+    }
+
+    const rangeDim = document.getElementById("cfgDimBrightnessRange");
+    const valDim = document.getElementById("cfgDimBrightnessVal");
+    if (rangeDim && st.dim_brightness != null && document.activeElement !== rangeDim) {
+      rangeDim.value = st.dim_brightness;
+      if (valDim) valDim.textContent = `${st.dim_brightness}%`;
+    }
+
+    const motionStatusBadge = document.getElementById("cfgMotionToggleStatus");
+    if (motionStatusBadge && st.motion_sensor != null) {
+      const isEnabled = Boolean(st.motion_sensor);
+      motionStatusBadge.textContent = isEnabled ? "ENABLED" : "DISABLED";
+      motionStatusBadge.style.color = isEnabled ? "var(--accent-green)" : "var(--accent-green)";
+      motionStatusBadge.style.borderColor = isEnabled ? "rgba(0, 242, 254, 0.3)" : "rgba(255, 255, 255, 0.2)";
+    }
+
+    const elDimDelay = document.getElementById("cfgDimDelay");
+    if (elDimDelay && st.dim_delay != null) elDimDelay.textContent = `${st.dim_delay}s`;
+
+    const elOffDelay = document.getElementById("cfgOffDelay");
+    if (elOffDelay && st.off_delay != null) elOffDelay.textContent = `${st.off_delay}s`;
+
+    const elOledDisplayState = document.getElementById("cfgOledDisplayState");
+    if (elOledDisplayState) elOledDisplayState.textContent = (data.display_mode || 'on').toUpperCase();
+
+    const elOledIdleTime = document.getElementById("cfgOledIdleTime");
+    if (elOledIdleTime && data.motion) elOledIdleTime.textContent = data.motion.idle || '00:00';
+
     if (elCfgSpotifyStatus && data.spotify_status) {
       const auth = data.spotify_status.authenticated;
       const conf = data.spotify_status.configured;
@@ -1516,9 +1657,11 @@
       const btnPrev = document.getElementById("fsSpotPrev");
       const btnNext = document.getElementById("fsSpotNext");
 
-      if (btnPlay) btnPlay.addEventListener("click", () => sendAction("spotify_toggle"));
-      if (btnPrev) btnPrev.addEventListener("click", () => sendAction("spotify_prev"));
-      if (btnNext) btnNext.addEventListener("click", () => sendAction("spotify_next"));
+      const blurSelf = (e) => { if (e && e.currentTarget) e.currentTarget.blur(); };
+
+      if (btnPlay) btnPlay.addEventListener("click", (e) => { blurSelf(e); sendAction("spotify_toggle"); });
+      if (btnPrev) btnPrev.addEventListener("click", (e) => { blurSelf(e); sendAction("spotify_prev"); });
+      if (btnNext) btnNext.addEventListener("click", (e) => { blurSelf(e); sendAction("spotify_next"); });
 
       attachSeekHandler("fsScrubBar", "fs-spotify-progress");
     } else if (appId === "timer") {

@@ -163,10 +163,12 @@ body {
   outline: none;
 }
 
-.icon-touch-btn:hover {
-  transform: translateY(-1px) scale(1.04);
-  border-color: var(--border-card-hover);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 22px rgba(0, 242, 254, 0.12);
+@media (hover: hover) {
+  .icon-touch-btn:hover {
+    transform: translateY(-1px) scale(1.04);
+    border-color: var(--border-card-hover);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 22px rgba(0, 242, 254, 0.12);
+  }
 }
 
 .icon-touch-btn:active {
@@ -196,31 +198,33 @@ body {
   outline: none;
 }
 
-.touch-btn::after, .mini-ctrl-btn::after {
+.touch-btn::after, .mini-ctrl-btn::after, .fs-ctrl-btn::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), transparent);
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.12), transparent);
   pointer-events: none;
   mix-blend-mode: screen;
   z-index: 1;
 }
 
-.touch-btn::before, .mini-ctrl-btn::before {
+.touch-btn::before, .mini-ctrl-btn::before, .fs-ctrl-btn::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
   z-index: 1;
-  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.35), inset 0 0 18px rgba(255, 255, 255, 0.3);
 }
 
-.touch-btn:hover {
-  background: #1c2336;
-  transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+@media (hover: hover) {
+  .touch-btn:hover {
+    background: #1c2336;
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  }
 }
 
 .touch-btn:active {
@@ -235,17 +239,19 @@ body {
   border: 1px solid var(--accent-cyan);
 }
 
-.btn-primary::before {
+.btn-primary::before, .mini-ctrl-btn.btn-play-main::before, .fs-ctrl-btn.fs-play-btn::before {
   box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.6), inset 0 0 18px rgba(255, 255, 255, 0.4);
 }
 
-.btn-primary::after {
-  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.2), transparent);
+.btn-primary::after, .mini-ctrl-btn.btn-play-main::after, .fs-ctrl-btn.fs-play-btn::after {
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.25), transparent);
 }
 
-.btn-primary:hover {
-  background: color-mix(in srgb, var(--accent-cyan) 90%, white);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .btn-primary:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 90%, white);
+    transform: translateY(-1px);
+  }
 }
 
 .btn-primary:active {
@@ -559,10 +565,10 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.1), transparent);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 35%, transparent 60%, rgba(0, 0, 0, 0.1) 100%);
   pointer-events: none;
   mix-blend-mode: screen;
-  z-index: 1;
+  z-index: 2;
 }
 
 .spotify-art-wrapper::before {
@@ -571,8 +577,13 @@ body {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  z-index: 1;
-  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.2);
+  z-index: 3;
+  box-shadow: 
+    inset 0 3px 6px rgba(255, 255, 255, 0.35),
+    inset 3px 0 6px rgba(255, 255, 255, 0.22),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.25),
+    inset -3px 0 8px rgba(0, 0, 0, 0.18),
+    inset 0 0 16px rgba(255, 255, 255, 0.1);
 }
 
 .art-sweep-flash {
@@ -656,7 +667,29 @@ body {
   height: 6px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 3px;
+  position: relative;
   overflow: hidden;
+}
+
+.spotify-progress-bar-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.spotify-progress-bar-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .spotify-progress-fill {
@@ -664,6 +697,29 @@ body {
   background: var(--spotify-accent);
   transition: width 0.3s linear, background-color 0.8s ease;
   width: 0%;
+  position: relative;
+  overflow: hidden;
+}
+
+.spotify-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.16), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.spotify-progress-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
 .spotify-mini-controls {
@@ -689,10 +745,12 @@ body {
   transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
 }
 
-.mini-ctrl-btn:hover {
-  transform: translateY(-1px) scale(1.06);
-  border-color: var(--accent-cyan);
-  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.36);
+@media (hover: hover) {
+  .mini-ctrl-btn:hover {
+    transform: translateY(-1px) scale(1.06);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 12px 22px rgba(0, 0, 0, 0.36);
+  }
 }
 
 .mini-ctrl-btn:active {
@@ -988,10 +1046,10 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.08), transparent);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.07) 38%, transparent 62%, rgba(0, 0, 0, 0.12) 100%);
   pointer-events: none;
   mix-blend-mode: screen;
-  z-index: 1;
+  z-index: 2;
 }
 
 .fs-spotify-art-wrapper::before {
@@ -1000,8 +1058,13 @@ body {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  z-index: 1;
-  box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.3), inset 0 0 18px rgba(255, 255, 255, 0.2);
+  z-index: 3;
+  box-shadow: 
+    inset 0 5px 10px rgba(255, 255, 255, 0.4),
+    inset 5px 0 10px rgba(255, 255, 255, 0.25),
+    inset 0 -5px 12px rgba(0, 0, 0, 0.28),
+    inset -5px 0 12px rgba(0, 0, 0, 0.2),
+    inset 0 0 24px rgba(255, 255, 255, 0.12);
 }
 
 .fs-spotify-art-large {
@@ -1073,11 +1136,55 @@ body {
   overflow: hidden;
 }
 
+.fs-scrub-bar::after, .fs-spotify-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.fs-scrub-bar::before, .fs-spotify-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
 .fs-scrub-fill, .fs-spotify-progress-fill {
   height: 100%;
   background: var(--spotify-accent);
   transition: width 0.3s linear, background-color 0.8s ease;
   width: 0%;
+  position: relative;
+  overflow: hidden;
+}
+
+.fs-scrub-fill::after, .fs-spotify-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.18), transparent);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.fs-scrub-fill::before, .fs-spotify-progress-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .fs-spotify-time-row {
@@ -1117,13 +1224,17 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
   transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
 }
 
-.fs-ctrl-btn:hover {
-  transform: translateY(-2px) scale(1.055);
-  border-color: color-mix(in srgb, var(--spotify-accent) 70%, white);
-  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.4);
+@media (hover: hover) {
+  .fs-ctrl-btn:hover {
+    transform: translateY(-2px) scale(1.055);
+    border-color: color-mix(in srgb, var(--spotify-accent) 70%, white);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.4);
+  }
 }
 
 .fs-ctrl-btn:active {
@@ -1210,13 +1321,166 @@ body {
   background: var(--accent-cyan);
 }
 
+/* Settings Subpages & Smooth Slide Transitions */
+.settings-subpages-wrapper {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  overflow-x: hidden;
+  margin-top: 0.75rem;
+}
+
+.settings-subpage {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--motion-med) var(--ease-apple), opacity var(--motion-med) var(--ease-apple), filter var(--motion-med) var(--ease-apple);
+  will-change: transform, opacity, filter;
+}
+
+.settings-subpage.subpage-active {
+  position: relative;
+  transform: translateX(0) scale(1);
+  opacity: 1;
+  filter: blur(0);
+  pointer-events: auto;
+}
+
+.settings-subpage.subpage-hidden-left {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(-40px) scale(0.975);
+  opacity: 0;
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.settings-subpage.subpage-hidden-right {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(40px) scale(0.975);
+  opacity: 0;
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+/* Control OLED Settings Banner Card */
+.settings-banner-card {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.75rem;
+  background: linear-gradient(135deg, #0e1422 0%, #0a0d14 100%);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 242, 254, 0.08);
+  transition: transform var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple);
+  margin-bottom: 0.25rem;
+  outline: none;
+}
+
+.settings-banner-card:hover {
+  transform: translateY(-2px) scale(1.004);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.72), 0 0 36px rgba(0, 242, 254, 0.2);
+  background: linear-gradient(135deg, #131b2e 0%, #0d121c 100%);
+}
+
+.settings-banner-card:active {
+  transform: scale(0.99);
+}
+
+.banner-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  opacity: 0.8;
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.banner-icon-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: var(--accent-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  box-shadow: 0 0 18px rgba(0, 242, 254, 0.15);
+}
+
+.banner-text h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.banner-text p {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.banner-action-btn {
+  padding: 0.7rem 1.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  box-shadow: 0 4px 18px rgba(0, 242, 254, 0.25);
+  pointer-events: none;
+}
+
+/* Subpage Top Bar */
+.subpage-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.subpage-title-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  background: rgba(0, 242, 254, 0.1);
+  border: 1px solid rgba(0, 242, 254, 0.24);
+  color: var(--accent-cyan);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 /* Settings View Grid & Cards */
 .settings-page-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
   width: 100%;
-  padding: 1.25rem 0 3rem 0;
+  padding: 1rem 0 3rem 0;
   box-sizing: border-box;
   flex: 1;
 }
@@ -1233,17 +1497,19 @@ body {
   transition: transform var(--motion-med) var(--ease-apple), border-color var(--motion-med) var(--ease-apple), background-color var(--motion-med) var(--ease-apple), box-shadow var(--motion-med) var(--ease-apple);
 }
 
-.settings-overlay.is-visible .settings-card {
+.settings-overlay.is-visible .subpage-active .settings-banner-card,
+.settings-overlay.is-visible .subpage-active .settings-card {
   animation: settingsCardIn 560ms var(--ease-apple) both;
 }
 
-.settings-overlay.is-visible .settings-card:nth-child(1) { animation-delay: 80ms; }
-.settings-overlay.is-visible .settings-card:nth-child(2) { animation-delay: 120ms; }
-.settings-overlay.is-visible .settings-card:nth-child(3) { animation-delay: 160ms; }
-.settings-overlay.is-visible .settings-card:nth-child(4) { animation-delay: 200ms; }
-.settings-overlay.is-visible .settings-card:nth-child(5) { animation-delay: 240ms; }
-.settings-overlay.is-visible .settings-card:nth-child(6) { animation-delay: 280ms; }
-.settings-overlay.is-visible .settings-card:nth-child(7) { animation-delay: 320ms; }
+.settings-overlay.is-visible .subpage-active .settings-banner-card { animation-delay: 40ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(1) { animation-delay: 80ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(2) { animation-delay: 120ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(3) { animation-delay: 160ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(4) { animation-delay: 200ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(5) { animation-delay: 240ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(6) { animation-delay: 280ms; }
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(7) { animation-delay: 320ms; }
 
 .settings-card:hover {
   transform: translateY(-2px);
@@ -1515,9 +1781,11 @@ body {
   transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple);
 }
 
-.modal-close-btn:hover {
-  transform: rotate(90deg) scale(1.06);
-  background: #222a3d;
+@media (hover: hover) {
+  .modal-close-btn:hover {
+    transform: rotate(90deg) scale(1.06);
+    background: #222a3d;
+  }
 }
 
 .widget-picker-grid {
@@ -1549,10 +1817,12 @@ body {
 .modal-backdrop.is-visible .picker-item:nth-child(5) { animation-delay: 210ms; }
 .modal-backdrop.is-visible .picker-item:nth-child(6) { animation-delay: 240ms; }
 
-.picker-item:hover {
-  transform: translateY(-2px) scale(1.012);
-  border-color: var(--border-card-hover);
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.38);
+@media (hover: hover) {
+  .picker-item:hover {
+    transform: translateY(-2px) scale(1.012);
+    border-color: var(--border-card-hover);
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.38);
+  }
 }
 
 .picker-item.selected {
