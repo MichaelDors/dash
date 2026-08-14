@@ -210,11 +210,11 @@
     return `#${((1 << 24) + (fr << 16) + (fg << 8) + fb).toString(16).slice(1)}`;
   }
 
-  async function extractVibrantColorFromUrl(artUrl) {
-    if (!artUrl) return null;
+  async function extractArtMetadataFromUrl(artUrl) {
+    if (!artUrl) return { vibrantColor: null, edgeLuminance: 0.5 };
     try {
       const response = await fetch(artUrl, { mode: 'cors' });
-      if (!response.ok) return null;
+      if (!response.ok) return { vibrantColor: null, edgeLuminance: 0.5 };
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
 
@@ -227,14 +227,37 @@
 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = 40;
-      canvas.height = 40;
-      ctx.drawImage(img, 0, 0, 40, 40);
+      const W = 40, H = 40;
+      canvas.width = W;
+      canvas.height = H;
+      ctx.drawImage(img, 0, 0, W, H);
       URL.revokeObjectURL(objectUrl);
 
-      const imageData = ctx.getImageData(0, 0, 40, 40);
+      const imageData = ctx.getImageData(0, 0, W, H);
       const data = imageData.data;
 
+      // 1. Calculate average luminance specifically from the EDGES (outer 2 perimeter rows & columns)
+      let sumLuminance = 0;
+      let edgeCount = 0;
+
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const isEdge = (x < 2 || x >= W - 2 || y < 2 || y >= H - 2);
+          if (!isEdge) continue;
+
+          const idx = (y * W + x) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          sumLuminance += lum;
+          edgeCount++;
+        }
+      }
+
+      const edgeLuminance = edgeCount > 0 ? (sumLuminance / edgeCount) : 0.5;
+
+      // 2. Extract vibrant accent color
       let bestR = 0, bestG = 242, bestB = 254;
       let bestScore = -1;
 
@@ -260,19 +283,20 @@
           bestB = b;
         }
       }
-      if (bestScore > -1) {
-        return ensureHighContrastColor(bestR, bestG, bestB);
-      }
-      return null;
+
+      const vibrantColor = bestScore > -1 ? ensureHighContrastColor(bestR, bestG, bestB) : null;
+
+      return { vibrantColor, edgeLuminance };
     } catch (err) {
-      console.warn("Client color extraction notice:", err);
-      return null;
+      console.warn("Client color/luminance extraction notice:", err);
+      return { vibrantColor: null, edgeLuminance: 0.5 };
     }
   }
 
   function updateSpotifyAccentColor(bgImageUrl, colorExtractUrl) {
     if (!bgImageUrl) {
       document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
+      document.documentElement.style.setProperty('--art-bevel-scale', '1.0');
       updateSpotifyBackgroundImage(null);
       return;
     }
@@ -282,14 +306,21 @@
     if (extractUrl === currentAlbumArtUrl) return;
     currentAlbumArtUrl = extractUrl;
 
-    extractVibrantColorFromUrl(extractUrl).then(color => {
-      if (color) {
-        document.documentElement.style.setProperty('--spotify-accent', color);
+    extractArtMetadataFromUrl(extractUrl).then(({ vibrantColor, edgeLuminance }) => {
+      if (vibrantColor) {
+        document.documentElement.style.setProperty('--spotify-accent', vibrantColor);
       } else {
         document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
       }
+
+      // Dynamic opacity scale based strictly on edge luminance:
+      // Edge luminance 0.0 (pitch black) -> scale = 0.5 (half opacity)
+      // Edge luminance 1.0 (bright white) -> scale = 1.0 (full opacity)
+      const bevelScale = 0.5 + (0.5 * Math.max(0, Math.min(1, edgeLuminance)));
+      document.documentElement.style.setProperty('--art-bevel-scale', bevelScale.toFixed(3));
     }).catch(() => {
       document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
+      document.documentElement.style.setProperty('--art-bevel-scale', '1.0');
     });
   }
 
@@ -1362,24 +1393,26 @@
     if (!isAuthenticated || connState === "not_authenticated" || connState === "not_configured") {
       document.documentElement.style.setProperty('--spotify-bg-image', 'none');
       document.documentElement.style.setProperty('--spotify-accent', '#00f2fe');
-      elOverlayContent.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; gap:1.5rem;">
-          <i class="fa-brands fa-spotify" style="font-size:5rem; color:#1db954;"></i>
-          <div>
-            <h1 style="font-size:2rem; font-weight:700; margin-bottom:0.5rem;">Spotify Not Connected</h1>
-            <p style="color:var(--text-muted); font-size:1.1rem; max-width:500px;">Connect your Spotify account in Settings to view full-screen playback, artwork, and controls.</p>
+      if (!document.getElementById("fsSpotifyNotConnected")) {
+        elOverlayContent.innerHTML = `
+          <div id="fsSpotifyNotConnected" style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; gap:1.5rem;">
+            <i class="fa-brands fa-spotify" style="font-size:5rem; color:#1db954;"></i>
+            <div>
+              <h1 style="font-size:2rem; font-weight:700; margin-bottom:0.5rem;">Spotify Not Connected</h1>
+              <p style="color:var(--text-muted); font-size:1.1rem; max-width:500px;">Connect your Spotify account in Settings to view full-screen playback, artwork, and controls.</p>
+            </div>
+            <button class="touch-btn btn-primary" id="fsOpenSettingsBtn" style="font-size:1.2rem; padding:0.8rem 2.2rem; margin-top:0.5rem;">
+              <i class="fa-solid fa-gear"></i> Open System Settings
+            </button>
           </div>
-          <button class="touch-btn btn-primary" id="fsOpenSettingsBtn" style="font-size:1.2rem; padding:0.8rem 2.2rem; margin-top:0.5rem;">
-            <i class="fa-solid fa-gear"></i> Open System Settings
-          </button>
-        </div>
-      `;
-      const btnSettings = document.getElementById("fsOpenSettingsBtn");
-      if (btnSettings) {
-        btnSettings.addEventListener("click", () => {
-          closeOverlayApp();
-          openSettingsOverlay();
-        });
+        `;
+        const btnSettings = document.getElementById("fsOpenSettingsBtn");
+        if (btnSettings) {
+          btnSettings.addEventListener("click", () => {
+            closeOverlayApp();
+            openSettingsOverlay();
+          });
+        }
       }
       return;
     }
@@ -1387,17 +1420,19 @@
     if (!sp.track_name || connState === "idle") {
       document.documentElement.style.setProperty('--spotify-bg-image', 'none');
       document.documentElement.style.setProperty('--spotify-accent', '#1db954');
-      elOverlayContent.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; gap:1.5rem;">
-          <div style="width:100px; height:100px; border-radius:50%; background:rgba(29,185,84,0.1); border:2px solid rgba(29,185,84,0.3); display:flex; align-items:center; justify-content:center;">
-            <i class="fa-brands fa-spotify" style="font-size:3.5rem; color:#1db954;"></i>
+      if (!document.getElementById("fsSpotifyNothingPlaying")) {
+        elOverlayContent.innerHTML = `
+          <div id="fsSpotifyNothingPlaying" style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; gap:1.5rem;">
+            <div style="width:100px; height:100px; border-radius:50%; background:rgba(29,185,84,0.1); border:2px solid rgba(29,185,84,0.3); display:flex; align-items:center; justify-content:center;">
+              <i class="fa-brands fa-spotify" style="font-size:3.5rem; color:#1db954;"></i>
+            </div>
+            <div>
+              <h1 style="font-size:2.2rem; font-weight:700; color:#ffffff; margin-bottom:0.5rem;">Nothing Playing</h1>
+              <p style="color:var(--text-muted); font-size:1.15rem; max-width:520px; line-height:1.5;">Play music on any phone, desktop app, or smart speaker</p>
+            </div>
           </div>
-          <div>
-            <h1 style="font-size:2.2rem; font-weight:700; color:#ffffff; margin-bottom:0.5rem;">Nothing Playing</h1>
-            <p style="color:var(--text-muted); font-size:1.15rem; max-width:520px; line-height:1.5;">Play music on any phone, desktop app, or smart speaker</p>
-          </div>
-        </div>
-      `;
+        `;
+      }
       return;
     }
 
