@@ -1135,6 +1135,8 @@
     if (!textContent.trim()) {
       el.classList.remove("marquee-container");
       el.style.removeProperty("--marquee-width");
+      el.style.removeProperty("--marquee-duration");
+      parentBox.style.removeProperty("--marquee-duration");
       return;
     }
 
@@ -1200,11 +1202,22 @@
     const shouldMarquee = exceedsAllowedLines && needsHorizontalScroll;
 
     if (shouldMarquee) {
+      const scrollDistance = Math.max(0, singleLineWidth - parentWidth);
+      // Scroll phase is 25% of cycle; ~100px/s during scroll → ~2× slower than fixed 12s on long titles
+      const durationSec = Math.min(56, Math.max(12, scrollDistance / 25));
+      const durationStr = `${durationSec.toFixed(1)}s`;
+
       el.classList.add("marquee-container");
       el.style.setProperty("--marquee-width", `${parentWidth}px`);
+      if (el.style.getPropertyValue("--marquee-duration") !== durationStr) {
+        el.style.setProperty("--marquee-duration", durationStr);
+        parentBox.style.setProperty("--marquee-duration", durationStr);
+      }
     } else {
       el.classList.remove("marquee-container");
       el.style.removeProperty("--marquee-width");
+      el.style.removeProperty("--marquee-duration");
+      parentBox.style.removeProperty("--marquee-duration");
     }
   }
 
