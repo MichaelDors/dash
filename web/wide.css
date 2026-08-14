@@ -1159,19 +1159,12 @@ body {
   margin: 0;
 }
 
-.fs-spotify-artist,
-.fs-spotify-artist *,
-.spotify-artist-name,
-.spotify-artist-name * {
-  white-space: nowrap !important;
-}
-
 .fs-spotify-artist:not(.marquee-container),
 .spotify-artist-name:not(.marquee-container) {
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  display: block !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 .fs-spotify-scrub-wrap {
@@ -2054,39 +2047,94 @@ body {
   font-size: 1.35rem;
   font-weight: 600;
   color: #cbd5e1;
-/* OLED-Matching Marquee Animation & Container Styles */
+}
+
+/* OLED-matching marquee: 25% hold start, scroll, 25% hold end, scroll back */
+@property --marquee-fade-left {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --marquee-fade-right {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
 @keyframes marquee-ping-pong {
-  0%, 20% { transform: translateX(0); }
-  50%, 70% { transform: translateX(var(--marquee-distance, calc(-100% + var(--marquee-width, 100%)))); }
+  0%, 25% { transform: translateX(0); }
+  50%, 75% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
   100% { transform: translateX(0); }
 }
 
-.marquee-clip-box {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  overflow: hidden !important;
-  position: relative !important;
-  box-sizing: border-box !important;
-  mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%) !important;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%) !important;
+/* Edge fades follow scroll: no fade on the side flush with visible text */
+@keyframes marquee-edge-mask {
+  0%, 25% {
+    --marquee-fade-left: 0%;
+    --marquee-fade-right: 10%;
+  }
+  50%, 75% {
+    --marquee-fade-left: 10%;
+    --marquee-fade-right: 0%;
+  }
+  100% {
+    --marquee-fade-left: 0%;
+    --marquee-fade-right: 10%;
+  }
 }
 
-.marquee-container,
-.marquee-container * {
+.marquee-clip-box {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Soft edge fade only while marquee is active; each side fades in/out with scroll position */
+.marquee-clip-box:has(.marquee-container) {
+  --marquee-fade-left: 0%;
+  --marquee-fade-right: 10%;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 var(--marquee-fade-left),
+    #000 calc(100% - var(--marquee-fade-right)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 var(--marquee-fade-left),
+    #000 calc(100% - var(--marquee-fade-right)),
+    transparent 100%
+  );
+  animation: marquee-edge-mask 12s linear infinite;
+}
+
+.marquee-container {
   display: inline-block !important;
   white-space: nowrap !important;
   width: max-content !important;
   min-width: max-content !important;
   max-width: none !important;
-}
-
-.marquee-container {
-  animation: marquee-ping-pong 12s linear infinite !important;
+  animation: marquee-ping-pong 12s linear infinite;
   will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .marquee-container {
+    animation: none !important;
+  }
+
+  .marquee-clip-box:has(.marquee-container) {
+    animation: none !important;
+    --marquee-fade-left: 0%;
+    --marquee-fade-right: 10%;
+  }
+
   *:not(.marquee-container),
   *::before,
   *::after {

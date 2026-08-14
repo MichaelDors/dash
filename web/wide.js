@@ -535,7 +535,6 @@
     setInterval(fetchState, 250);
     setInterval(tickRealtimeProgress, 100);
     setInterval(checkConnectionWatchdog, 250);
-    setInterval(updateAllWideMarquees, 500);
   }
 
   // Setup Event Listeners
@@ -981,6 +980,9 @@
       renderOverlayAppContent(state.activeOverlayApp, data);
     }
 
+    // Recalculate conditional marquees after layout/text updates
+    updateAllWideMarquees();
+
     // If Settings overlay is open, update metrics
     if (state.settingsOpen) {
       updateSettingsMetrics(data);
@@ -1112,13 +1114,13 @@
     cardEl.addEventListener("mouseleave", endPress);
   }
 
-  // Dynamic OLED-matching marquee helper function
+  // Dynamic OLED-matching marquee: only when text exceeds allowed line count
   function updateMarqueeForElement(el, maxLines) {
     if (!el) return;
     const parentBox = el.closest(".marquee-clip-box") || el.parentElement;
     if (!parentBox) return;
 
-    let parentWidth = parentBox.clientWidth;
+    const parentWidth = parentBox.clientWidth;
     if (parentWidth === 0) {
       requestAnimationFrame(() => {
         if (el.closest(".marquee-clip-box")?.clientWidth > 0) {
@@ -1128,53 +1130,69 @@
       return;
     }
 
-    const textContent = el.textContent || "";
-    if (!textContent.trim()) return;
+    const textNode = el.querySelector(".title-text, .artist-text") || el;
+    const textContent = textNode.textContent || "";
+    if (!textContent.trim()) {
+      el.classList.remove("marquee-container");
+      el.style.removeProperty("--marquee-width");
+      return;
+    }
 
-    // Get computed font properties of target element
     const cs = window.getComputedStyle(el);
     const fontSize = cs.fontSize;
     const fontFamily = cs.fontFamily;
     const fontWeight = cs.fontWeight;
     const letterSpacing = cs.letterSpacing;
 
-    // 1. Measure single-line text width in an off-screen span
     const measureSpan = document.createElement("span");
-    measureSpan.style.cssText = `position: absolute !important; top: -9999px !important; left: -9999px !important; visibility: hidden !important; white-space: nowrap !important; font-size: ${fontSize} !important; font-family: ${fontFamily} !important; font-weight: ${fontWeight} !important; letter-spacing: ${letterSpacing} !important; width: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; border: none !important;`;
+    measureSpan.style.cssText = [
+      "position:absolute",
+      "top:-9999px",
+      "left:-9999px",
+      "visibility:hidden",
+      "white-space:nowrap",
+      `font-size:${fontSize}`,
+      `font-family:${fontFamily}`,
+      `font-weight:${fontWeight}`,
+      `letter-spacing:${letterSpacing}`,
+      "width:auto",
+      "max-width:none",
+      "margin:0",
+      "padding:0",
+      "border:none"
+    ].join(";");
     measureSpan.textContent = textContent;
     document.body.appendChild(measureSpan);
     const singleLineWidth = measureSpan.getBoundingClientRect().width;
 
-    // 2. Measure wrapped multi-line text height in an off-screen box
     measureSpan.style.whiteSpace = "normal";
     measureSpan.style.wordBreak = "break-word";
     measureSpan.style.display = "block";
     measureSpan.style.width = `${parentWidth}px`;
     measureSpan.style.maxWidth = `${parentWidth}px`;
 
-    let lh = parseFloat(cs.lineHeight);
-    const fs = parseFloat(fontSize);
-    if (isNaN(lh) || lh <= 0) lh = fs * 1.2;
+    let lineHeight = parseFloat(cs.lineHeight);
+    const fontSizePx = parseFloat(fontSize);
+    if (isNaN(lineHeight) || lineHeight <= 0) lineHeight = fontSizePx * 1.2;
 
     const naturalHeight = measureSpan.getBoundingClientRect().height;
-    const lineCount = naturalHeight / lh;
+    const lineCount = naturalHeight / lineHeight;
     document.body.removeChild(measureSpan);
 
-    // 3. Determine if marquee is required:
-    // Artist (maxLines = 1): marquees if text takes > 1 line OR singleLineWidth exceeds parentWidth
-    // Song Title (maxLines = 2): marquees if text takes > 2 lines AND singleLineWidth exceeds parentWidth
-    const exceedsLines = maxLines === 1 ?
-      (lineCount > 1.15 || singleLineWidth > parentWidth + 2) :
-      (lineCount > 2.05 && singleLineWidth > parentWidth + 2);
+    // Artist (maxLines=1): marquee only if text would use more than one line
+    // Title (maxLines=2): marquee only if text would use more than two lines
+    const exceedsAllowedLines = maxLines === 1
+      ? lineCount > 1.08
+      : lineCount > 2.08;
+    const needsScroll = singleLineWidth > parentWidth + 2;
+    const shouldMarquee = exceedsAllowedLines && needsScroll;
 
-    if (exceedsLines && singleLineWidth > parentWidth + 2) {
-      const scrollDistance = Math.ceil(singleLineWidth - parentWidth);
+    if (shouldMarquee) {
       el.classList.add("marquee-container");
       el.style.setProperty("--marquee-width", `${parentWidth}px`);
-      el.style.setProperty("--marquee-distance", `-${scrollDistance}px`);
     } else {
       el.classList.remove("marquee-container");
-      el.style.removeProperty("--marquee-distance");
+      el.style.removeProperty("--marquee-width");
     }
   }
 
