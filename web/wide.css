@@ -678,12 +678,9 @@ body {
 }
 
 .spotify-artist-name:not(.marquee-container) {
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
-  word-break: break-word;
+  text-overflow: ellipsis;
 }
 
 .spotify-progress-bar-wrap {
@@ -1162,12 +1159,9 @@ body {
 }
 
 .fs-spotify-artist:not(.marquee-container) {
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
-  word-break: break-word;
+  text-overflow: ellipsis;
 }
 
 .fs-spotify-scrub-wrap {
@@ -2068,6 +2062,27 @@ body {
   white-space: nowrap !important;
   animation: marquee-ping-pong 12s linear infinite !important;
   will-change: transform;
+}
+
+/* Helper classes for dynamic marquee line & width measurement */
+.is-measuring {
+  display: block !important;
+  white-space: normal !important;
+  -webkit-line-clamp: unset !important;
+  -webkit-box-orient: unset !important;
+  max-height: none !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.is-measuring-nowrap {
+  display: inline-block !important;
+  white-space: nowrap !important;
+  -webkit-line-clamp: unset !important;
+  -webkit-box-orient: unset !important;
+  width: auto !important;
+  max-width: none !important;
+  overflow: visible !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

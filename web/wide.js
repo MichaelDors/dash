@@ -1123,35 +1123,33 @@
     const parentWidth = parentBox.clientWidth;
     if (parentWidth === 0 || el.offsetHeight === 0) return;
 
-    const wasMarquee = el.classList.contains("marquee-container");
     el.classList.remove("marquee-container");
 
-    const origClamp = el.style.webkitLineClamp;
-    const origDisplay = el.style.display;
-    const origWhiteSpace = el.style.whiteSpace;
-
-    el.style.webkitLineClamp = "none";
-    el.style.display = "block";
-    el.style.whiteSpace = "normal";
-
+    // 1. Measure natural wrapped height without CSS line-clamp
+    el.classList.add("is-measuring");
     const cs = window.getComputedStyle(el);
     let lh = parseFloat(cs.lineHeight);
     const fs = parseFloat(cs.fontSize);
     if (isNaN(lh) || lh <= 0) {
       lh = fs * 1.2;
     }
-
     const naturalHeight = el.scrollHeight;
     const lineCount = naturalHeight / lh;
+    el.classList.remove("is-measuring");
 
-    el.style.whiteSpace = "nowrap";
+    // 2. Measure single-line un-truncated scrollWidth
+    el.classList.add("is-measuring-nowrap");
     const singleLineWidth = el.scrollWidth;
+    el.classList.remove("is-measuring-nowrap");
 
-    el.style.webkitLineClamp = origClamp;
-    el.style.display = origDisplay;
-    el.style.whiteSpace = origWhiteSpace;
+    // 3. Determine if marquee is required:
+    // Artist (maxLines = 1): marquees if text takes > 1 line OR singleLineWidth exceeds parentWidth
+    // Song Title (maxLines = 2): marquees if text takes > 2 lines AND singleLineWidth exceeds parentWidth
+    const exceedsLines = maxLines === 1 ?
+      (lineCount > 1.15 || singleLineWidth > parentWidth + 4) :
+      (lineCount > 2.15 && singleLineWidth > parentWidth + 4);
 
-    if (lineCount > (maxLines + 0.15) && singleLineWidth > (parentWidth + 4)) {
+    if (exceedsLines && singleLineWidth > parentWidth + 4) {
       el.classList.add("marquee-container");
       el.style.setProperty("--marquee-width", `${parentWidth}px`);
     } else {
