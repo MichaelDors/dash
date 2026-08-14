@@ -1025,6 +1025,14 @@ body {
 
 .app-overlay-view.spotify-active .overlay-header {
   border-bottom: none;
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform 0.5s var(--ease-apple), opacity 0.5s var(--ease-apple);
+}
+
+.app-overlay-view.spotify-active.ui-visible .overlay-header {
+  transform: translateY(0);
+  opacity: 1;
 }
 
 .app-overlay-view.spotify-active .overlay-title-group {
@@ -1043,6 +1051,12 @@ body {
   gap: 2.25rem;
   padding: 0;
   overflow: visible;
+  transform: translateY(60px);
+  transition: transform 0.5s var(--ease-apple);
+}
+
+.app-overlay-view.spotify-active.ui-visible .fs-spotify-container {
+  transform: translateY(0);
 }
 
 .fs-spotify-art-wrapper {
@@ -1257,6 +1271,16 @@ body {
   align-items: center;
   gap: 2rem;
   margin-top: 0.5rem;
+  transform: translateY(40px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.5s var(--ease-apple), opacity 0.5s var(--ease-apple);
+}
+
+.app-overlay-view.spotify-active.ui-visible .fs-spotify-controls {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .fs-ctrl-btn {
@@ -1274,6 +1298,29 @@ body {
   position: relative;
   overflow: hidden;
   transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
+}
+
+/* Ripple animation: Play/pause goes first a tiny bit before the prev/next */
+.app-overlay-view.spotify-active:not(.ui-visible) .fs-play-btn {
+  transform: translateY(40px) scale(0.9);
+  transition-delay: 0s;
+}
+
+.app-overlay-view.spotify-active:not(.ui-visible) #fsSpotPrev,
+.app-overlay-view.spotify-active:not(.ui-visible) #fsSpotNext {
+  transform: translateY(50px) scale(0.8);
+  transition-delay: 0s;
+}
+
+.app-overlay-view.spotify-active.ui-visible .fs-play-btn {
+  transform: translateY(0) scale(1);
+  transition-delay: 0.05s;
+}
+
+.app-overlay-view.spotify-active.ui-visible #fsSpotPrev,
+.app-overlay-view.spotify-active.ui-visible #fsSpotNext {
+  transform: translateY(0) scale(1);
+  transition-delay: 0.15s;
 }
 
 @media (hover: hover) {

@@ -546,6 +546,25 @@
       document.fonts.ready.then(updateAllWideMarquees);
     }
 
+    let spotifyUiTimeout = null;
+    const wakeSpotifyUi = () => {
+      if (!elAppOverlayView.classList.contains("spotify-active")) return;
+      elAppOverlayView.classList.add("ui-visible");
+      if (spotifyUiTimeout) clearTimeout(spotifyUiTimeout);
+      spotifyUiTimeout = setTimeout(() => {
+        if (!isSpotifyScrubbing) {
+          elAppOverlayView.classList.remove("ui-visible");
+        } else {
+          wakeSpotifyUi();
+        }
+      }, 1500);
+    };
+
+    elAppOverlayView.addEventListener("click", wakeSpotifyUi);
+    elAppOverlayView.addEventListener("touchstart", wakeSpotifyUi, { passive: true });
+    elAppOverlayView.addEventListener("touchmove", wakeSpotifyUi, { passive: true });
+    elAppOverlayView.addEventListener("mousemove", wakeSpotifyUi);
+
     // Global auto-blur for buttons on tablet touch/click to prevent sticky selection state
     const autoUnselectButton = (e) => {
       const btn = e.target.closest("button, .touch-btn, .mini-ctrl-btn, .fs-ctrl-btn, .icon-touch-btn");
@@ -1392,6 +1411,7 @@
 
     if (appId === "spotify") {
       elAppOverlayView.classList.add("spotify-active");
+      elAppOverlayView.classList.remove("ui-visible");
       if (elOverlayAppTitle) elOverlayAppTitle.innerHTML = "";
       if (elOverlayAppSubtitle) elOverlayAppSubtitle.textContent = "";
     } else {
