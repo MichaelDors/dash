@@ -1165,13 +1165,16 @@
     // Song Title (maxLines = 2): marquees if text takes > 2 lines AND singleLineWidth exceeds parentWidth
     const exceedsLines = maxLines === 1 ?
       (lineCount > 1.15 || singleLineWidth > parentWidth + 2) :
-      (lineCount > 2.15 && singleLineWidth > parentWidth + 2);
+      (lineCount > 2.05 && singleLineWidth > parentWidth + 2);
 
     if (exceedsLines && singleLineWidth > parentWidth + 2) {
+      const scrollDistance = Math.ceil(singleLineWidth - parentWidth);
       el.classList.add("marquee-container");
       el.style.setProperty("--marquee-width", `${parentWidth}px`);
+      el.style.setProperty("--marquee-distance", `-${scrollDistance}px`);
     } else {
       el.classList.remove("marquee-container");
+      el.style.removeProperty("--marquee-distance");
     }
   }
 

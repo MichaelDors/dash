@@ -1147,6 +1147,7 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
+  max-height: 2.3em;
 }
 
 .fs-spotify-artist {
@@ -2056,7 +2057,7 @@ body {
 /* OLED-Matching Marquee Animation & Container Styles */
 @keyframes marquee-ping-pong {
   0%, 20% { transform: translateX(0); }
-  50%, 70% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
+  50%, 70% { transform: translateX(var(--marquee-distance, calc(-100% + var(--marquee-width, 100%)))); }
   100% { transform: translateX(0); }
 }
 

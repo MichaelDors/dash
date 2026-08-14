@@ -3518,6 +3518,21 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _inject_version_if_html(self, payload: bytes, filename: str) -> bytes:
+        if filename.lower().endswith(".html"):
+            try:
+                version_file = BASE_DIR / "VERSION"
+                if version_file.exists():
+                    v_str = version_file.read_text(encoding="utf-8").strip()
+                    html_str = payload.decode("utf-8", errors="replace")
+                    import re
+                    html_str = re.sub(r'(\.css|\.js)\?v=[^"\'\s>]+', r'\1?v=' + v_str, html_str)
+                    html_str = html_str.replace("__VERSION__", v_str)
+                    payload = html_str.encode("utf-8")
+            except Exception:
+                pass
+        return payload
+
     def _serve_file(self, filename: str, content_type: str) -> None:
         path = self.static_root / filename
         if not path.exists():
@@ -3528,6 +3543,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             return
 
         payload = path.read_bytes()
+        payload = self._inject_version_if_html(payload, filename)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
@@ -3577,6 +3593,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         }.get(suffix, "application/octet-stream")
 
         payload = file_path.read_bytes()
+        payload = self._inject_version_if_html(payload, file_path.name)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
