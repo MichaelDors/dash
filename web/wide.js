@@ -1117,8 +1117,9 @@
     const parentBox = el.closest(".marquee-clip-box") || el.parentElement;
     if (!parentBox) return;
 
+    // Get true, un-expanded parent container width BEFORE adding measurement classes
     const parentWidth = parentBox.clientWidth;
-    if (parentWidth === 0 || el.offsetHeight === 0) return;
+    if (parentWidth === 0) return;
 
     el.classList.remove("marquee-container");
 
@@ -1143,10 +1144,10 @@
     // Artist (maxLines = 1): marquees if text takes > 1 line OR singleLineWidth exceeds parentWidth
     // Song Title (maxLines = 2): marquees if text takes > 2 lines AND singleLineWidth exceeds parentWidth
     const exceedsLines = maxLines === 1 ?
-      (lineCount > 1.15 || singleLineWidth > parentWidth + 4) :
-      (lineCount > 2.15 && singleLineWidth > parentWidth + 4);
+      (lineCount > 1.15 || singleLineWidth > parentWidth + 2) :
+      (lineCount > 2.15 && singleLineWidth > parentWidth + 2);
 
-    if (exceedsLines && singleLineWidth > parentWidth + 4) {
+    if (exceedsLines && singleLineWidth > parentWidth + 2) {
       el.classList.add("marquee-container");
       el.style.setProperty("--marquee-width", `${parentWidth}px`);
     } else {
@@ -1555,7 +1556,7 @@
 
     // Render static DOM structure once
     const container = document.getElementById("fsSpotifyContainer");
-    if (!container) {
+    if (!container || !document.querySelector("#fsSpotArtist")?.closest(".marquee-clip-box")) {
       elOverlayContent.innerHTML = `
         <div class="fs-spotify-container" id="fsSpotifyContainer">
           <div class="fs-spotify-art-wrapper" id="fsSpotArtWrap">
@@ -1563,7 +1564,7 @@
             <div class="art-sweep-flash flash-active" id="fsSpotSweep"></div>
           </div>
           <div class="fs-spotify-details">
-            <div style="width: 100%;">
+            <div style="width: 100%; min-width: 0; max-width: 100%;">
               <div class="marquee-clip-box">
                 <h1 class="fs-spotify-title" id="fsSpotTitle">${escapeHTML(track)}</h1>
               </div>

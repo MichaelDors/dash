@@ -2052,9 +2052,12 @@ body {
 }
 
 .marquee-clip-box {
-  width: 100%;
-  overflow: hidden;
-  position: relative;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  position: relative !important;
+  box-sizing: border-box !important;
 }
 
 .marquee-container {
