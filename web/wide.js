@@ -23,6 +23,7 @@
   // Long press timer ref
   let longPressTimer = null;
   let isLongPress = false;
+  let isSpotifyScrubbing = false;
 
   // State key refs to prevent innerHTML tearing
   let lastSlotsStateKey = "";
@@ -438,6 +439,7 @@
   }
 
   function tickRealtimeProgress() {
+    if (isSpotifyScrubbing) return;
     if (!state.latestData) return;
     const sp = (state.latestData.apps && state.latestData.apps.spotify) || (state.latestData.widgets && state.latestData.widgets.spotify);
     if (!sp || !sp.duration_ms || !sp.is_playing || !lastSpotifyFetchTime) return;
@@ -1845,13 +1847,12 @@
     const bar = document.getElementById(barId);
     if (!bar) return;
 
-    const handleSeek = (e) => {
-      if (e.type === "touchstart") {
-        e.preventDefault(); // Prevents ghost click event from firing 300ms later on touch screens!
-      }
-      e.stopPropagation();
+    if (bar.dataset.seekAttached === "true") return;
+    bar.dataset.seekAttached = "true";
 
-      const rect = bar.getBoundingClientRect();
+    const getTargetMsAndRatio = (e) => {
+      const currentBar = document.getElementById(barId) || bar;
+      const rect = currentBar.getBoundingClientRect();
       let clientX = e.clientX;
       if (e.touches && e.touches.length > 0) {
         clientX = e.touches[0].clientX;
@@ -1859,21 +1860,81 @@
         clientX = e.changedTouches[0].clientX;
       }
 
-      if (clientX === undefined || clientX === null || isNaN(clientX)) return;
+      if (clientX === undefined || clientX === null || isNaN(clientX)) return null;
 
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const sp = state.latestData?.apps?.spotify || state.latestData?.widgets?.spotify || {};
       const duration = sp.duration_ms || 1;
       const targetMs = Math.round(ratio * duration);
-
-      const fill = document.getElementById(fillId);
-      if (fill) fill.style.width = `${ratio * 100}%`;
-
-      sendAction("spotify_seek", { position_ms: targetMs });
+      
+      return { ratio, targetMs };
     };
 
-    bar.addEventListener("click", handleSeek);
-    bar.addEventListener("touchstart", handleSeek, { passive: false });
+    const updateUI = (ratio, targetMs) => {
+      const fill = document.getElementById(fillId);
+      if (fill) fill.style.width = `${ratio * 100}%`;
+      
+      if (barId === "fsScrubBar") {
+        const elCurTime = document.getElementById("fs-spotify-time-current");
+        if (elCurTime) {
+          elCurTime.innerText = formatMsToMinSec(targetMs);
+        }
+      }
+    };
+
+    let isDragging = false;
+
+    const handleMove = (e) => {
+      if (!isDragging) return;
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      const res = getTargetMsAndRatio(e);
+      if (res) updateUI(res.ratio, res.targetMs);
+    };
+
+    const handleEnd = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      isSpotifyScrubbing = false;
+      e.stopPropagation();
+
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleEnd);
+      window.removeEventListener("touchcancel", handleEnd);
+      
+      const res = getTargetMsAndRatio(e);
+      if (res) {
+        updateUI(res.ratio, res.targetMs);
+        sendAction("spotify_seek", { position_ms: res.targetMs });
+        if (state.latestData) {
+           const sp = state.latestData.apps?.spotify || state.latestData.widgets?.spotify;
+           if (sp) {
+             sp.progress_ms = res.targetMs;
+             lastSpotifyFetchTime = Date.now();
+           }
+        }
+      }
+    };
+
+    const handleStart = (e) => {
+      e.stopPropagation();
+      isDragging = true;
+      isSpotifyScrubbing = true;
+
+      const res = getTargetMsAndRatio(e);
+      if (res) updateUI(res.ratio, res.targetMs);
+
+      window.addEventListener("mousemove", handleMove, { passive: false });
+      window.addEventListener("mouseup", handleEnd);
+      window.addEventListener("touchmove", handleMove, { passive: false });
+      window.addEventListener("touchend", handleEnd);
+      window.addEventListener("touchcancel", handleEnd);
+    };
+
+    bar.addEventListener("mousedown", handleStart);
+    bar.addEventListener("touchstart", handleStart, { passive: true });
   }
 
   // Attach Full Screen Overlay Action Handlers
