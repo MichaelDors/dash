@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -7,11 +8,14 @@
   <link rel="icon" href="/logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap"
+    rel="stylesheet">
   <!-- Font Awesome 6.5.1 Vector Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="/wide.css?v=1.9.3" />
 </head>
+
 <body>
   <div id="appContainer" class="app-container">
     <!-- Top Bar -->
@@ -191,10 +195,14 @@
               </div>
             </div>
             <div class="settings-actions-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 8px;">
-              <button class="touch-btn" id="btnScanWifi"><i class="fa-solid fa-arrows-rotate"></i> Scan Networks</button>
-              <a href="/wifi" target="_blank" class="touch-btn" style="text-decoration:none; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:6px;"><i class="fa-solid fa-qrcode"></i> QR Setup</a>
+              <button class="touch-btn" id="btnScanWifi"><i class="fa-solid fa-arrows-rotate"></i> Scan
+                Networks</button>
+              <a href="/wifi" target="_blank" class="touch-btn"
+                style="text-decoration:none; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:6px;"><i
+                  class="fa-solid fa-qrcode"></i> QR Setup</a>
             </div>
-            <div id="cfgWifiList" style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
+            <div id="cfgWifiList"
+              style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
           </div>
 
           <!-- Section 3: Spotify Integration Credentials -->
@@ -206,8 +214,10 @@
             <p class="settings-status-text" id="cfgSpotifyStatus">Status: Checking...</p>
             <form id="cfgSpotifyForm" class="settings-form-col">
               <input type="text" id="cfgSpotifyClientId" placeholder="Spotify Client ID" class="settings-input" />
-              <input type="password" id="cfgSpotifyClientSecret" placeholder="Spotify Client Secret" class="settings-input" />
-              <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
+              <input type="password" id="cfgSpotifyClientSecret" placeholder="Spotify Client Secret"
+                class="settings-input" />
+              <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect
+                Spotify</button>
             </form>
           </div>
 
@@ -218,8 +228,10 @@
               <h3>Weather Location</h3>
             </div>
             <form id="cfgWeatherForm" class="settings-form-col">
-              <input type="text" id="cfgWeatherLocation" placeholder="City, State (e.g. San Francisco, CA)" class="settings-input" />
-              <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
+              <input type="text" id="cfgWeatherLocation" placeholder="City, State (e.g. San Francisco, CA)"
+                class="settings-input" />
+              <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather
+                Location</button>
             </form>
           </div>
 
@@ -230,10 +242,14 @@
               <h3>System Controls & Power</h3>
             </div>
             <div class="settings-actions-grid" style="grid-template-columns: repeat(5, 1fr);">
-              <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload Page</button>
-              <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
-              <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update Software</button>
-              <button class="touch-btn" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart Device</button>
+              <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload
+                Page</button>
+              <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim
+                Motion</button>
+              <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update
+                Software</button>
+              <button class="touch-btn" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart
+                Device</button>
               <button class="touch-btn" id="btnShutdownDevice"><i class="fa-solid fa-power-off"></i> Shutdown</button>
             </div>
           </div>
@@ -267,14 +283,16 @@
                   <label for="cfgMaxBrightnessRange">Max Brightness:</label>
                   <span class="metric-value mono" id="cfgMaxBrightnessVal">100%</span>
                 </div>
-                <input type="range" id="cfgMaxBrightnessRange" min="10" max="100" step="5" value="100" class="settings-range-input" />
+                <input type="range" id="cfgMaxBrightnessRange" min="10" max="100" step="5" value="100"
+                  class="settings-range-input" />
               </div>
               <div class="form-group" style="margin-top: 6px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                   <label for="cfgDimBrightnessRange">Dim Brightness:</label>
                   <span class="metric-value mono" id="cfgDimBrightnessVal">10%</span>
                 </div>
-                <input type="range" id="cfgDimBrightnessRange" min="0" max="100" step="5" value="10" class="settings-range-input" />
+                <input type="range" id="cfgDimBrightnessRange" min="0" max="100" step="5" value="10"
+                  class="settings-range-input" />
               </div>
             </div>
           </div>
@@ -300,7 +318,8 @@
                 <span class="metric-value mono" id="cfgOffDelay">90s</span>
               </div>
             </div>
-            <button class="touch-btn" id="btnToggleMotionSensor"><i class="fa-solid fa-power-off"></i> Toggle Motion Sensor</button>
+            <button class="touch-btn" id="btnToggleMotionSensor"><i class="fa-solid fa-power-off"></i> Toggle Motion
+              Sensor</button>
           </div>
 
           <!-- OLED Card 3: OLED Hardware Diagnostics -->
@@ -332,17 +351,18 @@
         </section>
       </div>
     </div>
-  <!-- Connection Lost Minimalist Screen Overlay -->
-  <div id="connectionLostOverlay" class="connection-lost-overlay hidden">
-    <div class="lost-top-left">
-      <img src="/logo.png" alt="Nano Logo" class="lost-logo" />
+    <!-- Connection Lost Minimalist Screen Overlay -->
+    <div id="connectionLostOverlay" class="connection-lost-overlay hidden">
+      <div class="lost-top-left">
+        <img src="/logo.png" alt="Nano Logo" class="lost-logo" />
+      </div>
+      <div class="lost-bottom-left">
+        <span class="lost-text">connection lost... searching</span>
+        <div class="spinner-ring"></div>
+      </div>
     </div>
-    <div class="lost-bottom-left">
-      <span class="lost-text">connection lost... searching</span>
-      <div class="spinner-ring"></div>
-    </div>
-  </div>
 
-  <script src="/wide.js?v=1.9.3" defer></script>
+    <script src="/wide.js?v=1.9.3" defer></script>
 </body>
+
 </html>

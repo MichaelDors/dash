@@ -758,8 +758,8 @@
     },
     apps: {
       spotify: {
-        track_name: "Midnight City",
-        artist_name: "M83",
+        track_name: "I Thank God (feat. Dante Bowe, Maryanne Joshua George & Aaron Moses)",
+        artist_name: "Maverick City Music, UPPERROOM, Housefires, Dante Bowe, Maryanne J. George, Aaron Moses",
         album_art_url: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=600&q=80",
         artist_image_url: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=80",
         is_playing: true,
@@ -1117,30 +1117,34 @@
     const parentBox = el.closest(".marquee-clip-box") || el.parentElement;
     if (!parentBox) return;
 
-    // Get true, un-expanded parent container width BEFORE adding measurement classes
     const parentWidth = parentBox.clientWidth;
     if (parentWidth === 0) return;
 
     el.classList.remove("marquee-container");
+    const prevStyle = el.getAttribute("style") || "";
 
-    // 1. Measure natural wrapped height without CSS line-clamp
-    el.classList.add("is-measuring");
+    // 1. Measure single-line un-truncated width via inline cssText override
+    el.style.cssText = "display: inline-block !important; white-space: nowrap !important; width: max-content !important; min-width: max-content !important; max-width: none !important; position: absolute !important; visibility: hidden !important;";
+    const singleLineWidth = el.getBoundingClientRect().width || el.scrollWidth;
+
+    // 2. Measure natural multi-line wrapped height inside parent width
+    el.style.cssText = `display: block !important; white-space: normal !important; width: ${parentWidth}px !important; max-width: ${parentWidth}px !important; position: absolute !important; visibility: hidden !important; word-break: break-word !important;`;
     const cs = window.getComputedStyle(el);
     let lh = parseFloat(cs.lineHeight);
     const fs = parseFloat(cs.fontSize);
-    if (isNaN(lh) || lh <= 0) {
-      lh = fs * 1.2;
-    }
+    if (isNaN(lh) || lh <= 0) lh = fs * 1.2;
+
     const naturalHeight = el.scrollHeight;
     const lineCount = naturalHeight / lh;
-    el.classList.remove("is-measuring");
 
-    // 2. Measure single-line un-truncated scrollWidth
-    el.classList.add("is-measuring-nowrap");
-    const singleLineWidth = el.scrollWidth;
-    el.classList.remove("is-measuring-nowrap");
+    // Restore original inline style attribute
+    if (prevStyle) {
+      el.setAttribute("style", prevStyle);
+    } else {
+      el.removeAttribute("style");
+    }
 
-    // 3. Determine if marquee is required:
+    // 3. Determine marquee threshold:
     // Artist (maxLines = 1): marquees if text takes > 1 line OR singleLineWidth exceeds parentWidth
     // Song Title (maxLines = 2): marquees if text takes > 2 lines AND singleLineWidth exceeds parentWidth
     const exceedsLines = maxLines === 1 ?
@@ -1186,12 +1190,12 @@
         <div class="spotify-card-content">
           ${artHTML}
           <div class="spotify-info-panel">
-            <div style="width: 100%;">
+            <div style="width: 100%; min-width: 0; max-width: 100%;">
               <div class="marquee-clip-box">
-                <h3 class="spotify-track-title" id="widgetSpotTitle">${escapeHTML(track)}</h3>
+                <h3 class="spotify-track-title" id="widgetSpotTitle"><span class="title-text">${escapeHTML(track)}</span></h3>
               </div>
               <div class="marquee-clip-box" style="margin-top: 2px;">
-                <p class="spotify-artist-name" id="widgetSpotArtist">${escapeHTML(artist)}</p>
+                <p class="spotify-artist-name" id="widgetSpotArtist"><span class="artist-text">${escapeHTML(artist)}</span></p>
               </div>
             </div>
             <div class="spotify-progress-bar-wrap" id="widgetScrubBar" style="cursor: pointer;">
@@ -1483,7 +1487,7 @@
         .then(st => {
           if (elCfgWifiStatus) elCfgWifiStatus.textContent = st.connected ? "Connected" : (st.ap_active ? "Setup AP Active" : "Disconnected");
           if (elCfgWifiSSID) elCfgWifiSSID.textContent = st.ssid || (st.ap_active ? "Dash-Setup" : "--");
-        }).catch(() => {});
+        }).catch(() => { });
     }
   }
 
@@ -1556,7 +1560,7 @@
 
     // Render static DOM structure once
     const container = document.getElementById("fsSpotifyContainer");
-    if (!container || !document.querySelector("#fsSpotArtist")?.closest(".marquee-clip-box")) {
+    if (!container || !document.querySelector("#fsSpotArtist")?.querySelector(".artist-text")) {
       elOverlayContent.innerHTML = `
         <div class="fs-spotify-container" id="fsSpotifyContainer">
           <div class="fs-spotify-art-wrapper" id="fsSpotArtWrap">
@@ -1566,10 +1570,10 @@
           <div class="fs-spotify-details">
             <div style="width: 100%; min-width: 0; max-width: 100%;">
               <div class="marquee-clip-box">
-                <h1 class="fs-spotify-title" id="fsSpotTitle">${escapeHTML(track)}</h1>
+                <h1 class="fs-spotify-title" id="fsSpotTitle"><span class="title-text">${escapeHTML(track)}</span></h1>
               </div>
               <div class="marquee-clip-box" style="margin-top: 0.3rem;">
-                <h2 class="fs-spotify-artist" id="fsSpotArtist">${escapeHTML(artist)}</h2>
+                <h2 class="fs-spotify-artist" id="fsSpotArtist"><span class="artist-text">${escapeHTML(artist)}</span></h2>
               </div>
             </div>
             <div class="fs-spotify-scrub-wrap">
@@ -1599,13 +1603,15 @@
     // Direct DOM updates on every 250ms poll
     const elTitle = document.getElementById("fsSpotTitle");
     if (elTitle) {
-      if (elTitle.innerText !== track) elTitle.innerText = track;
+      const spanTitle = elTitle.querySelector(".title-text") || elTitle;
+      if (spanTitle.innerText !== track) spanTitle.innerText = track;
       updateMarqueeForElement(elTitle, 2);
     }
 
     const elArtist = document.getElementById("fsSpotArtist");
     if (elArtist) {
-      if (elArtist.innerText !== artist) elArtist.innerText = artist;
+      const spanArtist = elArtist.querySelector(".artist-text") || elArtist;
+      if (spanArtist.innerText !== artist) spanArtist.innerText = artist;
       updateMarqueeForElement(elArtist, 1);
     }
 

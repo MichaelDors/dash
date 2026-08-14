@@ -2060,32 +2060,20 @@ body {
   box-sizing: border-box !important;
 }
 
+.marquee-clip-box:has(.marquee-container),
+.marquee-container {
+  mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+}
+
 .marquee-container {
   display: inline-block !important;
   white-space: nowrap !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
   animation: marquee-ping-pong 12s linear infinite !important;
   will-change: transform;
-}
-
-/* Helper classes for dynamic marquee line & width measurement */
-.is-measuring {
-  display: block !important;
-  white-space: normal !important;
-  -webkit-line-clamp: unset !important;
-  -webkit-box-orient: unset !important;
-  max-height: none !important;
-  height: auto !important;
-  overflow: visible !important;
-}
-
-.is-measuring-nowrap {
-  display: inline-block !important;
-  white-space: nowrap !important;
-  -webkit-line-clamp: unset !important;
-  -webkit-box-orient: unset !important;
-  width: auto !important;
-  max-width: none !important;
-  overflow: visible !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
