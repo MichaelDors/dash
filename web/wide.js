@@ -329,8 +329,42 @@
   let isOffline = false;
   let isFetchingState = false;
   let lastSuccessfulFetchTime = Date.now();
+  let lastClockChangeTime = Date.now();
+  let lastClockSignature = "";
   let stateFetchStartTime = 0;
+  let overlayHideTimeout = null;
   const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
+
+  function showConnectionLostOverlay() {
+    if (window.location.protocol === "file:") return;
+    if (!isOffline) {
+      isOffline = true;
+      if (overlayHideTimeout) {
+        clearTimeout(overlayHideTimeout);
+        overlayHideTimeout = null;
+      }
+      if (elConnectionLostOverlay) {
+        elConnectionLostOverlay.classList.remove("hidden");
+        void elConnectionLostOverlay.offsetWidth;
+        elConnectionLostOverlay.classList.add("visible");
+      }
+    }
+  }
+
+  function hideConnectionLostOverlay() {
+    if (isOffline) {
+      isOffline = false;
+      failedFetchCount = 0;
+      if (elConnectionLostOverlay) {
+        elConnectionLostOverlay.classList.remove("visible");
+        if (overlayHideTimeout) clearTimeout(overlayHideTimeout);
+        overlayHideTimeout = setTimeout(() => {
+          if (!isOffline) elConnectionLostOverlay.classList.add("hidden");
+          overlayHideTimeout = null;
+        }, 1200);
+      }
+    }
+  }
 
   // Spotify auto open / auto close state management (mirroring OLED behavior)
   let wasSpotifyPlaying = false;
@@ -429,14 +463,16 @@
 
   function checkConnectionWatchdog() {
     if (window.location.protocol === "file:") return;
-    const timeSinceLastFetch = Date.now() - lastSuccessfulFetchTime;
-    if (timeSinceLastFetch > 5000 && !isOffline) {
-      isOffline = true;
-      if (elConnectionLostOverlay) {
-        elConnectionLostOverlay.classList.remove("hidden");
-        void elConnectionLostOverlay.offsetWidth;
-        elConnectionLostOverlay.classList.add("visible");
-      }
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastSuccessfulFetchTime;
+    const timeSinceLastClockChange = now - lastClockChangeTime;
+
+    // Show searching/connection lost overlay if:
+    // 1. Fetch hasn't succeeded in > 3.5 seconds
+    // 2. Clock/data hasn't ticked/changed in > 4 seconds
+    // 3. Consecutive fetch failure with > 2 seconds since last success
+    if (timeSinceLastFetch > 3500 || timeSinceLastClockChange > 4000 || (failedFetchCount >= 1 && timeSinceLastFetch > 2000)) {
+      showConnectionLostOverlay();
     }
   }
 
@@ -498,11 +534,16 @@
     fetchState();
     setInterval(fetchState, 250);
     setInterval(tickRealtimeProgress, 100);
-    setInterval(checkConnectionWatchdog, 500);
+    setInterval(checkConnectionWatchdog, 250);
   }
 
   // Setup Event Listeners
   function setupEventListeners() {
+    window.addEventListener("resize", updateAllWideMarquees);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(updateAllWideMarquees);
+    }
+
     // Global auto-blur for buttons on tablet touch/click to prevent sticky selection state
     const autoUnselectButton = (e) => {
       const btn = e.target.closest("button, .touch-btn, .mini-ctrl-btn, .fs-ctrl-btn, .icon-touch-btn");
@@ -758,9 +799,23 @@
 
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
-      lastSuccessfulFetchTime = Date.now();
+      const nowMs = Date.now();
+      lastSuccessfulFetchTime = nowMs;
       state.latestData = data;
-      lastSpotifyFetchTime = Date.now();
+      lastSpotifyFetchTime = nowMs;
+
+      // Track clock/timestamp updates to verify backend is active and ticking
+      const timeW = (data.widgets && data.widgets.time) || {};
+      const currentClockSignature = data.generated_at || (timeW.time_main ? (timeW.time_main + ":" + (timeW.seconds || "")) : "");
+      if (currentClockSignature) {
+        if (currentClockSignature !== lastClockSignature) {
+          lastClockSignature = currentClockSignature;
+          lastClockChangeTime = nowMs;
+        }
+      } else {
+        lastClockChangeTime = nowMs;
+      }
+
       if (Array.isArray(data.slots)) {
         state.slots = data.slots;
       }
@@ -784,15 +839,11 @@
         return;
       }
 
-      failedFetchCount = 0;
-      if (isOffline) {
-        isOffline = false;
-        if (elConnectionLostOverlay) {
-          elConnectionLostOverlay.classList.remove("visible");
-          setTimeout(() => {
-            if (!isOffline) elConnectionLostOverlay.classList.add("hidden");
-          }, 1200);
-        }
+      // Hide connection lost overlay if clock has ticked within 4s
+      if (nowMs - lastClockChangeTime <= 4000) {
+        hideConnectionLostOverlay();
+      } else {
+        showConnectionLostOverlay();
       }
 
       renderUI();
@@ -817,13 +868,9 @@
       }
 
       failedFetchCount++;
-      if (failedFetchCount >= 2 && !isOffline) {
-        isOffline = true;
-        if (elConnectionLostOverlay) {
-          elConnectionLostOverlay.classList.remove("hidden");
-          void elConnectionLostOverlay.offsetWidth;
-          elConnectionLostOverlay.classList.add("visible");
-        }
+      const timeSinceLastSuccess = Date.now() - lastSuccessfulFetchTime;
+      if (failedFetchCount >= 1 && (timeSinceLastSuccess > 2000 || Date.now() - lastClockChangeTime > 4000)) {
+        showConnectionLostOverlay();
       }
 
       // If initial load failed over HTTP, set mock data so DOM elements render beneath the overlay
@@ -998,6 +1045,10 @@
 
       // Attach inner touch action buttons
       attachSlotActionListeners();
+
+      // Recalculate dashboard widget marquees
+      updateMarqueeForElement(document.getElementById("widgetSpotTitle"), 2);
+      updateMarqueeForElement(document.getElementById("widgetSpotArtist"), 1);
     }
 
     // Direct DOM updates for rapidly changing values to prevent innerHTML tearing
@@ -1063,6 +1114,58 @@
     cardEl.addEventListener("mouseleave", endPress);
   }
 
+  // Dynamic OLED-matching marquee helper function
+  function updateMarqueeForElement(el, maxLines) {
+    if (!el) return;
+    const parentBox = el.closest(".marquee-clip-box") || el.parentElement;
+    if (!parentBox) return;
+
+    const parentWidth = parentBox.clientWidth;
+    if (parentWidth === 0 || el.offsetHeight === 0) return;
+
+    const wasMarquee = el.classList.contains("marquee-container");
+    el.classList.remove("marquee-container");
+
+    const origClamp = el.style.webkitLineClamp;
+    const origDisplay = el.style.display;
+    const origWhiteSpace = el.style.whiteSpace;
+
+    el.style.webkitLineClamp = "none";
+    el.style.display = "block";
+    el.style.whiteSpace = "normal";
+
+    const cs = window.getComputedStyle(el);
+    let lh = parseFloat(cs.lineHeight);
+    const fs = parseFloat(cs.fontSize);
+    if (isNaN(lh) || lh <= 0) {
+      lh = fs * 1.2;
+    }
+
+    const naturalHeight = el.scrollHeight;
+    const lineCount = naturalHeight / lh;
+
+    el.style.whiteSpace = "nowrap";
+    const singleLineWidth = el.scrollWidth;
+
+    el.style.webkitLineClamp = origClamp;
+    el.style.display = origDisplay;
+    el.style.whiteSpace = origWhiteSpace;
+
+    if (lineCount > (maxLines + 0.15) && singleLineWidth > (parentWidth + 4)) {
+      el.classList.add("marquee-container");
+      el.style.setProperty("--marquee-width", `${parentWidth}px`);
+    } else {
+      el.classList.remove("marquee-container");
+    }
+  }
+
+  function updateAllWideMarquees() {
+    updateMarqueeForElement(document.getElementById("fsSpotTitle"), 2);
+    updateMarqueeForElement(document.getElementById("fsSpotArtist"), 1);
+    updateMarqueeForElement(document.getElementById("widgetSpotTitle"), 2);
+    updateMarqueeForElement(document.getElementById("widgetSpotArtist"), 1);
+  }
+
   // Create Card HTML for Dashboard Grid
   function createWidgetCardHTML(appId, data) {
     const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
@@ -1087,9 +1190,13 @@
         <div class="spotify-card-content">
           ${artHTML}
           <div class="spotify-info-panel">
-            <div>
-              <h3 class="spotify-track-title">${escapeHTML(track)}</h3>
-              <p class="spotify-artist-name">${escapeHTML(artist)}</p>
+            <div style="width: 100%;">
+              <div class="marquee-clip-box">
+                <h3 class="spotify-track-title" id="widgetSpotTitle">${escapeHTML(track)}</h3>
+              </div>
+              <div class="marquee-clip-box" style="margin-top: 2px;">
+                <p class="spotify-artist-name" id="widgetSpotArtist">${escapeHTML(artist)}</p>
+              </div>
             </div>
             <div class="spotify-progress-bar-wrap" id="widgetScrubBar" style="cursor: pointer;">
               <div class="spotify-progress-fill" id="widget-spotify-progress"></div>
@@ -1232,6 +1339,13 @@
     revealSurface(elAppOverlayView);
     const dataToRender = state.latestData || MOCK_DEMO_DATA;
     renderOverlayAppContent(appId, dataToRender);
+
+    if (appId === "spotify") {
+      requestAnimationFrame(() => {
+        updateMarqueeForElement(document.getElementById("fsSpotTitle"), 2);
+        updateMarqueeForElement(document.getElementById("fsSpotArtist"), 1);
+      });
+    }
   }
 
   function closeOverlayApp(isUserAction = true) {
@@ -1454,9 +1568,13 @@
             <div class="art-sweep-flash flash-active" id="fsSpotSweep"></div>
           </div>
           <div class="fs-spotify-details">
-            <div>
-              <h1 class="fs-spotify-title" id="fsSpotTitle">${escapeHTML(track)}</h1>
-              <h2 class="fs-spotify-artist" id="fsSpotArtist">${escapeHTML(artist)}</h2>
+            <div style="width: 100%;">
+              <div class="marquee-clip-box">
+                <h1 class="fs-spotify-title" id="fsSpotTitle">${escapeHTML(track)}</h1>
+              </div>
+              <div class="marquee-clip-box" style="margin-top: 0.3rem;">
+                <h2 class="fs-spotify-artist" id="fsSpotArtist">${escapeHTML(artist)}</h2>
+              </div>
             </div>
             <div class="fs-spotify-scrub-wrap">
               <div class="fs-spotify-progress" id="fsScrubBar" style="cursor: pointer;">
@@ -1478,14 +1596,22 @@
         </div>
       `;
       attachOverlayEventListeners("spotify", data);
+      updateMarqueeForElement(document.getElementById("fsSpotTitle"), 2);
+      updateMarqueeForElement(document.getElementById("fsSpotArtist"), 1);
     }
 
     // Direct DOM updates on every 250ms poll
     const elTitle = document.getElementById("fsSpotTitle");
-    if (elTitle && elTitle.innerText !== track) elTitle.innerText = track;
+    if (elTitle) {
+      if (elTitle.innerText !== track) elTitle.innerText = track;
+      updateMarqueeForElement(elTitle, 2);
+    }
 
     const elArtist = document.getElementById("fsSpotArtist");
-    if (elArtist && elArtist.innerText !== artist) elArtist.innerText = artist;
+    if (elArtist) {
+      if (elArtist.innerText !== artist) elArtist.innerText = artist;
+      updateMarqueeForElement(elArtist, 1);
+    }
 
     const elArtImg = document.getElementById("fsSpotArtImg");
     if (elArtImg) {

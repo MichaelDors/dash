@@ -654,10 +654,18 @@ body {
 .spotify-track-title {
   font-size: 1.2rem;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--text-main);
+  line-height: 1.25;
+  margin: 0;
+}
+
+.spotify-track-title:not(.marquee-container) {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .spotify-artist-name {
@@ -665,9 +673,17 @@ body {
   font-weight: 450;
   color: var(--spotify-accent);
   transition: color 0.8s ease;
-  white-space: nowrap;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.spotify-artist-name:not(.marquee-container) {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .spotify-progress-bar-wrap {
@@ -1124,6 +1140,16 @@ body {
   font-weight: 650;
   line-height: 1.15;
   color: #fff;
+  margin: 0;
+}
+
+.fs-spotify-title:not(.marquee-container) {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .fs-spotify-artist {
@@ -1131,7 +1157,17 @@ body {
   font-weight: 450;
   color: var(--spotify-accent);
   transition: color 0.8s ease;
-  margin-top: 0.3rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.fs-spotify-artist:not(.marquee-container) {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .fs-spotify-scrub-wrap {
@@ -2014,7 +2050,24 @@ body {
   font-size: 1.35rem;
   font-weight: 600;
   color: #cbd5e1;
-  letter-spacing: 0.04em;
+/* OLED-Matching Marquee Animation & Container Styles */
+@keyframes marquee-ping-pong {
+  0%, 25% { transform: translateX(0); }
+  50%, 75% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
+  100% { transform: translateX(0); }
+}
+
+.marquee-clip-box {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.marquee-container {
+  display: inline-block !important;
+  white-space: nowrap !important;
+  animation: marquee-ping-pong 12s linear infinite !important;
+  will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
