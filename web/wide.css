@@ -48,7 +48,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+html,
+body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
@@ -69,6 +70,7 @@ body {
     transform: scale(0.985);
     filter: blur(14px);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -200,7 +202,9 @@ body {
   outline: none;
 }
 
-.touch-btn::after, .mini-ctrl-btn::after, .fs-ctrl-btn::after {
+.touch-btn::after,
+.mini-ctrl-btn::after,
+.fs-ctrl-btn::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -211,7 +215,9 @@ body {
   z-index: 1;
 }
 
-.touch-btn::before, .mini-ctrl-btn::before, .fs-ctrl-btn::before {
+.touch-btn::before,
+.mini-ctrl-btn::before,
+.fs-ctrl-btn::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -241,11 +247,15 @@ body {
   border: 1px solid var(--accent-cyan);
 }
 
-.btn-primary::before, .mini-ctrl-btn.btn-play-main::before, .fs-ctrl-btn.fs-play-btn::before {
+.btn-primary::before,
+.mini-ctrl-btn.btn-play-main::before,
+.fs-ctrl-btn.fs-play-btn::before {
   box-shadow: inset 0 1.54px 0 rgba(255, 255, 255, 0.6), inset 0 0 18px rgba(255, 255, 255, 0.4);
 }
 
-.btn-primary::after, .mini-ctrl-btn.btn-play-main::after, .fs-ctrl-btn.fs-play-btn::after {
+.btn-primary::after,
+.mini-ctrl-btn.btn-play-main::after,
+.fs-ctrl-btn.fs-play-btn::after {
   background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.25), transparent);
 }
 
@@ -317,9 +327,11 @@ body {
 .slots-1 .time-hero-card {
   width: 50%;
 }
+
 .slots-1 .slots-container {
   width: 50%;
 }
+
 .slots-1 .widget-card {
   flex: 1;
 }
@@ -327,9 +339,11 @@ body {
 .slots-2 .time-hero-card {
   width: 45%;
 }
+
 .slots-2 .slots-container {
   width: 55%;
 }
+
 .slots-2 .widget-card {
   flex: 1;
 }
@@ -337,9 +351,11 @@ body {
 .slots-3 .time-hero-card {
   width: 40%;
 }
+
 .slots-3 .slots-container {
   width: 60%;
 }
+
 .slots-3 .widget-card {
   flex: 1;
 }
@@ -567,13 +583,11 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(
-    135deg, 
-    rgb(255 255 255 / calc(0.18 * var(--art-bevel-scale))) 0%, 
-    rgb(255 255 255 / calc(0.06 * var(--art-bevel-scale))) 35%, 
-    transparent 60%, 
-    rgb(0 0 0 / calc(0.1 * var(--art-bevel-scale))) 100%
-  );
+  background: linear-gradient(135deg,
+      rgb(255 255 255 / calc(0.18 * var(--art-bevel-scale))) 0%,
+      rgb(255 255 255 / calc(0.06 * var(--art-bevel-scale))) 35%,
+      transparent 60%,
+      rgb(0 0 0 / calc(0.1 * var(--art-bevel-scale))) 100%);
   pointer-events: none;
   mix-blend-mode: screen;
   z-index: 2;
@@ -586,7 +600,7 @@ body {
   border-radius: inherit;
   pointer-events: none;
   z-index: 3;
-  box-shadow: 
+  box-shadow:
     inset 0 3px 6px rgb(255 255 255 / calc(0.35 * var(--art-bevel-scale))),
     inset 3px 0 6px rgb(255 255 255 / calc(0.22 * var(--art-bevel-scale))),
     inset 0 -3px 8px rgb(0 0 0 / calc(0.25 * var(--art-bevel-scale))),
@@ -596,8 +610,10 @@ body {
 
 .art-sweep-flash {
   position: absolute;
-  top: 0; left: -150%;
-  width: 150%; height: 100%;
+  top: 0;
+  left: -150%;
+  width: 150%;
+  height: 100%;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
   transform: skewX(-25deg);
   pointer-events: none;
@@ -610,10 +626,23 @@ body {
 }
 
 @keyframes sweep-flash {
-  0% { left: -150%; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { left: 150%; opacity: 0; }
+  0% {
+    left: -150%;
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    left: 150%;
+    opacity: 0;
+  }
 }
 
 .spotify-art-thumb {
@@ -940,7 +969,7 @@ body {
   overflow-y: auto;
 }
 
-.app-overlay-view.is-visible .overlay-content > * {
+.app-overlay-view.is-visible .overlay-content>* {
   animation: overlayContentIn 620ms var(--ease-apple) 120ms both;
 }
 
@@ -969,7 +998,8 @@ body {
 
 .spotify-bg-layer {
   position: absolute;
-  inset: -6%; /* Expanded to prevent edge clipping during scaling & blur */
+  inset: -6%;
+  /* Expanded to prevent edge clipping during scaling & blur */
   background-size: cover;
   background-position: center 25%;
   background-repeat: no-repeat;
@@ -978,7 +1008,7 @@ body {
   opacity: 0;
   transform: scale(1.22);
   filter: blur(28px) brightness(0.65) contrast(1.1);
-  transition: 
+  transition:
     opacity 1800ms cubic-bezier(0.16, 1, 0.3, 1),
     filter 2200ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 8000ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -1011,7 +1041,7 @@ body {
   backdrop-filter: blur(35px);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.2) 28%, rgba(0, 0, 0, 0.75) 60%, #000 85%);
   mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.2) 28%, rgba(0, 0, 0, 0.75) 60%, #000 85%);
-  background: 
+  background:
     linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 30%, rgba(0, 0, 0, 0.75) 65%, rgba(0, 0, 0, 0.96) 100%),
     radial-gradient(circle at 10% 90%, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.7) 55%, transparent 100%);
 }
@@ -1051,12 +1081,6 @@ body {
   gap: 2.25rem;
   padding: 0;
   overflow: visible;
-  transform: translateY(60px);
-  transition: transform 0.5s var(--ease-apple);
-}
-
-.app-overlay-view.spotify-active.ui-visible .fs-spotify-container {
-  transform: translateY(0);
 }
 
 .fs-spotify-art-wrapper {
@@ -1081,13 +1105,11 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(
-    135deg, 
-    rgb(255 255 255 / calc(0.2 * var(--art-bevel-scale))) 0%, 
-    rgb(255 255 255 / calc(0.07 * var(--art-bevel-scale))) 38%, 
-    transparent 62%, 
-    rgb(0 0 0 / calc(0.12 * var(--art-bevel-scale))) 100%
-  );
+  background: linear-gradient(135deg,
+      rgb(255 255 255 / calc(0.2 * var(--art-bevel-scale))) 0%,
+      rgb(255 255 255 / calc(0.07 * var(--art-bevel-scale))) 38%,
+      transparent 62%,
+      rgb(0 0 0 / calc(0.12 * var(--art-bevel-scale))) 100%);
   pointer-events: none;
   mix-blend-mode: screen;
   z-index: 2;
@@ -1100,7 +1122,7 @@ body {
   border-radius: inherit;
   pointer-events: none;
   z-index: 3;
-  box-shadow: 
+  box-shadow:
     inset 0 5px 10px rgb(255 255 255 / calc(0.4 * var(--art-bevel-scale))),
     inset 5px 0 10px rgb(255 255 255 / calc(0.25 * var(--art-bevel-scale))),
     inset 0 -5px 12px rgb(0 0 0 / calc(0.28 * var(--art-bevel-scale))),
@@ -1144,6 +1166,12 @@ body {
   min-width: 0;
   max-width: 1100px;
   padding-bottom: 0;
+  transform: translateY(calc(84px + 1.75rem));
+  transition: transform 0.65s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+
+.app-overlay-view.spotify-active.ui-visible .fs-spotify-details {
+  transform: translateY(0);
 }
 
 .fs-spotify-title {
@@ -1188,7 +1216,8 @@ body {
   gap: 0.4rem;
 }
 
-.fs-scrub-bar, .fs-spotify-progress {
+.fs-scrub-bar,
+.fs-spotify-progress {
   width: 100%;
   height: 10px;
   background: #181d2a;
@@ -1197,7 +1226,8 @@ body {
   overflow: hidden;
 }
 
-.fs-scrub-bar::after, .fs-spotify-progress::after {
+.fs-scrub-bar::after,
+.fs-spotify-progress::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1208,7 +1238,8 @@ body {
   z-index: 1;
 }
 
-.fs-scrub-bar::before, .fs-spotify-progress::before {
+.fs-scrub-bar::before,
+.fs-spotify-progress::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1218,7 +1249,8 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
-.fs-scrub-fill, .fs-spotify-progress-fill {
+.fs-scrub-fill,
+.fs-spotify-progress-fill {
   height: 100%;
   background: var(--spotify-accent);
   transition: width 0.3s linear, background-color 0.8s ease;
@@ -1227,7 +1259,8 @@ body {
   overflow: hidden;
 }
 
-.fs-scrub-fill::after, .fs-spotify-progress-fill::after {
+.fs-scrub-fill::after,
+.fs-spotify-progress-fill::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1238,7 +1271,8 @@ body {
   z-index: 1;
 }
 
-.fs-scrub-fill::before, .fs-spotify-progress-fill::before {
+.fs-scrub-fill::before,
+.fs-spotify-progress-fill::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1271,14 +1305,11 @@ body {
   align-items: center;
   gap: 2rem;
   margin-top: 0.5rem;
-  transform: translateY(40px);
   opacity: 0;
   pointer-events: none;
-  transition: transform 0.5s var(--ease-apple), opacity 0.5s var(--ease-apple);
 }
 
 .app-overlay-view.spotify-active.ui-visible .fs-spotify-controls {
-  transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
 }
@@ -1297,30 +1328,44 @@ body {
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  transition: transform var(--motion-fast) var(--ease-apple), background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
+  transition: transform 0.65s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.4s ease, background-color var(--motion-fast) var(--ease-apple), border-color var(--motion-fast) var(--ease-apple), box-shadow var(--motion-fast) var(--ease-apple);
 }
 
 /* Ripple animation: Play/pause goes first a tiny bit before the prev/next */
 .app-overlay-view.spotify-active:not(.ui-visible) .fs-play-btn {
-  transform: translateY(40px) scale(0.9);
+  transform: translateY(30px) scale(0.95);
+  opacity: 0;
   transition-delay: 0s;
 }
 
-.app-overlay-view.spotify-active:not(.ui-visible) #fsSpotPrev,
+.app-overlay-view.spotify-active:not(.ui-visible) #fsSpotPrev {
+  transform: translateY(30px) scale(0.95);
+  opacity: 0;
+  transition-delay: 0s;
+}
+
 .app-overlay-view.spotify-active:not(.ui-visible) #fsSpotNext {
-  transform: translateY(50px) scale(0.8);
+  transform: translateY(30px) scale(0.95);
+  opacity: 0;
   transition-delay: 0s;
 }
 
 .app-overlay-view.spotify-active.ui-visible .fs-play-btn {
   transform: translateY(0) scale(1);
-  transition-delay: 0.05s;
+  opacity: 1;
+  transition-delay: 0s;
 }
 
-.app-overlay-view.spotify-active.ui-visible #fsSpotPrev,
+.app-overlay-view.spotify-active.ui-visible #fsSpotPrev {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  transition-delay: 0.04s;
+}
+
 .app-overlay-view.spotify-active.ui-visible #fsSpotNext {
   transform: translateY(0) scale(1);
-  transition-delay: 0.15s;
+  opacity: 1;
+  transition-delay: 0.08s;
 }
 
 @media (hover: hover) {
@@ -1347,7 +1392,8 @@ body {
 }
 
 /* Full Timer & Counter Apps */
-.fs-timer-container, .fs-counter-container {
+.fs-timer-container,
+.fs-counter-container {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1596,14 +1642,37 @@ body {
   animation: settingsCardIn 560ms var(--ease-apple) both;
 }
 
-.settings-overlay.is-visible .subpage-active .settings-banner-card { animation-delay: 40ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(1) { animation-delay: 80ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(2) { animation-delay: 120ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(3) { animation-delay: 160ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(4) { animation-delay: 200ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(5) { animation-delay: 240ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(6) { animation-delay: 280ms; }
-.settings-overlay.is-visible .subpage-active .settings-card:nth-child(7) { animation-delay: 320ms; }
+.settings-overlay.is-visible .subpage-active .settings-banner-card {
+  animation-delay: 40ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(1) {
+  animation-delay: 80ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(4) {
+  animation-delay: 200ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(5) {
+  animation-delay: 240ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(6) {
+  animation-delay: 280ms;
+}
+
+.settings-overlay.is-visible .subpage-active .settings-card:nth-child(7) {
+  animation-delay: 320ms;
+}
 
 .settings-card:hover {
   transform: translateY(-2px);
@@ -1904,12 +1973,29 @@ body {
   animation: pickerItemIn 440ms var(--ease-apple) both;
 }
 
-.modal-backdrop.is-visible .picker-item:nth-child(1) { animation-delay: 90ms; }
-.modal-backdrop.is-visible .picker-item:nth-child(2) { animation-delay: 120ms; }
-.modal-backdrop.is-visible .picker-item:nth-child(3) { animation-delay: 150ms; }
-.modal-backdrop.is-visible .picker-item:nth-child(4) { animation-delay: 180ms; }
-.modal-backdrop.is-visible .picker-item:nth-child(5) { animation-delay: 210ms; }
-.modal-backdrop.is-visible .picker-item:nth-child(6) { animation-delay: 240ms; }
+.modal-backdrop.is-visible .picker-item:nth-child(1) {
+  animation-delay: 90ms;
+}
+
+.modal-backdrop.is-visible .picker-item:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.modal-backdrop.is-visible .picker-item:nth-child(3) {
+  animation-delay: 150ms;
+}
+
+.modal-backdrop.is-visible .picker-item:nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.modal-backdrop.is-visible .picker-item:nth-child(5) {
+  animation-delay: 210ms;
+}
+
+.modal-backdrop.is-visible .picker-item:nth-child(6) {
+  animation-delay: 240ms;
+}
 
 @media (hover: hover) {
   .picker-item:hover {
@@ -2027,6 +2113,7 @@ body {
     transform: translateY(12px) scale(0.985);
     filter: blur(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2040,6 +2127,7 @@ body {
     transform: translateY(18px) scale(0.965);
     filter: blur(12px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2053,6 +2141,7 @@ body {
     transform: translateY(26px) scale(0.975);
     filter: blur(12px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2066,6 +2155,7 @@ body {
     transform: translateY(20px) scale(0.97);
     filter: blur(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2078,6 +2168,7 @@ body {
     opacity: 0;
     transform: translateY(12px) scale(0.96);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2085,8 +2176,13 @@ body {
 }
 
 @keyframes spinnerRotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lost-text {
@@ -2110,21 +2206,37 @@ body {
 }
 
 @keyframes marquee-ping-pong {
-  0%, 25% { transform: translateX(0); }
-  50%, 75% { transform: translateX(calc(-100% + var(--marquee-width, 100%))); }
-  100% { transform: translateX(0); }
+
+  0%,
+  25% {
+    transform: translateX(0);
+  }
+
+  50%,
+  75% {
+    transform: translateX(calc(-100% + var(--marquee-width, 100%)));
+  }
+
+  100% {
+    transform: translateX(0);
+  }
 }
 
 /* Edge fades follow scroll: no fade on the side flush with visible text */
 @keyframes marquee-edge-mask {
-  0%, 25% {
+
+  0%,
+  25% {
     --marquee-fade-left: 0%;
     --marquee-fade-right: 10%;
   }
-  50%, 75% {
+
+  50%,
+  75% {
     --marquee-fade-left: 10%;
     --marquee-fade-right: 0%;
   }
+
   100% {
     --marquee-fade-left: 0%;
     --marquee-fade-right: 10%;
@@ -2152,20 +2264,16 @@ body {
 .marquee-clip-box:has(.marquee-container) {
   --marquee-fade-left: 0%;
   --marquee-fade-right: 10%;
-  mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    #000 var(--marquee-fade-left),
-    #000 calc(100% - var(--marquee-fade-right)),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    #000 var(--marquee-fade-left),
-    #000 calc(100% - var(--marquee-fade-right)),
-    transparent 100%
-  );
+  mask-image: linear-gradient(to right,
+      transparent 0%,
+      #000 var(--marquee-fade-left),
+      #000 calc(100% - var(--marquee-fade-right)),
+      transparent 100%);
+  -webkit-mask-image: linear-gradient(to right,
+      transparent 0%,
+      #000 var(--marquee-fade-left),
+      #000 calc(100% - var(--marquee-fade-right)),
+      transparent 100%);
   animation: marquee-edge-mask var(--marquee-duration, 12s) linear infinite;
 }
 
