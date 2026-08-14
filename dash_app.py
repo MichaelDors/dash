@@ -2724,6 +2724,10 @@ class DashboardController:
     def simulate_motion(self) -> None:
         self.motion_manager.report_user_activity(motion=True)
 
+    def request_reload_web(self) -> None:
+        with self._lock:
+            self._reload_web_requested = True
+
     def register_activity(self) -> None:
         self._record_user_interaction()
         self.motion_manager.report_user_activity()
@@ -3219,6 +3223,21 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/wide/config":
             self._send_json({"slots": self.controller.get_wide_slots()})
             return
+        if path == "/api/state":
+            self._send_json(self.controller.snapshot())
+            return
+        if path == "/oled":
+            self._serve_oled_page()
+            return
+        if path == "/oled.css":
+            self._serve_file("oled.css", "text/css; charset=utf-8")
+            return
+        if path == "/styles.css":
+            self._serve_file("styles.css", "text/css; charset=utf-8")
+            return
+        if path == "/app.js":
+            self._serve_file("app.js", "application/javascript; charset=utf-8")
+            return
 
         if path == "/api/spotify/status":
             client = self.controller.spotify_client
@@ -3400,6 +3419,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             "shutdown": self.controller._execute_power_off_locked,
             "restart": self.controller._execute_restart_locked,
             "update_software": self.controller._execute_update_software,
+            "reload_web_interface": self.controller.request_reload_web,
         }
 
         handler = actions.get(action)
