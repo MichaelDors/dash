@@ -1578,7 +1578,11 @@ class SpotifyApp(App):
                         self.duration_ms = int(item.get("duration_ms", 0) or 0)
                         album_images = item.get("album", {}).get("images", []) if isinstance(item.get("album"), dict) else []
                         if album_images and len(album_images) > 0:
-                            sorted_album_imgs = sorted(album_images, key=lambda img: img.get("width", 0) or 0, reverse=True)
+                            sorted_album_imgs = sorted(
+                                album_images,
+                                key=lambda img: (int(img.get("width") or 0) * int(img.get("height") or 0)) or int(img.get("width") or 0) or int(img.get("height") or 0),
+                                reverse=True
+                            )
                             self.album_art_url = str(sorted_album_imgs[0].get("url", "") or "")
                         else:
                             self.album_art_url = ""
@@ -1592,7 +1596,11 @@ class SpotifyApp(App):
                                     if isinstance(artist_data, dict):
                                         art_imgs = artist_data.get("images", [])
                                         if art_imgs and len(art_imgs) > 0:
-                                            sorted_art_imgs = sorted(art_imgs, key=lambda img: img.get("width", 0) or 0, reverse=True)
+                                            sorted_art_imgs = sorted(
+                                                art_imgs,
+                                                key=lambda img: (int(img.get("width") or 0) * int(img.get("height") or 0)) or int(img.get("width") or 0) or int(img.get("height") or 0),
+                                                reverse=True
+                                            )
                                             self._artist_image_cache[primary_artist_id] = str(sorted_art_imgs[0].get("url", "") or "")
                                         else:
                                             self._artist_image_cache[primary_artist_id] = ""
