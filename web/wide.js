@@ -287,16 +287,50 @@
 
       const vibrantColor = bestScore > -1 ? ensureHighContrastColor(bestR, bestG, bestB) : null;
 
-      return { vibrantColor, edgeLuminance };
+      // 3. Extract shadow tint color specifically from bottom-right corner/edge region
+      let brSumR = 0, brSumG = 0, brSumB = 0, brCount = 0;
+      let brMaxSat = 0, brBestR = 0, brBestG = 0, brBestB = 0;
+
+      for (let y = Math.floor(H * 0.45); y < H; y++) {
+        for (let x = Math.floor(W * 0.45); x < W; x++) {
+          const idx = (y * W + x) * 4;
+          const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+          brSumR += r; brSumG += g; brSumB += b;
+          brCount++;
+
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          const sat = max > 0 ? (max - min) / max : 0;
+          if (sat > brMaxSat) {
+            brMaxSat = sat;
+            brBestR = r; brBestG = g; brBestB = b;
+          }
+        }
+      }
+
+      let shadowTint = '#000000';
+      if (brCount > 0) {
+        const avgR = Math.round(brSumR / brCount);
+        const avgG = Math.round(brSumG / brCount);
+        const avgB = Math.round(brSumB / brCount);
+        const max = Math.max(avgR, avgG, avgB), min = Math.min(avgR, avgG, avgB);
+        const avgSat = max > 0 ? (max - min) / max : 0;
+        const isGrey = (avgSat < 0.10) || (Math.abs(avgR - avgG) < 14 && Math.abs(avgG - avgB) < 14 && Math.abs(avgR - avgB) < 14);
+        if (!isGrey) {
+          shadowTint = brMaxSat > 0.20 ? `#${((1 << 24) + (brBestR << 16) + (brBestG << 8) + brBestB).toString(16).slice(1)}` : `#${((1 << 24) + (avgR << 16) + (avgG << 8) + avgB).toString(16).slice(1)}`;
+        }
+      }
+
+      return { vibrantColor, edgeLuminance, shadowTint };
     } catch (err) {
       console.warn("Client color/luminance extraction notice:", err);
-      return { vibrantColor: null, edgeLuminance: 0.5 };
+      return { vibrantColor: null, edgeLuminance: 0.5, shadowTint: '#000000' };
     }
   }
 
   function updateSpotifyAccentColor(bgImageUrl, colorExtractUrl) {
     if (!bgImageUrl) {
       document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
+      document.documentElement.style.setProperty('--art-shadow-tint', '#000000');
       document.documentElement.style.setProperty('--art-bevel-scale', '1.0');
       updateSpotifyBackgroundImage(null);
       return;
@@ -307,11 +341,17 @@
     if (extractUrl === currentAlbumArtUrl) return;
     currentAlbumArtUrl = extractUrl;
 
-    extractArtMetadataFromUrl(extractUrl).then(({ vibrantColor, edgeLuminance }) => {
+    extractArtMetadataFromUrl(extractUrl).then(({ vibrantColor, edgeLuminance, shadowTint }) => {
       if (vibrantColor) {
         document.documentElement.style.setProperty('--spotify-accent', vibrantColor);
       } else {
         document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
+      }
+
+      if (shadowTint) {
+        document.documentElement.style.setProperty('--art-shadow-tint', shadowTint);
+      } else {
+        document.documentElement.style.setProperty('--art-shadow-tint', '#000000');
       }
 
       // Dynamic opacity scale based strictly on edge luminance:
@@ -321,6 +361,7 @@
       document.documentElement.style.setProperty('--art-bevel-scale', bevelScale.toFixed(3));
     }).catch(() => {
       document.documentElement.style.setProperty('--spotify-accent', '#ffffff');
+      document.documentElement.style.setProperty('--art-shadow-tint', '#000000');
       document.documentElement.style.setProperty('--art-bevel-scale', '1.0');
     });
   }
