@@ -1004,7 +1004,7 @@ body {
   inset: -6%;
   /* Expanded to prevent edge clipping during scaling & blur */
   background-size: cover;
-  background-position: center 25%;
+  background-position: center 30%;
   background-repeat: no-repeat;
   will-change: opacity, transform, filter;
   pointer-events: none;

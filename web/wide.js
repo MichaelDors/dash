@@ -68,9 +68,160 @@
   let currentSpotifyBackgroundUrl = null;
   let activeSpotifyBgLayer = "A";
   let spotifyBgPreloadToken = 0;
+  const spotifyFocalCache = new Map();
 
   function toCssUrl(url) {
     return `url("${String(url).replace(/["\\\n\r]/g, "")}")`;
+  }
+
+  /**
+   * Detects the optimal vertical focal point (Y percentage: 15% - 75%)
+   * using Native FaceDetector (Option 2) with Canvas Skin & Edge Saliency Fallback (Option 1).
+   * Safe for non-human images, abstract art, dark/low-contrast photos, and unsupported browsers.
+   */
+  async function detectArtistFocalPosY(bgImageUrl) {
+    if (!bgImageUrl) return 30;
+    if (spotifyFocalCache.has(bgImageUrl)) {
+      return spotifyFocalCache.get(bgImageUrl);
+    }
+
+    let computedY = 30; // Default safe fallback
+
+    try {
+      // 1. Fetch blob for clean canvas & detector access without CORS taint
+      const response = await fetch(bgImageUrl, { mode: 'cors' });
+      if (!response.ok) throw new Error("Image fetch failed");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.src = objectUrl;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
+      const imgH = img.naturalHeight || img.height || 640;
+      let detectedRatioY = null;
+
+      // 2. Hardware-Accelerated Native FaceDetector API (Option 2)
+      if (typeof window !== 'undefined' && 'FaceDetector' in window) {
+        try {
+          const detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 10 });
+          const faces = await detector.detect(img);
+          if (faces && faces.length > 0) {
+            let totalWeight = 0;
+            let weightedSumY = 0;
+            for (const face of faces) {
+              const box = face.boundingBox;
+              // Eye-line/upper face is approximately top + 40% height of face box
+              const faceY = box.top + box.height * 0.40;
+              const weight = Math.max(1, box.width * box.height);
+              weightedSumY += faceY * weight;
+              totalWeight += weight;
+            }
+            if (totalWeight > 0 && imgH > 0) {
+              detectedRatioY = (weightedSumY / totalWeight) / imgH;
+            }
+          }
+        } catch (faceErr) {
+          // Native FaceDetector fallback
+        }
+      }
+
+      // 3. Fallback: High-Speed Saliency & Skin/Edge Density on Canvas (Option 1)
+      if (detectedRatioY === null) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const W = 64, H = 64;
+        canvas.width = W;
+        canvas.height = H;
+        ctx.drawImage(img, 0, 0, W, H);
+
+        const imgData = ctx.getImageData(0, 0, W, H).data;
+        const rowEnergies = new Float32Array(H);
+        let totalSkinPixels = 0;
+        let totalEdgeEnergy = 0;
+
+        for (let y = 0; y < H; y++) {
+          let rowEnergy = 0;
+          for (let x = 0; x < W; x++) {
+            const idx = (y * W + x) * 4;
+            const r = imgData[idx];
+            const g = imgData[idx + 1];
+            const b = imgData[idx + 2];
+
+            const lum = (0.299 * r + 0.587 * g + 0.114 * b);
+
+            // Edge gradient
+            let edge = 0;
+            if (x > 0) {
+              const prevIdx = idx - 4;
+              const prevLum = 0.299 * imgData[prevIdx] + 0.587 * imgData[prevIdx + 1] + 0.114 * imgData[prevIdx + 2];
+              edge += Math.abs(lum - prevLum);
+            }
+            if (y > 0) {
+              const upIdx = idx - W * 4;
+              const upLum = 0.299 * imgData[upIdx] + 0.587 * imgData[upIdx + 1] + 0.114 * imgData[upIdx + 2];
+              edge += Math.abs(lum - upLum);
+            }
+
+            // YCbCr Skin Tone Filter (Normalized Chromaticity)
+            const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+            const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+            const isSkin = (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && lum > 35 && lum < 235);
+
+            let pixelScore = 0;
+            if (isSkin) {
+              pixelScore += 4.5;
+              totalSkinPixels++;
+            }
+            if (edge > 20) {
+              const normEdge = Math.min(3.0, (edge - 20) / 25);
+              pixelScore += normEdge;
+              totalEdgeEnergy += normEdge;
+            }
+
+            rowEnergy += pixelScore;
+          }
+          rowEnergies[y] = rowEnergy;
+        }
+
+        // Calculate weighted vertical center of mass
+        let energySum = 0;
+        let weightedYSum = 0;
+        for (let y = 0; y < H; y++) {
+          const e = rowEnergies[y];
+          energySum += e;
+          weightedYSum += y * e;
+        }
+
+        // Only compute if distinct subject or skin pixels detected
+        if (energySum > 20 && (totalSkinPixels > 8 || totalEdgeEnergy > 25)) {
+          detectedRatioY = (weightedYSum / energySum) / H;
+        }
+      }
+
+      URL.revokeObjectURL(objectUrl);
+
+      // 4. Map detected focal Y to optimal CSS background-position-y percentage
+      if (detectedRatioY !== null && Number.isFinite(detectedRatioY)) {
+        // Map detected ratio: higher subject (e.g. 0.25) -> top bias (20%),
+        // mid-lower subject (e.g. 0.45-0.55 like Passion) -> center/mid bias (45-55%),
+        // clamped comfortably so heads aren't clipped and controls don't cover faces.
+        let targetPercent = detectedRatioY * 100;
+        targetPercent = Math.max(15, Math.min(75, targetPercent));
+        computedY = Math.round(targetPercent);
+      } else {
+        // Non-human or uniform image default
+        computedY = 30;
+      }
+    } catch (err) {
+      computedY = 30;
+    }
+
+    spotifyFocalCache.set(bgImageUrl, computedY);
+    return computedY;
   }
 
   function ensureSpotifyBackgroundStage() {
@@ -109,7 +260,9 @@
     if (!currentSpotifyBackgroundUrl) {
       currentSpotifyBackgroundUrl = bgImageUrl;
       activeSpotifyBgLayer = "A";
+      const cachedY = spotifyFocalCache.get(bgImageUrl) || 30;
       if (layerA) {
+        layerA.style.backgroundPosition = `center ${cachedY}%`;
         layerA.style.backgroundImage = cssUrl;
         layerA.className = "spotify-bg-layer is-active";
         layerA.style.transition = "none";
@@ -120,27 +273,40 @@
         layerB.style.backgroundImage = "none";
         layerB.className = "spotify-bg-layer";
       }
+
+      if (!spotifyFocalCache.has(bgImageUrl)) {
+        detectArtistFocalPosY(bgImageUrl).then(posY => {
+          if (currentSpotifyBackgroundUrl === bgImageUrl && layerA) {
+            layerA.style.backgroundPosition = `center ${posY}%`;
+          }
+        });
+      }
       return;
     }
 
     currentSpotifyBackgroundUrl = bgImageUrl;
     const thisToken = ++spotifyBgPreloadToken;
 
-    // Preload image before initiating transition to guarantee zero flicker
+    // Preload image and compute focal position concurrently
+    const focalPromise = detectArtistFocalPosY(bgImageUrl);
     const img = new Image();
     let handled = false;
 
-    const startTransition = () => {
+    const startTransition = async () => {
       if (handled || thisToken !== spotifyBgPreloadToken) return;
       handled = true;
 
       if (!layerA || !layerB) return;
+
+      const posY = await focalPromise.catch(() => 30);
+      if (thisToken !== spotifyBgPreloadToken) return;
 
       const incoming = activeSpotifyBgLayer === "A" ? layerB : layerA;
       const outgoing = activeSpotifyBgLayer === "A" ? layerA : layerB;
 
       // 1. Prepare incoming layer state with transition temporarily disabled
       incoming.style.transition = "none";
+      incoming.style.backgroundPosition = `center ${posY}%`;
       incoming.style.backgroundImage = cssUrl;
       incoming.className = "spotify-bg-layer"; // opacity 0, scale 1.22, blur 28px
       void incoming.offsetWidth; // force reflow
