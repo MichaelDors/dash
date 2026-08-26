@@ -868,6 +868,91 @@
       elBtnShutdownDevice.addEventListener("click", () => sendAction("shutdown"));
     }
 
+    // Phone & Convex Sync Handlers
+    const btnToggleSleep = document.getElementById("btnToggleSleepFocus");
+    if (btnToggleSleep) {
+      btnToggleSleep.addEventListener("click", () => sendAction("toggle_sleep_focus"));
+    }
+
+    const btnTogglePres = document.getElementById("btnTogglePresence");
+    if (btnTogglePres) {
+      btnTogglePres.addEventListener("click", () => sendAction("toggle_presence"));
+    }
+
+    const elCfgConvexForm = document.getElementById("cfgConvexForm");
+    if (elCfgConvexForm) {
+      elCfgConvexForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const url = document.getElementById("cfgConvexUrl")?.value.trim() || "";
+        const qpath = document.getElementById("cfgConvexQueryPath")?.value.trim() || "dashvars:get";
+        const mpath = document.getElementById("cfgConvexMutationPath")?.value.trim() || "dashvars:set";
+        try {
+          const res = await fetch("/api/phone/convex-config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              convex_url: url,
+              convex_query_path: qpath,
+              convex_mutation_path: mpath,
+              cloud_sync_enabled: true
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            alert("Convex connected successfully! Data received: " + JSON.stringify(data.data || {}));
+          } else {
+            alert("Convex connection notice: " + (data.error || "Saved settings."));
+          }
+          fetchState();
+        } catch (err) {
+          alert("Failed to save Convex configuration: " + err);
+        }
+      });
+    }
+
+    // Siri Shortcuts Setup Modal
+    const shortcutsModal = document.getElementById("shortcutsModal");
+    const btnOpenShortcuts = document.getElementById("btnOpenShortcutsGuide");
+    const btnCloseShortcuts = document.getElementById("btnCloseShortcutsModal");
+    const btnDismissShortcuts = document.getElementById("btnDismissShortcutsModal");
+
+    if (btnOpenShortcuts && shortcutsModal) {
+      btnOpenShortcuts.addEventListener("click", () => {
+        const url = document.getElementById("cfgConvexUrl")?.value.trim() || "https://tremendous-tiger-513.convex.cloud";
+        document.querySelectorAll(".convex-url-display").forEach(el => {
+          el.textContent = `${url.replace(/\/$/, '')}/api/mutation`;
+        });
+        revealSurface(shortcutsModal);
+      });
+    }
+
+    if (btnCloseShortcuts && shortcutsModal) {
+      btnCloseShortcuts.addEventListener("click", () => concealSurface(shortcutsModal));
+    }
+    if (btnDismissShortcuts && shortcutsModal) {
+      btnDismissShortcuts.addEventListener("click", () => concealSurface(shortcutsModal));
+    }
+    if (shortcutsModal) {
+      shortcutsModal.addEventListener("click", (e) => {
+        if (e.target === shortcutsModal) concealSurface(shortcutsModal);
+      });
+    }
+
+    document.querySelectorAll(".copy-code-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const toCopy = btn.getAttribute("data-copy") || btn.previousElementSibling?.innerText || "";
+        if (toCopy) {
+          navigator.clipboard.writeText(toCopy).then(() => {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+            setTimeout(() => { btn.innerHTML = orig; }, 1800);
+          }).catch(() => {
+            alert("Copied: " + toCopy);
+          });
+        }
+      });
+    });
+
     if (elCfgSpotifyForm) {
       elCfgSpotifyForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1239,6 +1324,36 @@
         elHeroWeatherText.textContent = `${Math.round(weatherWidget.temperature_f)}°F • ${weatherWidget.condition || 'Clear'}`;
       } else {
         elHeroWeatherText.textContent = weatherWidget.location || "Weather";
+      }
+    }
+
+    // Phone & Sleep Status Pills
+    const ps = data.phone_state || {};
+    const elHeroSleepPill = document.getElementById("heroSleepPill");
+    const elHeroSleepText = document.getElementById("heroSleepText");
+    if (elHeroSleepPill && elHeroSleepText) {
+      if (ps.sleep_focus) {
+        elHeroSleepText.textContent = "Sleep (1%)";
+        elHeroSleepPill.classList.add("is-active-sleep");
+      } else {
+        elHeroSleepText.textContent = "Awake";
+        elHeroSleepPill.classList.remove("is-active-sleep");
+      }
+    }
+
+    const elHeroPresencePill = document.getElementById("heroPresencePill");
+    const elHeroPresenceText = document.getElementById("heroPresenceText");
+    if (elHeroPresencePill && elHeroPresenceText) {
+      const isHome = ps.is_home !== false;
+      elHeroPresenceText.textContent = isHome ? "Home" : "Away";
+      const icon = elHeroPresencePill.querySelector("i");
+      if (icon) {
+        icon.className = isHome ? "fa-solid fa-house pill-icon" : "fa-solid fa-car pill-icon";
+      }
+      if (!isHome) {
+        elHeroPresencePill.classList.add("is-away");
+      } else {
+        elHeroPresencePill.classList.remove("is-away");
       }
     }
   }
@@ -1718,6 +1833,57 @@
     }
     if (elCfgIpAddress) {
       elCfgIpAddress.textContent = window.location.hostname || "127.0.0.1";
+    }
+
+    // Phone & Convex Metrics
+    const ps = data.phone_state || {};
+    const cvx = data.convex_status || {};
+    const elCfgSleepFocusStatus = document.getElementById("cfgSleepFocusStatus");
+    const elCfgPresenceStatus = document.getElementById("cfgPresenceStatus");
+    const elCfgConvexConnStatus = document.getElementById("cfgConvexConnStatus");
+    const elCfgLastPhoneSync = document.getElementById("cfgLastPhoneSync");
+
+    if (elCfgSleepFocusStatus) {
+      const isSleep = Boolean(ps.sleep_focus);
+      elCfgSleepFocusStatus.textContent = isSleep ? "ACTIVE (1% NIGHT)" : "INACTIVE";
+      elCfgSleepFocusStatus.style.color = isSleep ? "var(--accent-purple, #bf7af0)" : "var(--accent-green)";
+    }
+    if (elCfgPresenceStatus) {
+      const isHome = ps.is_home !== false;
+      elCfgPresenceStatus.textContent = isHome ? "HOME" : "AWAY";
+      elCfgPresenceStatus.style.color = isHome ? "var(--accent-cyan, #00f2fe)" : "var(--accent-amber, #ffb300)";
+    }
+    if (elCfgConvexConnStatus) {
+      if (!cvx.enabled) {
+        elCfgConvexConnStatus.textContent = "DISABLED";
+        elCfgConvexConnStatus.style.color = "var(--text-muted)";
+      } else if (cvx.connected) {
+        elCfgConvexConnStatus.textContent = `SYNCED (${cvx.sync_count || 1})`;
+        elCfgConvexConnStatus.style.color = "var(--accent-green)";
+      } else if (cvx.last_error) {
+        elCfgConvexConnStatus.textContent = `ERR: ${cvx.last_error.slice(0, 14)}`;
+        elCfgConvexConnStatus.style.color = "var(--accent-red, #ff5252)";
+      } else {
+        elCfgConvexConnStatus.textContent = "CONNECTING...";
+        elCfgConvexConnStatus.style.color = "var(--accent-amber)";
+      }
+    }
+    if (elCfgLastPhoneSync) {
+      elCfgLastPhoneSync.textContent = ps.last_updated ? `${ps.last_updated.replace('T', ' ')} (${ps.last_sync_source || 'local'})` : '--';
+    }
+
+    const inputUrl = document.getElementById("cfgConvexUrl");
+    const inputQuery = document.getElementById("cfgConvexQueryPath");
+    const inputMut = document.getElementById("cfgConvexMutationPath");
+    const stConvex = data.settings || {};
+    if (inputUrl && stConvex.convex_url && document.activeElement !== inputUrl) {
+      inputUrl.value = stConvex.convex_url;
+    }
+    if (inputQuery && stConvex.convex_query_path && document.activeElement !== inputQuery) {
+      inputQuery.value = stConvex.convex_query_path;
+    }
+    if (inputMut && stConvex.convex_mutation_path && document.activeElement !== inputMut) {
+      inputMut.value = stConvex.convex_mutation_path;
     }
 
     // Hardware Settings Metrics

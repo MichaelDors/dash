@@ -387,6 +387,13 @@ class SettingsStore:
         self.max_brightness = 100
         self.dim_brightness = 10
         self.motion_sensor = True
+        # Convex Cloud Sync
+        self.cloud_sync_enabled = True
+        self.convex_url = "https://tremendous-tiger-513.convex.cloud"
+        self.convex_query_path = "dashvars:get"
+        self.convex_mutation_path = "dashvars:set"
+        self.convex_auth_token = ""
+        self.cloud_poll_interval = 5
         self.load()
 
     def load(self) -> None:
@@ -396,6 +403,12 @@ class SettingsStore:
                 self.max_brightness = data.get("max_brightness", 100)
                 self.dim_brightness = data.get("dim_brightness", 10)
                 self.motion_sensor = data.get("motion_sensor", True)
+                self.cloud_sync_enabled = data.get("cloud_sync_enabled", True)
+                self.convex_url = data.get("convex_url", "https://tremendous-tiger-513.convex.cloud")
+                self.convex_query_path = data.get("convex_query_path", "dashvars:get")
+                self.convex_mutation_path = data.get("convex_mutation_path", "dashvars:set")
+                self.convex_auth_token = data.get("convex_auth_token", "")
+                self.cloud_poll_interval = data.get("cloud_poll_interval", 5)
             except Exception as exc:
                 print(f"Error loading settings: {exc}")
 
@@ -404,19 +417,285 @@ class SettingsStore:
             data = {
                 "max_brightness": self.max_brightness,
                 "dim_brightness": self.dim_brightness,
-                "motion_sensor": self.motion_sensor
+                "motion_sensor": self.motion_sensor,
+                "cloud_sync_enabled": self.cloud_sync_enabled,
+                "convex_url": self.convex_url,
+                "convex_query_path": self.convex_query_path,
+                "convex_mutation_path": self.convex_mutation_path,
+                "convex_auth_token": self.convex_auth_token,
+                "cloud_poll_interval": self.cloud_poll_interval,
             }
             tmp = self.filepath.with_suffix(".tmp")
             tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
             tmp.replace(self.filepath)
 
 
+class PhoneStateManager:
+    """Manages phone variables synced via Siri Shortcuts or Convex cloud database."""
+
+    def __init__(self, filepath: Path):
+        self.filepath = filepath
+        self._lock = threading.Lock()
+        self.sleep_focus: bool = False
+        self.is_home: bool = True
+        self.focus_mode: str = "none"
+        self.battery_level: Optional[int] = None
+        self.last_updated: Optional[str] = None
+        self.last_sync_source: str = "init"
+        self.load()
+
+    def load(self) -> None:
+        if self.filepath.exists():
+            try:
+                data = json.loads(self.filepath.read_text(encoding="utf-8"))
+                self.sleep_focus = bool(data.get("sleep_focus", False))
+                self.is_home = bool(data.get("is_home", True))
+                self.focus_mode = str(data.get("focus_mode", "none"))
+                self.battery_level = data.get("battery_level")
+                self.last_updated = data.get("last_updated")
+                self.last_sync_source = data.get("last_sync_source", "local")
+            except Exception as exc:
+                print(f"Error loading phone state: {exc}")
+
+    def save(self) -> None:
+        with self._lock:
+            data = {
+                "sleep_focus": self.sleep_focus,
+                "is_home": self.is_home,
+                "focus_mode": self.focus_mode,
+                "battery_level": self.battery_level,
+                "last_updated": self.last_updated,
+                "last_sync_source": self.last_sync_source,
+            }
+            try:
+                tmp = self.filepath.with_suffix(".tmp")
+                tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                tmp.replace(self.filepath)
+            except Exception as exc:
+                print(f"Error saving phone state: {exc}")
+
+    def update_state(
+        self,
+        sleep_focus: Optional[bool] = None,
+        is_home: Optional[bool] = None,
+        focus_mode: Optional[str] = None,
+        battery_level: Optional[int] = None,
+        source: str = "local",
+    ) -> Dict[str, Any]:
+        with self._lock:
+            if sleep_focus is not None:
+                self.sleep_focus = bool(sleep_focus)
+                if self.sleep_focus:
+                    self.focus_mode = "sleep"
+                elif self.focus_mode == "sleep":
+                    self.focus_mode = "none"
+
+            if is_home is not None:
+                self.is_home = bool(is_home)
+
+            if focus_mode is not None:
+                self.focus_mode = str(focus_mode)
+                if self.focus_mode.lower() == "sleep":
+                    self.sleep_focus = True
+
+            if battery_level is not None:
+                try:
+                    self.battery_level = max(0, min(100, int(battery_level)))
+                except (ValueError, TypeError):
+                    pass
+
+            self.last_sync_source = source
+            self.last_updated = datetime.now().isoformat(timespec="seconds")
+
+        self.save()
+        return self.get_state()
+
+    def get_state(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "sleep_focus": self.sleep_focus,
+                "is_home": self.is_home,
+                "focus_mode": self.focus_mode,
+                "battery_level": self.battery_level,
+                "last_updated": self.last_updated,
+                "last_sync_source": self.last_sync_source,
+            }
+
+
+class ConvexCloudSyncer:
+    """Synchronizes phone state variables with Convex database deployment in background."""
+
+    def __init__(
+        self,
+        settings: SettingsStore,
+        phone_state: PhoneStateManager,
+        motion_manager: "MotionSensorManager",
+        controller: Optional["DashboardController"] = None,
+    ):
+        self.settings = settings
+        self.phone_state = phone_state
+        self.motion_manager = motion_manager
+        self.controller = controller
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self.last_sync_time: Optional[float] = None
+        self.last_error: Optional[str] = None
+        self.sync_count: int = 0
+        self.is_connected: bool = False
+
+    def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._sync_loop, daemon=True)
+        self._thread.start()
+        print("Convex cloud syncer started.")
+
+    def stop(self) -> None:
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            print("Convex cloud syncer stopped.")
+
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "enabled": self.settings.cloud_sync_enabled,
+            "convex_url": self.settings.convex_url,
+            "convex_query_path": self.settings.convex_query_path,
+            "convex_mutation_path": self.settings.convex_mutation_path,
+            "poll_interval": self.settings.cloud_poll_interval,
+            "connected": self.is_connected,
+            "last_sync_time": self.last_sync_time,
+            "last_error": self.last_error,
+            "sync_count": self.sync_count,
+        }
+
+    def fetch_convex_state(self) -> tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+        """Queries the Convex database and returns (success, parsed_state_dict, error_message)."""
+        base_url = (self.settings.convex_url or "").strip().rstrip("/")
+        if not base_url:
+            return False, None, "Convex URL not configured"
+
+        query_path = (self.settings.convex_query_path or "dashvars:get").strip()
+
+        if "/api/query" in base_url or base_url.endswith(".site"):
+            url = base_url
+        else:
+            url = f"{base_url}/api/query"
+
+        body_bytes = json.dumps({"path": query_path, "args": {}}).encode("utf-8")
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Dash-Convex-Syncer/1.0",
+        }
+        if self.settings.convex_auth_token:
+            headers["Authorization"] = f"Bearer {self.settings.convex_auth_token.strip()}"
+
+        try:
+            req = Request(url, data=body_bytes, headers=headers, method="POST")
+            with urlopen(req, timeout=8) as resp:
+                raw = resp.read().decode("utf-8")
+                data = json.loads(raw)
+        except HTTPError as err:
+            return False, None, f"HTTP {err.code}: {err.reason}"
+        except Exception as exc:
+            return False, None, str(exc)
+
+        parsed = self._extract_state_from_convex(data)
+        return True, parsed, None
+
+    def _extract_state_from_convex(self, data: Any) -> Dict[str, Any]:
+        """Extracts sleep_focus, is_home, etc. from various Convex return formats."""
+        res: Dict[str, Any] = {}
+        if not isinstance(data, dict):
+            return res
+
+        val = data.get("value", data)
+
+        if isinstance(val, dict):
+            if "sleep_focus" in val or "is_home" in val or "focus_mode" in val:
+                for k in ("sleep_focus", "is_home", "focus_mode", "battery_level"):
+                    if k in val:
+                        res[k] = val[k]
+                return res
+            for nested in val.values():
+                if isinstance(nested, dict) and ("sleep_focus" in nested or "is_home" in nested):
+                    for k in ("sleep_focus", "is_home", "focus_mode", "battery_level"):
+                        if k in nested:
+                            res[k] = nested[k]
+                    return res
+
+        elif isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict):
+                    if "sleep_focus" in item or "is_home" in item:
+                        for k in ("sleep_focus", "is_home", "focus_mode", "battery_level"):
+                            if k in item:
+                                res[k] = item[k]
+                        return res
+                    key = item.get("key") or item.get("name") or item.get("var")
+                    val_item = item.get("value") if "value" in item else item.get("val")
+                    if key in ("sleep_focus", "is_home", "focus_mode", "battery_level"):
+                        res[str(key)] = val_item
+
+        return res
+
+    def _sync_loop(self) -> None:
+        while self._running:
+            if self.settings.cloud_sync_enabled and self.settings.convex_url:
+                success, state_dict, err = self.fetch_convex_state()
+                if success and state_dict is not None:
+                    self.is_connected = True
+                    self.last_error = None
+                    self.last_sync_time = time.time()
+                    self.sync_count += 1
+
+                    sleep_focus = state_dict.get("sleep_focus")
+                    is_home = state_dict.get("is_home")
+                    focus_mode = state_dict.get("focus_mode")
+                    battery_level = state_dict.get("battery_level")
+
+                    if sleep_focus is not None or is_home is not None or focus_mode is not None or battery_level is not None:
+                        current = self.phone_state.get_state()
+                        changed = False
+                        if sleep_focus is not None and bool(sleep_focus) != current["sleep_focus"]:
+                            changed = True
+                        if is_home is not None and bool(is_home) != current["is_home"]:
+                            changed = True
+
+                        self.phone_state.update_state(
+                            sleep_focus=sleep_focus,
+                            is_home=is_home,
+                            focus_mode=focus_mode,
+                            battery_level=battery_level,
+                            source="convex",
+                        )
+
+                        if changed:
+                            self.motion_manager.sync_power_state()
+                            if self.controller:
+                                self.controller.mark_state_dirty()
+                else:
+                    self.is_connected = False
+                    self.last_error = err
+
+            interval = max(2, int(self.settings.cloud_poll_interval))
+            time.sleep(interval)
+
+
 class MotionSensorManager:
     """Tracks motion and display power states for the dashboard."""
 
-    def __init__(self, sensor_available: bool, settings_store: SettingsStore):
+    def __init__(
+        self,
+        sensor_available: bool,
+        settings_store: SettingsStore,
+        phone_state: Optional[PhoneStateManager] = None,
+    ):
         self.sensor_available = sensor_available
         self.settings = settings_store
+        self.phone_state = phone_state
         self.last_activity_time = time.time()
         self.motion_detected = False
         self.display_dimmed = False
@@ -456,28 +735,74 @@ class MotionSensorManager:
             self._thread.join(timeout=1.0)
             print("Motion manager stopped.")
 
+    def sync_power_state(self) -> None:
+        """Synchronize display power when phone state (sleep focus / away) updates."""
+        with self._lock:
+            is_sleep = bool(self.phone_state and self.phone_state.sleep_focus)
+            is_away = bool(self.phone_state and not self.phone_state.is_home)
+            if is_sleep or is_away:
+                if not self.display_off:
+                    self.display_off = True
+                    self.display_dimmed = False
+                    print("Phone state sync: sleep/away active, display turned OFF.")
+                    if self._display_turn_off:
+                        self._display_turn_off()
+            else:
+                if not self.settings.motion_sensor:
+                    self.display_off = False
+                    self.display_dimmed = False
+                    if self._display_turn_on:
+                        self._display_turn_on()
+                    if self._display_set_brightness:
+                        self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+
     def report_user_activity(self, motion: bool = False) -> None:
         with self._lock:
             self.last_activity_time = time.time()
+            is_sleep = bool(self.phone_state and self.phone_state.sleep_focus)
+            is_away = bool(self.phone_state and not self.phone_state.is_home)
+
             if motion:
+                # If motion occurred but Sleep Focus or Away mode is active, suppress screen wake
+                if is_sleep or is_away:
+                    self.motion_detected = True
+                    return
+
                 self.motion_detected = True
+                if self.display_off:
+                    print("Motion/activity detected: restoring display from OFF.")
+                elif self.display_dimmed:
+                    print("Motion/activity detected: restoring display from DIM.")
 
-            if self.display_off:
-                print("Motion/activity detected: restoring display from OFF.")
-            elif self.display_dimmed:
-                print("Motion/activity detected: restoring display from DIM.")
+                self.display_dimmed = False
+                self.display_off = False
 
-            self.display_dimmed = False
-            self.display_off = False
+                if self._display_turn_on:
+                    self._display_turn_on()
+                if self._display_set_brightness:
+                    self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+            else:
+                # Physical interaction (dial, physical button, touch/web action) ALWAYS wakes display
+                self.display_dimmed = False
+                self.display_off = False
 
-            if self._display_turn_on:
-                self._display_turn_on()
-            if self._display_set_brightness:
-                self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+                if self._display_turn_on:
+                    self._display_turn_on()
+
+                # In sleep focus mode, physical wake is ultra-dim 1% brightness (~2 on 0-255 scale)
+                if is_sleep:
+                    night_brightness = max(1, int(1 / 100 * 255))
+                    if self._display_set_brightness:
+                        self._display_set_brightness(night_brightness)
+                else:
+                    if self._display_set_brightness:
+                        self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
 
     def get_status(self) -> Dict[str, Any]:
         with self._lock:
             elapsed = max(0, int(time.time() - self.last_activity_time))
+            is_sleep = bool(self.phone_state and self.phone_state.sleep_focus)
+            is_away = bool(self.phone_state and not self.phone_state.is_home)
             return {
                 "sensor_available": self.sensor_available,
                 "motion_detected": self.motion_detected,
@@ -485,6 +810,9 @@ class MotionSensorManager:
                 "display_off": self.display_off,
                 "seconds_since_activity": elapsed,
                 "minutes_since_activity": elapsed // 60,
+                "sleep_focus": is_sleep,
+                "is_home": not is_away,
+                "motion_suppressed": is_sleep or is_away,
             }
 
     def _monitor_loop(self) -> None:
@@ -506,17 +834,24 @@ class MotionSensorManager:
                         print(f"Motion sensor read error: {exc}")
 
             with self._lock:
+                is_sleep = bool(self.phone_state and self.phone_state.sleep_focus)
+                is_away = bool(self.phone_state and not self.phone_state.is_home)
+
                 if sensor_motion:
-                    self.last_activity_time = now
-                    if not self.motion_detected and MOTION_DEBUG:
-                        print("Motion detected.")
-                    self.motion_detected = True
-                    self.display_dimmed = False
-                    self.display_off = False
-                    if self._display_turn_on:
-                        self._display_turn_on()
-                    if self._display_set_brightness:
-                        self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+                    if is_sleep or is_away:
+                        # Suppress wake: do not turn on screen or reset activity timer
+                        self.motion_detected = True
+                    else:
+                        self.last_activity_time = now
+                        if not self.motion_detected and MOTION_DEBUG:
+                            print("Motion detected.")
+                        self.motion_detected = True
+                        self.display_dimmed = False
+                        self.display_off = False
+                        if self._display_turn_on:
+                            self._display_turn_on()
+                        if self._display_set_brightness:
+                            self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
                 else:
                     if self.motion_detected and MOTION_DEBUG:
                         print("No motion detected.")
@@ -536,18 +871,22 @@ class MotionSensorManager:
                         self.display_dimmed = True
                         print("No activity threshold reached: display set to DIM state.")
                         if self._display_set_brightness:
-                            self._display_set_brightness(int(self.settings.dim_brightness / 100 * 255))
+                            if is_sleep:
+                                self._display_set_brightness(max(1, int(1 / 100 * 255)))
+                            else:
+                                self._display_set_brightness(int(self.settings.dim_brightness / 100 * 255))
 
-                # Handle motion sensor override
+                # Handle motion sensor override (always on when motion_sensor toggle is disabled)
                 if not self.settings.motion_sensor:
-                    self.last_activity_time = now
-                    if self.display_dimmed or self.display_off:
-                        self.display_dimmed = False
-                        self.display_off = False
-                        if self._display_turn_on:
-                            self._display_turn_on()
-                        if self._display_set_brightness:
-                            self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
+                    if not (is_sleep or is_away):
+                        self.last_activity_time = now
+                        if self.display_dimmed or self.display_off:
+                            self.display_dimmed = False
+                            self.display_off = False
+                            if self._display_turn_on:
+                                self._display_turn_on()
+                            if self._display_set_brightness:
+                                self._display_set_brightness(int(self.settings.max_brightness / 100 * 255))
 
             time.sleep(MOTION_CHECK_INTERVAL)
 
@@ -734,6 +1073,12 @@ class MotionStatusWidget(Widget):
         elif status["display_dimmed"]:
             display_state = "DIM"
 
+        mode_badge = "NORMAL"
+        if status.get("sleep_focus"):
+            mode_badge = "SLEEP (1%)"
+        elif not status.get("is_home", True):
+            mode_badge = "AWAY"
+
         return {
             "id": self.widget_id,
             "name": self.name,
@@ -741,6 +1086,10 @@ class MotionStatusWidget(Widget):
             "motion_detected": status["motion_detected"],
             "sensor_available": status["sensor_available"],
             "display_state": display_state,
+            "mode_badge": mode_badge,
+            "motion_suppressed": status.get("motion_suppressed", False),
+            "sleep_focus": status.get("sleep_focus", False),
+            "is_home": status.get("is_home", True),
             "idle": (
                 f"{status['minutes_since_activity']:02d}:"
                 f"{status['seconds_since_activity'] % 60:02d}"
@@ -2044,7 +2393,9 @@ class DashboardController:
     def __init__(self, sensor_available: bool, spotify_client: Optional[SpotifyClient] = None):
         self.settings = SettingsStore(BASE_DIR / "settings.json")
         self.wifi_manager = WifiManager(self.settings)
-        self.motion_manager = MotionSensorManager(sensor_available, self.settings)
+        self.phone_state = PhoneStateManager(BASE_DIR / "phone_state.json")
+        self.motion_manager = MotionSensorManager(sensor_available, self.settings, self.phone_state)
+        self.convex_syncer = ConvexCloudSyncer(self.settings, self.phone_state, self.motion_manager, self)
         self.spotify_client = spotify_client or SpotifyClient(BASE_DIR / "spotify_tokens.json")
         self.apps: List[App] = [
             PongApp(),
@@ -2181,6 +2532,8 @@ class DashboardController:
                 "reload_requested": reload_req,
                 "display_mode": display_mode,
                 "motion": motion,
+                "phone_state": self.phone_state.get_state(),
+                "convex_status": self.convex_syncer.get_status(),
                 "spotify_status": spotify_status,
                 "settings": {
                     "max_brightness": getattr(self.settings, "max_brightness", 100),
@@ -2188,6 +2541,11 @@ class DashboardController:
                     "motion_sensor": getattr(self.settings, "motion_sensor", True),
                     "dim_delay": getattr(self.settings, "dim_delay", 30),
                     "off_delay": getattr(self.settings, "off_delay", 90),
+                    "cloud_sync_enabled": getattr(self.settings, "cloud_sync_enabled", True),
+                    "convex_url": getattr(self.settings, "convex_url", "https://tremendous-tiger-513.convex.cloud"),
+                    "convex_query_path": getattr(self.settings, "convex_query_path", "dashvars:get"),
+                    "convex_mutation_path": getattr(self.settings, "convex_mutation_path", "dashvars:set"),
+                    "cloud_poll_interval": getattr(self.settings, "cloud_poll_interval", 5),
                 },
                 "slots": self.wide_slots,
                 "widgets": widget_payloads,
@@ -2216,6 +2574,48 @@ class DashboardController:
             if action == "toggle_motion_sensor":
                 self.settings.motion_sensor = not getattr(self.settings, "motion_sensor", True)
                 self.save_widget_state()
+                return True
+            if action == "set_phone_state":
+                self.phone_state.update_state(
+                    sleep_focus=params.get("sleep_focus"),
+                    is_home=params.get("is_home"),
+                    focus_mode=params.get("focus_mode"),
+                    battery_level=params.get("battery_level"),
+                    source="web",
+                )
+                self.motion_manager.sync_power_state()
+                self.mark_state_dirty()
+                return True
+            if action == "toggle_sleep_focus":
+                new_val = not self.phone_state.sleep_focus
+                self.phone_state.update_state(sleep_focus=new_val, source="web")
+                self.motion_manager.sync_power_state()
+                self.mark_state_dirty()
+                return True
+            if action in ("toggle_presence", "toggle_home"):
+                new_val = not self.phone_state.is_home
+                self.phone_state.update_state(is_home=new_val, source="web")
+                self.motion_manager.sync_power_state()
+                self.mark_state_dirty()
+                return True
+            if action == "save_convex_config":
+                if "convex_url" in params:
+                    self.settings.convex_url = str(params["convex_url"]).strip()
+                if "convex_query_path" in params:
+                    self.settings.convex_query_path = str(params["convex_query_path"]).strip()
+                if "convex_mutation_path" in params:
+                    self.settings.convex_mutation_path = str(params["convex_mutation_path"]).strip()
+                if "convex_auth_token" in params:
+                    self.settings.convex_auth_token = str(params["convex_auth_token"]).strip()
+                if "cloud_sync_enabled" in params:
+                    self.settings.cloud_sync_enabled = bool(params["cloud_sync_enabled"])
+                if "cloud_poll_interval" in params:
+                    try:
+                        self.settings.cloud_poll_interval = max(2, min(120, int(params["cloud_poll_interval"])))
+                    except (ValueError, TypeError):
+                        pass
+                self.settings.save()
+                self.mark_state_dirty()
                 return True
             if action == "update_software":
                 self._execute_update_software(quiet=False)
@@ -2345,8 +2745,10 @@ class DashboardController:
 
     def start(self) -> None:
         self.motion_manager.start_monitoring()
+        self.convex_syncer.start()
 
     def stop(self) -> None:
+        self.convex_syncer.stop()
         self.motion_manager.stop_monitoring()
 
     def update_widgets(self) -> None:
@@ -3225,6 +3627,12 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         if path == "/wide.js":
             self._serve_file("wide.js", "application/javascript; charset=utf-8")
             return
+        if path == "/api/phone/state":
+            self._send_json({
+                "state": self.controller.phone_state.get_state(),
+                "convex": self.controller.convex_syncer.get_status()
+            })
+            return
         if path == "/api/wide/state":
             self._send_json(self.controller.get_wide_snapshot())
             return
@@ -3319,6 +3727,120 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/phone/state":
+            body = self._read_json_body() or {}
+            if not body and parsed.query:
+                from urllib.parse import parse_qs
+                qs = parse_qs(parsed.query)
+                if "sleep_focus" in qs:
+                    body["sleep_focus"] = qs["sleep_focus"][0].lower() in ("true", "1", "yes", "on")
+                if "is_home" in qs:
+                    body["is_home"] = qs["is_home"][0].lower() in ("true", "1", "yes", "on", "home")
+                if "focus_mode" in qs:
+                    body["focus_mode"] = qs["focus_mode"][0]
+                if "battery_level" in qs:
+                    body["battery_level"] = qs["battery_level"][0]
+
+            sleep_focus = body.get("sleep_focus")
+            if sleep_focus is not None and not isinstance(sleep_focus, bool):
+                sleep_focus = str(sleep_focus).lower() in ("true", "1", "yes", "on")
+
+            is_home = body.get("is_home")
+            if is_home is not None and not isinstance(is_home, bool):
+                is_home = str(is_home).lower() in ("true", "1", "yes", "on", "home")
+
+            focus_mode = body.get("focus_mode")
+            battery_level = body.get("battery_level")
+
+            updated = self.controller.phone_state.update_state(
+                sleep_focus=sleep_focus,
+                is_home=is_home,
+                focus_mode=focus_mode,
+                battery_level=battery_level,
+                source="api",
+            )
+            self.controller.motion_manager.sync_power_state()
+            self.controller.mark_state_dirty()
+            self._send_json({"success": True, "state": updated})
+            return
+
+        if parsed.path == "/api/phone/sleep":
+            body = self._read_json_body() or {}
+            enabled = body.get("enabled", body.get("sleep_focus"))
+            if enabled is None and parsed.query:
+                from urllib.parse import parse_qs
+                qs = parse_qs(parsed.query)
+                if "enabled" in qs:
+                    enabled = qs["enabled"][0]
+                elif "sleep_focus" in qs:
+                    enabled = qs["sleep_focus"][0]
+            if enabled is None:
+                enabled = True
+            elif not isinstance(enabled, bool):
+                enabled = str(enabled).lower() in ("true", "1", "yes", "on")
+
+            updated = self.controller.phone_state.update_state(sleep_focus=enabled, source="api")
+            self.controller.motion_manager.sync_power_state()
+            self.controller.mark_state_dirty()
+            self._send_json({"success": True, "state": updated})
+            return
+
+        if parsed.path == "/api/phone/presence":
+            body = self._read_json_body() or {}
+            status = body.get("status", body.get("presence", body.get("is_home")))
+            if status is None and parsed.query:
+                from urllib.parse import parse_qs
+                qs = parse_qs(parsed.query)
+                if "status" in qs:
+                    status = qs["status"][0]
+                elif "is_home" in qs:
+                    status = qs["is_home"][0]
+            if status is None:
+                is_home = True
+            elif isinstance(status, bool):
+                is_home = status
+            else:
+                is_home = str(status).lower() in ("home", "true", "1", "yes", "in")
+
+            updated = self.controller.phone_state.update_state(is_home=is_home, source="api")
+            self.controller.motion_manager.sync_power_state()
+            self.controller.mark_state_dirty()
+            self._send_json({"success": True, "state": updated})
+            return
+
+        if parsed.path == "/api/phone/convex-config":
+            body = self._read_json_body() or {}
+            if "convex_url" in body:
+                self.controller.settings.convex_url = str(body["convex_url"]).strip()
+            if "convex_query_path" in body:
+                self.controller.settings.convex_query_path = str(body["convex_query_path"]).strip()
+            if "convex_mutation_path" in body:
+                self.controller.settings.convex_mutation_path = str(body["convex_mutation_path"]).strip()
+            if "convex_auth_token" in body:
+                self.controller.settings.convex_auth_token = str(body["convex_auth_token"]).strip()
+            if "cloud_sync_enabled" in body:
+                self.controller.settings.cloud_sync_enabled = bool(body["cloud_sync_enabled"])
+            if "cloud_poll_interval" in body:
+                try:
+                    self.controller.settings.cloud_poll_interval = max(2, min(120, int(body["cloud_poll_interval"])))
+                except (ValueError, TypeError):
+                    pass
+            self.controller.settings.save()
+            success, data, err = self.controller.convex_syncer.fetch_convex_state()
+            self._send_json({
+                "success": success,
+                "data": data,
+                "error": err,
+                "settings": {
+                    "convex_url": self.controller.settings.convex_url,
+                    "convex_query_path": self.controller.settings.convex_query_path,
+                    "convex_mutation_path": self.controller.settings.convex_mutation_path,
+                    "cloud_sync_enabled": self.controller.settings.cloud_sync_enabled,
+                    "cloud_poll_interval": self.controller.settings.cloud_poll_interval,
+                }
+            })
+            return
 
         if parsed.path == "/api/wifi/connect":
             body = self._read_json_body() or {}

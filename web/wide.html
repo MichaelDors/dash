@@ -55,6 +55,14 @@
                 <i class="fa-solid fa-cloud-sun pill-icon"></i>
                 <span class="pill-text" id="heroWeatherText">--°F</span>
               </div>
+              <div class="meta-pill" id="heroSleepPill" title="Sleep Focus (1% Night Mode)">
+                <i class="fa-solid fa-moon pill-icon"></i>
+                <span class="pill-text" id="heroSleepText">Awake</span>
+              </div>
+              <div class="meta-pill" id="heroPresencePill" title="Location Presence">
+                <i class="fa-solid fa-house pill-icon"></i>
+                <span class="pill-text" id="heroPresenceText">Home</span>
+              </div>
               <div class="meta-pill">
                 <i class="fa-solid fa-bolt pill-icon"></i>
                 <span class="pill-text">Live Touch Surface</span>
@@ -178,7 +186,48 @@
             </div>
           </div>
 
-          <!-- Section 2: Wi-Fi Network Settings -->
+          <!-- Section 2: Phone & Convex Cloud Integration -->
+          <div class="settings-card" id="cardConvexSync">
+            <div class="settings-card-header">
+              <i class="fa-solid fa-mobile-screen-button"></i>
+              <h3>Phone & Convex Sync</h3>
+            </div>
+            <div class="settings-metrics-list" style="margin-bottom: 10px;">
+              <div class="metric-row">
+                <span class="metric-label">Sleep Focus:</span>
+                <span class="metric-value badge" id="cfgSleepFocusStatus">INACTIVE</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Presence:</span>
+                <span class="metric-value badge" id="cfgPresenceStatus">HOME</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Convex Cloud:</span>
+                <span class="metric-value badge ip-badge" id="cfgConvexConnStatus">CONNECTED</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Last Synced:</span>
+                <span class="metric-value mono" id="cfgLastPhoneSync" style="font-size: 11px;">--</span>
+              </div>
+            </div>
+            <div class="settings-actions-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 10px;">
+              <button class="touch-btn" id="btnToggleSleepFocus"><i class="fa-solid fa-moon"></i> Toggle Sleep</button>
+              <button class="touch-btn" id="btnTogglePresence"><i class="fa-solid fa-location-dot"></i> Toggle Home/Away</button>
+            </div>
+            <form id="cfgConvexForm" class="settings-form-col" style="margin-top: 6px;">
+              <input type="text" id="cfgConvexUrl" placeholder="Convex Deployment URL" class="settings-input" value="https://tremendous-tiger-513.convex.cloud" />
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                <input type="text" id="cfgConvexQueryPath" placeholder="Query (dashvars:get)" class="settings-input" value="dashvars:get" />
+                <input type="text" id="cfgConvexMutationPath" placeholder="Mutation (dashvars:set)" class="settings-input" value="dashvars:set" />
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button type="submit" class="touch-btn btn-primary" style="flex:1;"><i class="fa-solid fa-floppy-disk"></i> Save & Test Convex</button>
+                <button type="button" class="touch-btn" id="btnOpenShortcutsGuide" style="flex:1;"><i class="fa-solid fa-bolt"></i> Siri Shortcuts Setup</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Section 3: Wi-Fi Network Settings -->
           <div class="settings-card">
             <div class="settings-card-header">
               <i class="fa-solid fa-wifi"></i>
@@ -195,17 +244,13 @@
               </div>
             </div>
             <div class="settings-actions-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 8px;">
-              <button class="touch-btn" id="btnScanWifi"><i class="fa-solid fa-arrows-rotate"></i> Scan
-                Networks</button>
-              <a href="/wifi" target="_blank" class="touch-btn"
-                style="text-decoration:none; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:6px;"><i
-                  class="fa-solid fa-qrcode"></i> QR Setup</a>
+              <button class="touch-btn" id="btnScanWifi"><i class="fa-solid fa-arrows-rotate"></i> Scan Networks</button>
+              <a href="/wifi" target="_blank" class="touch-btn" style="text-decoration:none; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:6px;"><i class="fa-solid fa-qrcode"></i> QR Setup</a>
             </div>
-            <div id="cfgWifiList"
-              style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
+            <div id="cfgWifiList" style="display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto;"></div>
           </div>
 
-          <!-- Section 3: Spotify Integration Credentials -->
+          <!-- Section 4: Spotify Integration Credentials -->
           <div class="settings-card">
             <div class="settings-card-header">
               <i class="fa-brands fa-spotify"></i>
@@ -214,46 +259,133 @@
             <p class="settings-status-text" id="cfgSpotifyStatus">Status: Checking...</p>
             <form id="cfgSpotifyForm" class="settings-form-col">
               <input type="text" id="cfgSpotifyClientId" placeholder="Spotify Client ID" class="settings-input" />
-              <input type="password" id="cfgSpotifyClientSecret" placeholder="Spotify Client Secret"
-                class="settings-input" />
-              <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect
-                Spotify</button>
+              <input type="password" id="cfgSpotifyClientSecret" placeholder="Spotify Client Secret" class="settings-input" />
+              <button type="submit" class="touch-btn btn-primary"><i class="fa-brands fa-spotify"></i> Connect Spotify</button>
             </form>
           </div>
 
-          <!-- Section 4: Weather Location Config -->
+          <!-- Section 5: Weather Location Config -->
           <div class="settings-card">
             <div class="settings-card-header">
               <i class="fa-solid fa-cloud-sun"></i>
               <h3>Weather Location</h3>
             </div>
             <form id="cfgWeatherForm" class="settings-form-col">
-              <input type="text" id="cfgWeatherLocation" placeholder="City, State (e.g. San Francisco, CA)"
-                class="settings-input" />
-              <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather
-                Location</button>
+              <input type="text" id="cfgWeatherLocation" placeholder="City, State (e.g. San Francisco, CA)" class="settings-input" />
+              <button type="submit" class="touch-btn btn-primary"><i class="fa-solid fa-location-dot"></i> Save Weather Location</button>
             </form>
           </div>
 
-          <!-- Section 5: System Controls & Power -->
+          <!-- Section 6: System Controls & Power -->
           <div class="settings-card" style="grid-column: span 2;">
             <div class="settings-card-header">
               <i class="fa-solid fa-sliders"></i>
               <h3>System Controls & Power</h3>
             </div>
             <div class="settings-actions-grid" style="grid-template-columns: repeat(5, 1fr);">
-              <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload
-                Page</button>
-              <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim
-                Motion</button>
-              <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update
-                Software</button>
-              <button class="touch-btn" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart
-                Device</button>
+              <button class="touch-btn" id="btnReloadWebInterface"><i class="fa-solid fa-arrows-rotate"></i> Reload Page</button>
+              <button class="touch-btn" id="btnSimulateMotion"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
+              <button class="touch-btn" id="btnUpdateSoftware"><i class="fa-solid fa-download"></i> Update Software</button>
+              <button class="touch-btn" id="btnRestartDevice"><i class="fa-solid fa-rotate-right"></i> Restart Device</button>
               <button class="touch-btn" id="btnShutdownDevice"><i class="fa-solid fa-power-off"></i> Shutdown</button>
             </div>
           </div>
         </section>
+      </div>
+
+      <!-- Siri Shortcuts Setup Modal -->
+      <div id="shortcutsModal" class="modal-backdrop hidden">
+        <div class="modal-card" style="max-width: 680px; max-height: 85vh; overflow-y: auto;">
+          <div class="modal-header">
+            <div>
+              <h3><i class="fa-brands fa-apple"></i> Siri Shortcuts & Convex Guide</h3>
+              <p>Trigger state updates from anywhere over Cellular or Wi-Fi</p>
+            </div>
+            <button class="modal-close-btn" id="btnCloseShortcutsModal">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+            <div class="guide-step-card">
+              <h4>1. Sleep Focus Automation (Turns motion off at night)</h4>
+              <p class="guide-desc">In iOS Shortcuts app &rarr; <strong>Automation</strong> tab &rarr; <strong>+</strong> &rarr; <strong>Sleep</strong> &rarr; <em>When Bedtime Starts / Sleep Focus turns On</em> &rarr; <strong>Run Immediately</strong>.</p>
+              <div class="code-box">
+                <span class="code-title">Action: Get Contents of URL (POST)</span>
+                <code>URL: <span class="convex-url-display">https://tremendous-tiger-513.convex.cloud/api/mutation</span>
+Method: POST
+Headers: Content-Type: application/json
+Request Body: {"path": "dashvars:set", "args": {"sleep_focus": true}}</code>
+                <button class="copy-code-btn" data-copy='{"path": "dashvars:set", "args": {"sleep_focus": true}}'><i class="fa-regular fa-copy"></i> Copy Body</button>
+              </div>
+            </div>
+
+            <div class="guide-step-card">
+              <h4>2. Wake Up Automation (Restores normal motion wake)</h4>
+              <p class="guide-desc">In iOS Shortcuts &rarr; <em>When Waking Up / Sleep Focus turns Off</em>.</p>
+              <div class="code-box">
+                <span class="code-title">Action: Get Contents of URL (POST)</span>
+                <code>Request Body: {"path": "dashvars:set", "args": {"sleep_focus": false}}</code>
+                <button class="copy-code-btn" data-copy='{"path": "dashvars:set", "args": {"sleep_focus": false}}'><i class="fa-regular fa-copy"></i> Copy Body</button>
+              </div>
+            </div>
+
+            <div class="guide-step-card">
+              <h4>3. Leave / Arrive Home (Location or Home Wi-Fi)</h4>
+              <p class="guide-desc">In iOS Shortcuts &rarr; <em>When Leaving Home / Disconnecting from Home Wi-Fi</em>.</p>
+              <div class="code-box">
+                <span class="code-title">Leave Home Body (Screen Stays Off):</span>
+                <code>{"path": "dashvars:set", "args": {"is_home": false}}</code>
+                <button class="copy-code-btn" data-copy='{"path": "dashvars:set", "args": {"is_home": false}}'><i class="fa-regular fa-copy"></i> Copy Body</button>
+              </div>
+              <div class="code-box" style="margin-top:8px;">
+                <span class="code-title">Arrive Home Body (Normal Motion Resumes):</span>
+                <code>{"path": "dashvars:set", "args": {"is_home": true}}</code>
+                <button class="copy-code-btn" data-copy='{"path": "dashvars:set", "args": {"is_home": true}}'><i class="fa-regular fa-copy"></i> Copy Body</button>
+              </div>
+            </div>
+
+            <div class="guide-step-card">
+              <h4>4. Convex Deployment Code (`convex/dashvars.ts`)</h4>
+              <p class="guide-desc">Add this file into your Convex project folder to handle the queries & mutations:</p>
+              <div class="code-box">
+                <pre style="margin:0; font-size:11px; line-height:1.4; color:#a5d6ff;">import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+
+export const get = query({
+  args: {},
+  handler: async (ctx) => {
+    const record = await ctx.db.query("dashvars").order("desc").first();
+    return record || { sleep_focus: false, is_home: true };
+  },
+});
+
+export const set = mutation({
+  args: {
+    sleep_focus: v.optional(v.boolean()),
+    is_home: v.optional(v.boolean()),
+    focus_mode: v.optional(v.string()),
+    battery_level: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.query("dashvars").order("desc").first();
+    if (existing) {
+      await ctx.db.patch(existing._id, { ...args, updated_at: new Date().toISOString() });
+    } else {
+      await ctx.db.insert("dashvars", {
+        sleep_focus: args.sleep_focus ?? false,
+        is_home: args.is_home ?? true,
+        focus_mode: args.focus_mode ?? "none",
+        updated_at: new Date().toISOString(),
+      });
+    }
+  },
+});</pre>
+                <button class="copy-code-btn" id="btnCopyConvexCode"><i class="fa-regular fa-copy"></i> Copy Convex Code</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="touch-btn btn-primary" id="btnDismissShortcutsModal">Got it!</button>
+          </div>
+        </div>
       </div>
 
       <!-- OLED Dedicated Subpage -->
