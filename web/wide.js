@@ -953,6 +953,19 @@
       });
     });
 
+    // Screen Off / Sleep Blackout Tap to Wake Listener
+    const elDisplayOffOverlay = document.getElementById("displayOffOverlay");
+    if (elDisplayOffOverlay) {
+      const wakeDisplay = (e) => {
+        if (e) e.preventDefault();
+        sendAction("activity");
+        elDisplayOffOverlay.classList.remove("is-off", "is-dim");
+        elDisplayOffOverlay.classList.add("hidden");
+      };
+      elDisplayOffOverlay.addEventListener("click", wakeDisplay);
+      elDisplayOffOverlay.addEventListener("touchstart", wakeDisplay, { passive: false });
+    }
+
     if (elCfgSpotifyForm) {
       elCfgSpotifyForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1300,6 +1313,22 @@
     if (state.settingsOpen) {
       updateSettingsMetrics(data);
     }
+
+    // Update Screen Off / Dim Sleep Overlay for Touch Displays
+    const elDisplayOff = document.getElementById("displayOffOverlay");
+    if (elDisplayOff) {
+      const mode = (data.display_mode || "on").toLowerCase();
+      if (mode === "off") {
+        elDisplayOff.classList.add("is-off");
+        elDisplayOff.classList.remove("is-dim", "hidden");
+      } else if (mode === "dim") {
+        elDisplayOff.classList.add("is-dim");
+        elDisplayOff.classList.remove("is-off", "hidden");
+      } else {
+        elDisplayOff.classList.remove("is-off", "is-dim");
+        elDisplayOff.classList.add("hidden");
+      }
+    }
   }
 
   // Hero Time update with Date Bug Fix!
@@ -1400,6 +1429,10 @@
       const sp = data.apps.spotify || data.widgets.spotify || {};
       const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
       spProg.style.width = `${progress}%`;
+    }
+    if (document.getElementById("card_spotify")) {
+      const sp = data.apps.spotify || data.widgets.spotify || {};
+      updateDashboardSpotifyCard(sp);
     }
     const tmText = document.getElementById("widget-timer-text");
     if (tmText) {
@@ -1571,6 +1604,62 @@
     updateMarqueeForElement(document.getElementById("widgetSpotArtist"), 1);
   }
 
+  function updateSpotifyText(elId, textSelector, value, maxLines) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const textEl = el.querySelector(textSelector) || el;
+    if (textEl.textContent !== value) {
+      textEl.textContent = value;
+    }
+    updateMarqueeForElement(el, maxLines);
+  }
+
+  function updateSpotifyArtImage(img, albumArt, sweepId) {
+    if (!img) return;
+    const nextAlbumArt = albumArt || "";
+    const currentAlbumArt = img.dataset.albumArtUrl || img.getAttribute("src") || "";
+
+    if (!nextAlbumArt) {
+      img.dataset.albumArtUrl = "";
+      img.removeAttribute("src");
+      img.style.display = "none";
+      return;
+    }
+
+    if (currentAlbumArt === nextAlbumArt) {
+      img.style.display = "block";
+      return;
+    }
+
+    img.dataset.albumArtUrl = nextAlbumArt;
+    img.setAttribute("src", nextAlbumArt);
+    img.style.display = "block";
+
+    const sweep = sweepId ? document.getElementById(sweepId) : img.parentElement?.querySelector(".art-sweep-flash");
+    if (sweep) {
+      sweep.classList.remove("flash-active");
+      void sweep.offsetWidth;
+      sweep.classList.add("flash-active");
+    }
+  }
+
+  function updateDashboardSpotifyCard(sp) {
+    const track = sp.track_name || "No Track Playing";
+    const artist = sp.artist_name || "Connect Spotify in Settings";
+    const isPlaying = sp.is_playing;
+    const albumArt = sp.album_art_url || "";
+
+    updateSpotifyText("widgetSpotTitle", ".title-text", track, 2);
+    updateSpotifyText("widgetSpotArtist", ".artist-text", artist, 1);
+    updateSpotifyArtImage(document.getElementById("widgetSpotArtImg"), albumArt);
+
+    const playIcon = document.querySelector("#card_spotify .btn-play-main i");
+    if (playIcon) {
+      const iconClass = `fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`;
+      if (playIcon.className !== iconClass) playIcon.className = iconClass;
+    }
+  }
+
   // Create Card HTML for Dashboard Grid
   function createWidgetCardHTML(appId, data) {
     const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
@@ -1586,7 +1675,7 @@
 
       const artHTML = albumArt ?
         `<div class="spotify-art-wrapper">
-          <img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" alt="Album Art" />
+          <img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" id="widgetSpotArtImg" data-album-art-url="${escapeHTML(albumArt)}" alt="Album Art" />
           <div class="art-sweep-flash flash-active"></div>
         </div>` :
         `<div class="spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
@@ -2022,7 +2111,7 @@
       elOverlayContent.innerHTML = `
         <div class="fs-spotify-container" id="fsSpotifyContainer">
           <div class="fs-spotify-art-wrapper" id="fsSpotArtWrap">
-            <img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" id="fsSpotArtImg" alt="Album Art" />
+            <img src="${escapeHTML(albumArt)}" class="fs-spotify-art-large" id="fsSpotArtImg" data-album-art-url="${escapeHTML(albumArt)}" alt="Album Art" />
             <div class="art-sweep-flash flash-active" id="fsSpotSweep"></div>
           </div>
           <div class="fs-spotify-details">
@@ -2059,37 +2148,9 @@
     }
 
     // Direct DOM updates on every 250ms poll
-    const elTitle = document.getElementById("fsSpotTitle");
-    if (elTitle) {
-      const spanTitle = elTitle.querySelector(".title-text") || elTitle;
-      if (spanTitle.innerText !== track) spanTitle.innerText = track;
-      updateMarqueeForElement(elTitle, 2);
-    }
-
-    const elArtist = document.getElementById("fsSpotArtist");
-    if (elArtist) {
-      const spanArtist = elArtist.querySelector(".artist-text") || elArtist;
-      if (spanArtist.innerText !== artist) spanArtist.innerText = artist;
-      updateMarqueeForElement(elArtist, 1);
-    }
-
-    const elArtImg = document.getElementById("fsSpotArtImg");
-    if (elArtImg) {
-      if (albumArt) {
-        if (elArtImg.src !== albumArt) {
-          elArtImg.src = albumArt;
-          elArtImg.style.display = "block";
-          const sweep = document.getElementById("fsSpotSweep");
-          if (sweep) {
-            sweep.classList.remove("flash-active");
-            void sweep.offsetWidth;
-            sweep.classList.add("flash-active");
-          }
-        }
-      } else {
-        elArtImg.style.display = "none";
-      }
-    }
+    updateSpotifyText("fsSpotTitle", ".title-text", track, 2);
+    updateSpotifyText("fsSpotArtist", ".artist-text", artist, 1);
+    updateSpotifyArtImage(document.getElementById("fsSpotArtImg"), albumArt, "fsSpotSweep");
 
     const elProg = document.getElementById("fs-spotify-progress");
     if (elProg) elProg.style.width = `${pct}%`;

@@ -2554,6 +2554,10 @@ class DashboardController:
 
     def dispatch_wide_action(self, action: str, params: Dict[str, Any]) -> bool:
         with self._lock:
+            if action in ("activity", "wake", "press"):
+                self.motion_manager.report_user_activity(motion=False)
+                self.mark_state_dirty()
+                return True
             if action == "reload_web_interface" or action == "reload_page":
                 self._reload_web_requested = True
                 return True
