@@ -1296,7 +1296,7 @@
     }
 
     // Update Persistent Time Hero Card
-    updateHeroTime(data.widgets.time, data.widgets.weather);
+    updateHeroTime(data.widgets.time, data.widgets.weather, data.phone_state);
 
     // Update Dashboard Grid Slots
     renderDashboardSlots(data);
@@ -1304,6 +1304,9 @@
     // If Overlay App is open, update its content live!
     if (state.activeOverlayApp) {
       renderOverlayAppContent(state.activeOverlayApp, data);
+    }
+    if (state.activeOverlayApp !== "spotify" && isSpotifyOverlayVisible()) {
+      updateFullScreenSpotifyUI(data);
     }
 
     // Recalculate conditional marquees after layout/text updates
@@ -1332,7 +1335,7 @@
   }
 
   // Hero Time update with Date Bug Fix!
-  function updateHeroTime(timeWidget, weatherWidget) {
+  function updateHeroTime(timeWidget, weatherWidget, phoneState) {
     const now = timeWidget || {};
     const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
     const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -1357,7 +1360,7 @@
     }
 
     // Phone & Sleep Status Pills
-    const ps = data.phone_state || {};
+    const ps = phoneState || {};
     const elHeroSleepPill = document.getElementById("heroSleepPill");
     const elHeroSleepText = document.getElementById("heroSleepText");
     if (elHeroSleepPill && elHeroSleepText) {
@@ -1651,13 +1654,42 @@
 
     updateSpotifyText("widgetSpotTitle", ".title-text", track, 2);
     updateSpotifyText("widgetSpotArtist", ".artist-text", artist, 1);
-    updateSpotifyArtImage(document.getElementById("widgetSpotArtImg"), albumArt);
+
+    let artImg = document.getElementById("widgetSpotArtImg");
+    if (!artImg && albumArt) {
+      const placeholder = document.querySelector("#card_spotify .spotify-art-placeholder");
+      if (placeholder) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "spotify-art-wrapper";
+
+        artImg = document.createElement("img");
+        artImg.className = "spotify-art-thumb";
+        artImg.id = "widgetSpotArtImg";
+        artImg.alt = "Album Art";
+
+        const sweep = document.createElement("div");
+        sweep.className = "art-sweep-flash flash-active";
+
+        wrapper.appendChild(artImg);
+        wrapper.appendChild(sweep);
+        placeholder.replaceWith(wrapper);
+      }
+    }
+    updateSpotifyArtImage(artImg, albumArt);
 
     const playIcon = document.querySelector("#card_spotify .btn-play-main i");
     if (playIcon) {
       const iconClass = `fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`;
       if (playIcon.className !== iconClass) playIcon.className = iconClass;
     }
+  }
+
+  function isSpotifyOverlayVisible() {
+    return Boolean(
+      elAppOverlayView &&
+      elAppOverlayView.classList.contains("spotify-active") &&
+      !elAppOverlayView.classList.contains("hidden")
+    );
   }
 
   // Create Card HTML for Dashboard Grid
