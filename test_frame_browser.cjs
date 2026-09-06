@@ -291,6 +291,21 @@ async function main() {
       foregroundFixtures.set('/foreground-'+name+'.png',Buffer.from(data,'base64'));
     }
     const depthPhotos=photoSet.slice(0,2).map((photo,i)=>({...photo,foreground:{id:(i?'e':'d').repeat(64),url:'/foreground-'+(i?'portrait':'landscape')+'.png',width:photo.width,height:photo.height}}));
+    // Cutouts may arrive after commit. Refresh in place without resetting a tap's timer.
+    photos=photoSet.slice(0,2);prefs={[secondId]:{clock:'top-right',depth:true}};
+    activatedAt=Date.now();await reloadFrame();await settle(1500);
+    await page.locator('#dashboardView').click({position:{x:600,y:260}});await settle(1500);
+    assert.equal(await page.locator('.frame-photo.is-active').getAttribute('src'),photoSet[1].url);
+    const savedRotation=await page.evaluate(()=>{window.lateCutoutMarker=true;return localStorage.getItem('dash.frame.rotation.v1');});
+    photos=depthPhotos;
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(()=>document.querySelector('.frame-foreground.is-active'));
+    await settle(1200);
+    assert.equal(await page.locator('.frame-photo.is-active').getAttribute('src'),photoSet[1].url);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('dash.frame.rotation.v1')),savedRotation);
+    assert.equal(await page.evaluate(()=>window.lateCutoutMarker),true,'Cutout arrival needs no reload');
+    assert.ok((await page.locator('.frame-foreground.is-active').getAttribute('style')).includes('portrait'));
+    await shot('depth-arrives-after-commit');
     prefs={[imageId]:{clock:'top-left',position_x:50,position_y:50}};
     photos=[depthPhotos[0]];activatedAt=Date.now();await reloadFrame();await settle(1500);
     const clockBox=await page.locator('#frameClock').boundingBox();
