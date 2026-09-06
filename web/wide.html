@@ -14,95 +14,57 @@
   <!-- Font Awesome 6.5.1 Vector Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="/wide.css?v=2.0.0" />
+  <link rel="stylesheet" href="/frame.css" />
 </head>
 
 <body>
-  <div id="appContainer" class="app-container">
-    <!-- Top Bar -->
-    <header class="top-bar">
-      <div class="brand">
-        <img src="/logo.png" alt="Dash logo" class="brand-logo" />
-        <div class="brand-info">
-          <span class="brand-eyebrow">NANO // DASH</span>
-          <h1 class="brand-title">2180 Touch</h1>
-        </div>
+  <div id="appContainer" class="app-container frame-shell">
+    <main id="dashboardView" class="frame-view" tabindex="0" aria-label="Photo frame. Tap or press Enter to show controls.">
+      <div class="frame-backdrop" aria-hidden="true">
+        <div class="frame-fallback"></div>
+        <img id="framePhotoA" class="frame-photo" alt="" />
+        <img id="framePhotoB" class="frame-photo" alt="" />
+        <div class="frame-shade"></div>
       </div>
-
-      <div class="top-actions">
-        <button class="icon-touch-btn" id="btnOpenSettings" title="System Settings">
-          <i class="fa-solid fa-gear"></i>
+      <div id="frameClock" class="frame-clock" data-position="top-left">
+        <div id="frameDate" class="frame-date"></div>
+        <time id="frameTime" class="frame-time"></time>
+      </div>
+      <div id="frameChrome" class="frame-chrome">
+        <div class="frame-caption"><span id="framePhotoCount">Your daily frame</span><span id="frameConnectionStatus" role="status"></span></div>
+        <nav class="frame-nav" aria-label="Dashboard controls">
+          <button id="btnOpenApps" class="frame-nav-button" aria-haspopup="dialog"><i class="fa-solid fa-shapes" aria-hidden="true"></i><span>Apps</span></button>
+          <button id="btnOpenSettings" class="frame-nav-button"><i class="fa-solid fa-gear" aria-hidden="true"></i><span>Settings</span></button>
+        </nav>
+      </div>
+      <div class="frame-bottom">
+        <button id="frameWeather" class="frame-weather frame-glass" aria-label="Open weather forecast">
+          <i id="frameWeatherIcon" class="fa-solid fa-cloud-sun" aria-hidden="true"></i>
+          <span class="frame-weather-copy"><strong id="frameTemperature">—°</strong><span id="frameCondition">Weather</span></span>
         </button>
-      </div>
-    </header>
-
-    <!-- Main Dashboard View -->
-    <main id="dashboardView" class="dashboard-view">
-      <div id="dashboardGrid" class="dashboard-grid slots-2">
-        <!-- Persistent Time & Date Hero Card -->
-        <article class="widget-card time-hero-card" id="cardTime" data-app-id="time">
-          <div class="card-glow"></div>
-          <div class="time-hero-content">
-            <div class="time-header-line">
-              <span class="time-day" id="heroDay">THURSDAY</span>
-              <span class="time-date" id="heroDate">AUG 13, 2026</span>
-            </div>
-            <div class="time-main-display">
-              <span class="time-digits" id="heroTime">14:35</span>
-              <span class="time-seconds" id="heroSeconds">:40</span>
-            </div>
-            <div class="time-footer-meta" id="heroMeta">
-              <div class="meta-pill" id="heroWeatherPill">
-                <i class="fa-solid fa-cloud-sun pill-icon"></i>
-                <span class="pill-text" id="heroWeatherText">--°F</span>
-              </div>
-              <div class="meta-pill" id="heroSleepPill" title="Sleep Focus (1% Night Mode)">
-                <i class="fa-solid fa-moon pill-icon"></i>
-                <span class="pill-text" id="heroSleepText">Awake</span>
-              </div>
-              <div class="meta-pill" id="heroPresencePill" title="Location Presence">
-                <i class="fa-solid fa-house pill-icon"></i>
-                <span class="pill-text" id="heroPresenceText">Home</span>
-              </div>
-              <div class="meta-pill">
-                <i class="fa-solid fa-bolt pill-icon"></i>
-                <span class="pill-text">Live Touch Surface</span>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <!-- Dynamic User App Slots Container -->
-        <div id="slotsContainer" class="slots-container">
-          <!-- Slots rendered dynamically via JS -->
+        <div id="frameActivities" class="frame-activities" aria-label="Live activities">
+          <article id="frameMusic" class="frame-music frame-glass" hidden>
+            <button class="frame-music-open" id="frameMusicOpen" aria-label="Open music player">
+              <img id="frameMusicArt" alt="" /><span class="frame-music-copy"><span id="frameMusicLabel" class="frame-eyebrow">NOW PLAYING</span><strong id="frameMusicTitle"></strong><span id="frameMusicArtist"></span></span>
+            </button>
+            <button id="frameMusicToggle" class="frame-activity-action" aria-label="Pause music"><i class="fa-solid fa-pause" aria-hidden="true"></i></button>
+            <div class="frame-music-progress"><span id="frameMusicProgress"></span></div>
+          </article>
+          <article id="frameTimer" class="frame-timer frame-glass" hidden>
+            <button id="frameTimerOpen" class="frame-timer-open" aria-label="Open timer"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span><span id="frameTimerLabel" class="frame-eyebrow">TIMER</span><strong id="frameTimerTime"></strong></span></button>
+            <button id="frameTimerAction" class="frame-activity-action" aria-label="Pause timer"><i class="fa-solid fa-pause" aria-hidden="true"></i></button>
+          </article>
         </div>
       </div>
     </main>
-
-    <!-- Widget Selector Modal -->
-    <div id="widgetModal" class="modal-backdrop hidden">
-      <div class="modal-card">
-        <div class="modal-header">
-          <div>
-            <h3>Customize Dashboard Grid</h3>
-            <p>Select up to 3 app widgets to feature alongside Time & Date</p>
-          </div>
-          <button class="modal-close-btn" id="btnCloseModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="widget-picker-grid" id="pickerGrid">
-            <!-- App Choices rendered via JS -->
-          </div>
-        </div>
-        <div class="modal-footer">
-          <span class="slot-count-indicator" id="slotCountIndicator">0 / 3 selected</span>
-          <button class="touch-btn btn-primary" id="btnSaveConfig">Save Dashboard Layout</button>
-        </div>
-      </div>
-    </div>
   </div>
+  <dialog id="frameAppsDialog" class="frame-apps-dialog" aria-labelledby="frameAppsTitle">
+    <div class="frame-sheet-heading"><div><span class="frame-eyebrow">MAKE YOURSELF AT HOME</span><h2 id="frameAppsTitle">Your apps</h2></div><button id="frameCloseApps" class="frame-close" aria-label="Close apps"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+    <div class="frame-apps-grid" id="frameAppsGrid"></div>
+  </dialog>
 
   <!-- Full Screen App Overlay View -->
-  <div id="appOverlayView" class="app-overlay-view hidden">
+  <div id="appOverlayView" class="app-overlay-view hidden" role="dialog" aria-modal="true" aria-label="App">
     <div id="spotifyBgStage" class="spotify-bg-stage" aria-hidden="true">
       <div id="spotifyBgLayerA" class="spotify-bg-layer is-active"></div>
       <div id="spotifyBgLayerB" class="spotify-bg-layer"></div>
@@ -125,7 +87,7 @@
   </div>
 
   <!-- Dedicated Touch Settings Overlay View -->
-  <div id="settingsOverlayView" class="app-overlay-view settings-overlay hidden">
+  <div id="settingsOverlayView" class="app-overlay-view settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Settings">
     <header class="overlay-header">
       <button class="touch-btn btn-back" id="btnCloseSettings">
         <i class="fa-solid fa-arrow-left"></i>
@@ -141,6 +103,7 @@
     <div class="settings-subpages-wrapper">
       <!-- Main Settings Page -->
       <div id="settingsMainPage" class="settings-subpage subpage-active">
+        <button class="frame-settings-entry" id="btnOpenFrameSettings"><span class="frame-settings-entry-icon"><i class="fa-regular fa-images" aria-hidden="true"></i></span><span><strong>Photo frame</strong><span>Your daily photos, crop & clock placement</span></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
         <!-- Top OLED Settings Banner Card -->
         <div class="settings-banner-card" id="btnOpenOledSubpage" role="button" tabindex="0">
           <div class="banner-glow"></div>
@@ -454,6 +417,11 @@ export const set = mutation({
               Sensor</button>
           </div>
 
+          <div class="settings-card">
+            <div class="settings-card-header"><i class="fa-regular fa-image"></i><h3>OLED Photo</h3></div>
+            <p class="settings-card-desc">Upload a monochrome image for the physical 128 × 64 display.</p>
+            <button class="touch-btn" id="btnOpenOledPhoto">Open OLED Photo Tool</button>
+          </div>
           <!-- OLED Card 3: OLED Hardware Diagnostics -->
           <div class="settings-card">
             <div class="settings-card-header">
@@ -483,6 +451,7 @@ export const set = mutation({
         </section>
       </div>
     </div>
+  </div>
     <!-- Screen Off & Dim Sleep Overlay -->
     <div id="displayOffOverlay" class="display-off-overlay hidden" aria-hidden="true">
       <div class="display-off-hint">
@@ -491,17 +460,7 @@ export const set = mutation({
       </div>
     </div>
 
-    <!-- Connection Lost Minimalist Screen Overlay -->
-    <div id="connectionLostOverlay" class="connection-lost-overlay hidden">
-      <div class="lost-top-left">
-        <img src="/logo.png" alt="Nano Logo" class="lost-logo" />
-      </div>
-      <div class="lost-bottom-left">
-        <span class="lost-text">connection lost... searching</span>
-        <div class="spinner-ring"></div>
-      </div>
-    </div>
-
+    <script src="/frame.js" defer></script>
     <script src="/wide.js?v=2.0.3" defer></script>
 </body>
 

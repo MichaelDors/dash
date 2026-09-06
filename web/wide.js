@@ -7,31 +7,24 @@
     { id: "weather", name: "Weather Forecast", icon: "fa-solid fa-cloud-sun", desc: "Local Temp & Forecast" },
     { id: "timer", name: "Countdown Timer", icon: "fa-solid fa-stopwatch", desc: "Timer & Alarm Controls" },
     { id: "click_counter", name: "Tally Counter", icon: "fa-solid fa-calculator", desc: "Touch Click Counter" },
-    { id: "photo", name: "Photo Frame", icon: "fa-solid fa-image", desc: "Image Display & Upload" },
+    { id: "photos", name: "Photos", icon: "fa-regular fa-images", desc: "Daily Photo Frame" },
+    { id: "photo", name: "OLED Photo", icon: "fa-solid fa-image", desc: "Physical Display Image" },
     { id: "motion_status", name: "System Status", icon: "fa-solid fa-sliders", desc: "Motion & System Diagnostics" }
   ];
 
   let state = {
-    slots: ["spotify", "weather"],
     activeOverlayApp: null,
     settingsOpen: false,
     settingsSubpage: "main",
-    latestData: null,
-    pickerSelected: ["spotify", "weather"]
+    latestData: null
   };
 
-  // Long press timer ref
-  let longPressTimer = null;
-  let isLongPress = false;
   let isSpotifyScrubbing = false;
 
   // State key refs to prevent innerHTML tearing
-  let lastSlotsStateKey = "";
   let lastOverlayStateKey = "";
 
   // DOM Elements
-  const elAppGrid = document.getElementById("dashboardGrid");
-  const elSlotsContainer = document.getElementById("slotsContainer");
   const elAppOverlayView = document.getElementById("appOverlayView");
   const elOverlayContent = document.getElementById("appOverlayContent");
   const elOverlayAppTitle = document.getElementById("overlayAppTitle");
@@ -55,13 +48,6 @@
   const elBtnShutdownDevice = document.getElementById("btnShutdownDevice");
   const elCfgSpotifyForm = document.getElementById("cfgSpotifyForm");
   const elCfgWeatherForm = document.getElementById("cfgWeatherForm");
-
-  // Hero Time elements
-  const elHeroDay = document.getElementById("heroDay");
-  const elHeroDate = document.getElementById("heroDate");
-  const elHeroTime = document.getElementById("heroTime");
-  const elHeroSeconds = document.getElementById("heroSeconds");
-  const elHeroWeatherText = document.getElementById("heroWeatherText");
 
   // Dynamic Color Extraction for Spotify Album Art (Fetch Blob Same-Origin Canvas)
   let currentAlbumArtUrl = null;
@@ -538,113 +524,17 @@
   let isFetchingState = false;
   let lastSuccessfulFetchTime = Date.now();
   let lastClockChangeTime = Date.now();
-  let lastClockSignature = "";
-  let stateFetchStartTime = 0;
-  let overlayHideTimeout = null;
-  const elConnectionLostOverlay = document.getElementById("connectionLostOverlay");
 
-  function showConnectionLostOverlay() {
-    if (window.location.protocol === "file:") return;
-    if (!isOffline) {
-      isOffline = true;
-      if (overlayHideTimeout) {
-        clearTimeout(overlayHideTimeout);
-        overlayHideTimeout = null;
-      }
-      if (elConnectionLostOverlay) {
-        elConnectionLostOverlay.classList.remove("hidden");
-        void elConnectionLostOverlay.offsetWidth;
-        elConnectionLostOverlay.classList.add("visible");
-      }
-    }
-  }
-
-  function hideConnectionLostOverlay() {
-    if (isOffline) {
-      isOffline = false;
-      failedFetchCount = 0;
-      if (elConnectionLostOverlay) {
-        elConnectionLostOverlay.classList.remove("visible");
-        if (overlayHideTimeout) clearTimeout(overlayHideTimeout);
-        overlayHideTimeout = setTimeout(() => {
-          if (!isOffline) elConnectionLostOverlay.classList.add("hidden");
-          overlayHideTimeout = null;
-        }, 350);
-      }
-    }
-  }
-
-  // Spotify auto open / auto close state management (mirroring OLED behavior)
-  let wasSpotifyPlaying = false;
-  let autoOpenedSpotifyOverlay = false;
-  let lastUserClosedSpotifyTime = 0;
   let lastSpotifyFetchTime = 0;
-
-  // Dynamic commitment tracking
-  let spotifyPlaybackLastTime = 0;
-  let spotifyAccumulatedPlayMs = 0;
-  let spotifyPauseStartMs = 0;
-
-  function handleSpotifyAutoOpenClose(data) {
-    if (!data) return;
-    const sp = (data.apps && data.apps.spotify) || (data.widgets && data.widgets.spotify) || {};
-    const isPlaying = Boolean(sp.is_playing && sp.track_name);
-    const hasTrack = Boolean(sp.track_name);
-    const now = Date.now();
-
-    // 1. Track Playback & Open when playback starts/resumes
-    if (!wasSpotifyPlaying && isPlaying) {
-      wasSpotifyPlaying = true;
-      spotifyPlaybackLastTime = now;
-      spotifyPauseStartMs = 0;
-
-      if (state.activeOverlayApp !== "spotify" && (now - lastUserClosedSpotifyTime > 10000)) {
-        autoOpenedSpotifyOverlay = true;
-        spotifyAccumulatedPlayMs = 0; // Reset play time commitment for new auto-open session
-        openOverlayApp("spotify");
-      }
-    } else if (isPlaying) {
-      wasSpotifyPlaying = true;
-      if (spotifyPlaybackLastTime > 0) {
-        const delta = now - spotifyPlaybackLastTime;
-        spotifyAccumulatedPlayMs = Math.min(300000, spotifyAccumulatedPlayMs + delta); // Cap at 5 mins (300,000ms)
-      }
-      spotifyPlaybackLastTime = now;
-      spotifyPauseStartMs = 0;
-    } else if (!hasTrack) {
-      wasSpotifyPlaying = false;
-      spotifyPlaybackLastTime = 0;
-    } else {
-      // Paused / stopped
-      if (wasSpotifyPlaying) {
-        wasSpotifyPlaying = false;
-        spotifyPauseStartMs = now;
-      } else if (spotifyPauseStartMs === 0) {
-        spotifyPauseStartMs = now;
-      }
-      spotifyPlaybackLastTime = 0;
-    }
-
-    // 2. Auto Exit based on dynamic played commitment (min 5s, max 5m, equal to play time)
-    if (state.activeOverlayApp === "spotify" && autoOpenedSpotifyOverlay) {
-      if (!hasTrack) {
-        autoOpenedSpotifyOverlay = false;
-        spotifyAccumulatedPlayMs = 0;
-        spotifyPauseStartMs = 0;
-        closeOverlayApp(false);
-      } else if (!isPlaying && spotifyPauseStartMs > 0) {
-        // Dynamic timeout equal to played commitment (floor 5s, ceiling 5m / 300s)
-        const dynamicTimeoutMs = Math.min(300000, Math.max(5000, spotifyAccumulatedPlayMs));
-        if (now - spotifyPauseStartMs >= dynamicTimeoutMs) {
-          autoOpenedSpotifyOverlay = false;
-          spotifyAccumulatedPlayMs = 0;
-          spotifyPauseStartMs = 0;
-          closeOverlayApp(false);
-        }
-      }
-    }
+  function showConnectionLostOverlay() {
+    isOffline = true;
+    window.DashFrame?.setConnection(false);
   }
-
+  function hideConnectionLostOverlay() {
+    isOffline = false;
+    failedFetchCount = 0;
+    window.DashFrame?.setConnection(true);
+  }
   function tickRealtimeProgress() {
     if (isSpotifyScrubbing) return;
     if (!state.latestData) return;
@@ -685,12 +575,6 @@
     }
   }
 
-  // Modal elements
-  const elWidgetModal = document.getElementById("widgetModal");
-  const elBtnCloseModal = document.getElementById("btnCloseModal");
-  const elPickerGrid = document.getElementById("pickerGrid");
-  const elSlotCountIndicator = document.getElementById("slotCountIndicator");
-  const elBtnSaveConfig = document.getElementById("btnSaveConfig");
   const CLOSE_TRANSITION_MS = 320;
   const surfaceTimers = new WeakMap();
 
@@ -739,6 +623,7 @@
 
   // Initialize App
   function init() {
+    window.DashFrame?.init({ openApp: openOverlayApp, openSettings: openSettingsOverlay, sendAction });
     setupEventListeners();
     fetchState();
     setInterval(fetchState, 250);
@@ -767,6 +652,8 @@
       }, 3500);
     };
 
+    elAppOverlayView.addEventListener("focusin", wakeSpotifyUi);
+    elAppOverlayView.addEventListener("keydown", wakeSpotifyUi);
     elAppOverlayView.addEventListener("click", wakeSpotifyUi);
     elAppOverlayView.addEventListener("touchstart", wakeSpotifyUi, { passive: true });
     elAppOverlayView.addEventListener("touchmove", wakeSpotifyUi, { passive: true });
@@ -775,7 +662,7 @@
     // Global auto-blur for buttons on tablet touch/click to prevent sticky selection state
     const autoUnselectButton = (e) => {
       const btn = e.target.closest("button, .touch-btn, .mini-ctrl-btn, .fs-ctrl-btn, .icon-touch-btn");
-      if (btn) {
+      if (btn && e.detail !== 0) {
         btn.blur();
       }
     };
@@ -795,7 +682,31 @@
     // Settings overlay triggers
     if (elBtnOpenSettings) elBtnOpenSettings.addEventListener("click", openSettingsOverlay);
     if (elBtnCloseSettings) elBtnCloseSettings.addEventListener("click", closeSettingsOverlay);
-    if (elBtnBackToDash) elBtnBackToDash.addEventListener("click", closeOverlayApp);
+    document.getElementById("btnOpenFrameSettings")?.addEventListener("click", () => {
+      state.settingsSubpage = "main";
+      closeSettingsOverlay();
+      openOverlayApp("photos");
+    });
+    document.getElementById("btnOpenOledPhoto")?.addEventListener("click", () => {
+      state.settingsSubpage = "main";
+      closeSettingsOverlay();
+      openOverlayApp("photo");
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        if (document.getElementById("frameAppsDialog")?.open) return;
+        if (state.settingsOpen) closeSettingsOverlay();
+        else if (state.activeOverlayApp) closeOverlayApp();
+      }
+      if (event.key === "Tab") {
+        const surface = state.settingsOpen ? elSettingsOverlayView : state.activeOverlayApp ? elAppOverlayView : null;
+        if (!surface) return;
+        const buttons = [...surface.querySelectorAll('button, a[href], input, select, [tabindex="0"]')].filter(el => !el.disabled && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+        if (!buttons.length) return;
+        if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons[buttons.length - 1].focus(); }
+        else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) { event.preventDefault(); buttons[0].focus(); }
+      }
+    });
 
     // OLED Settings Subpage Navigation
     const btnOpenOled = document.getElementById("btnOpenOledSubpage");
@@ -1035,15 +946,6 @@
       });
     }
 
-    // Modal triggers
-    if (elBtnCloseModal) elBtnCloseModal.addEventListener("click", closeWidgetModal);
-    if (elWidgetModal) {
-      elWidgetModal.addEventListener("click", (e) => {
-        if (e.target === elWidgetModal) closeWidgetModal();
-      });
-    }
-
-    if (elBtnSaveConfig) elBtnSaveConfig.addEventListener("click", saveWidgetConfig);
   }
 
   // Mock Demo Data for Localhost / Preview fallback when real data is unavailable
@@ -1109,112 +1011,44 @@
 
   // API Calls
   async function fetchState() {
-    const now = Date.now();
-    if (isFetchingState && (now - stateFetchStartTime > 3000)) {
-      isFetchingState = false;
-    }
     if (isFetchingState) return;
     isFetchingState = true;
-    stateFetchStartTime = now;
-
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const res = await fetch("/api/wide/state", { cache: "no-store", signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      const nowMs = Date.now();
-      lastSuccessfulFetchTime = nowMs;
+      const response = await fetch("/api/wide/state", { cache: "no-store", signal: controller.signal });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      data.widgets = data.widgets && typeof data.widgets === "object" ? data.widgets : {};
+      data.apps = data.apps && typeof data.apps === "object" ? data.apps : {};
       state.latestData = data;
-      lastSpotifyFetchTime = nowMs;
-
-      // Track clock/timestamp updates to verify backend is active and ticking
-      const timeW = (data.widgets && data.widgets.time) || {};
-      const currentClockSignature = data.generated_at || (timeW.time_main ? (timeW.time_main + ":" + (timeW.seconds || "")) : "");
-      if (currentClockSignature) {
-        if (currentClockSignature !== lastClockSignature) {
-          lastClockSignature = currentClockSignature;
-          lastClockChangeTime = nowMs;
-        }
-      } else {
-        lastClockChangeTime = nowMs;
-      }
-
-      if (Array.isArray(data.slots)) {
-        state.slots = data.slots;
-      }
-      handleSpotifyAutoOpenClose(data);
-
-      // Software update detection & auto-reload
+      lastSuccessfulFetchTime = Date.now();
+      lastClockChangeTime = lastSuccessfulFetchTime;
+      lastSpotifyFetchTime = lastSuccessfulFetchTime;
       if (data.version) {
-        if (lastSoftwareVersion && lastSoftwareVersion !== data.version) {
-          console.log(`Software update detected (${lastSoftwareVersion} -> ${data.version}). Reloading interface...`);
-          lastSoftwareVersion = data.version;
-          window.location.reload();
-          return;
-        }
+        if (lastSoftwareVersion && lastSoftwareVersion !== data.version) { window.location.reload(); return; }
         lastSoftwareVersion = data.version;
       }
-
-      // Remote reload requested from backend action
-      if (data.reload_requested) {
-        console.log("Remote reload requested by server. Reloading interface...");
-        window.location.reload();
-        return;
-      }
-
-      // Hide connection lost overlay if fetch succeeded AND clock has ticked within 2s
-      if (nowMs - lastClockChangeTime <= 2000 && nowMs - lastSuccessfulFetchTime <= 2000) {
-        hideConnectionLostOverlay();
-      } else {
-        showConnectionLostOverlay();
-      }
-
-      renderUI();
-
-      if (isInitialLoad) {
-        isInitialLoad = false;
-        restoreSavedScreenState();
-      }
-    } catch (err) {
-      // Only bypass network checks if running strictly via static file:// protocol without initial data
-      const isFileProtocol = window.location.protocol === "file:";
-
-      if (isFileProtocol && !state.latestData) {
-        state.latestData = MOCK_DEMO_DATA;
-        state.slots = MOCK_DEMO_DATA.slots;
-        renderUI();
-        if (isInitialLoad) {
-          isInitialLoad = false;
-          restoreSavedScreenState();
-        }
-        return;
-      }
-
+      if (data.reload_requested) { window.location.reload(); return; }
+      hideConnectionLostOverlay();
+      try { renderUI(); }
+      catch (error) { console.error("Dashboard rendering failed:", error); }
+      if (isInitialLoad) { isInitialLoad = false; restoreSavedScreenState(); }
+    } catch (error) {
       failedFetchCount++;
       showConnectionLostOverlay();
-
-      // If initial load failed over HTTP, set mock data so DOM elements render beneath the overlay
       if (!state.latestData) {
-        state.latestData = MOCK_DEMO_DATA;
-        state.slots = MOCK_DEMO_DATA.slots;
+        state.latestData = window.location.protocol === "file:" ? MOCK_DEMO_DATA : { widgets: {}, apps: {} };
         renderUI();
-        if (isInitialLoad) {
-          isInitialLoad = false;
-          restoreSavedScreenState();
-        }
       }
     } finally {
+      clearTimeout(timeout);
       isFetchingState = false;
     }
   }
 
   async function sendAction(action, payload = {}) {
-    const isLocalDev = window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1" ||
-      window.location.protocol === "file:";
+    const isLocalDev = window.location.protocol === "file:";
 
     try {
       const res = await fetch("/api/wide/action", {
@@ -1224,7 +1058,10 @@
       });
       if (res.ok) {
         const data = await res.json();
+        data.widgets = data.widgets || {};
+        data.apps = data.apps || {};
         state.latestData = data;
+        lastSpotifyFetchTime = Date.now();
         renderUI();
         return;
       }
@@ -1262,24 +1099,6 @@
     }
   }
 
-  async function saveWidgetConfig() {
-    try {
-      const res = await fetch("/api/wide/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slots: state.pickerSelected })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        state.slots = data.slots || state.pickerSelected;
-        closeWidgetModal();
-        fetchState();
-      }
-    } catch (err) {
-      console.error("Failed to save config:", err);
-    }
-  }
-
   // Render Full UI
   function renderUI() {
     const data = state.latestData;
@@ -1295,11 +1114,7 @@
       updateSpotifyBackgroundImage(null);
     }
 
-    // Update Persistent Time Hero Card
-    updateHeroTime(data.widgets.time, data.widgets.weather, data.phone_state);
-
-    // Update Dashboard Grid Slots
-    renderDashboardSlots(data);
+    window.DashFrame?.update(data);
 
     // If Overlay App is open, update its content live!
     if (state.activeOverlayApp) {
@@ -1321,6 +1136,7 @@
     const elDisplayOff = document.getElementById("displayOffOverlay");
     if (elDisplayOff) {
       const mode = (data.display_mode || "on").toLowerCase();
+      if (mode !== "on" && document.getElementById("frameAppsDialog")?.open) document.getElementById("frameAppsDialog").close();
       if (mode === "off") {
         elDisplayOff.classList.add("is-off");
         elDisplayOff.classList.remove("is-dim", "hidden");
@@ -1332,165 +1148,6 @@
         elDisplayOff.classList.add("hidden");
       }
     }
-  }
-
-  // Hero Time update with Date Bug Fix!
-  function updateHeroTime(timeWidget, weatherWidget, phoneState) {
-    const now = timeWidget || {};
-    const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-    const d = new Date();
-
-    const dayName = now.day_name || days[d.getDay()];
-    const monthStr = now.month || months[d.getMonth()];
-    const dayNum = now.day || d.getDate();
-    const yearNum = now.year || d.getFullYear();
-
-    if (elHeroDay) elHeroDay.textContent = dayName;
-    if (elHeroDate) elHeroDate.textContent = `${monthStr} ${dayNum}, ${yearNum}`;
-    if (elHeroTime) elHeroTime.textContent = now.time_main || d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
-    if (elHeroSeconds) elHeroSeconds.textContent = `:${now.seconds || String(d.getSeconds()).padStart(2, '0')}`;
-
-    if (elHeroWeatherText && weatherWidget) {
-      if (weatherWidget.temperature_f != null) {
-        elHeroWeatherText.textContent = `${Math.round(weatherWidget.temperature_f)}°F • ${weatherWidget.condition || 'Clear'}`;
-      } else {
-        elHeroWeatherText.textContent = weatherWidget.location || "Weather";
-      }
-    }
-
-    // Phone & Sleep Status Pills
-    const ps = phoneState || {};
-    const elHeroSleepPill = document.getElementById("heroSleepPill");
-    const elHeroSleepText = document.getElementById("heroSleepText");
-    if (elHeroSleepPill && elHeroSleepText) {
-      if (ps.sleep_focus) {
-        elHeroSleepText.textContent = "Sleep (1%)";
-        elHeroSleepPill.classList.add("is-active-sleep");
-      } else {
-        elHeroSleepText.textContent = "Awake";
-        elHeroSleepPill.classList.remove("is-active-sleep");
-      }
-    }
-
-    const elHeroPresencePill = document.getElementById("heroPresencePill");
-    const elHeroPresenceText = document.getElementById("heroPresenceText");
-    if (elHeroPresencePill && elHeroPresenceText) {
-      const isHome = ps.is_home !== false;
-      elHeroPresenceText.textContent = isHome ? "Home" : "Away";
-      const icon = elHeroPresencePill.querySelector("i");
-      if (icon) {
-        icon.className = isHome ? "fa-solid fa-house pill-icon" : "fa-solid fa-car pill-icon";
-      }
-      if (!isHome) {
-        elHeroPresencePill.classList.add("is-away");
-      } else {
-        elHeroPresencePill.classList.remove("is-away");
-      }
-    }
-  }
-
-  // Render Dashboard Grid Slots
-  function renderDashboardSlots(data) {
-    const activeSlots = state.slots || [];
-    const count = Math.min(3, activeSlots.length);
-
-    // Update Grid layout CSS class
-    elAppGrid.className = `dashboard-grid slots-${count}`;
-
-    // Render Slots HTML
-    let html = "";
-    activeSlots.slice(0, 3).forEach((appId) => {
-      html += createWidgetCardHTML(appId, data);
-    });
-
-    // State key diffing to guarantee innerHTML is NEVER overwritten on 250ms polls unless track/state actually changed
-    const sp = data.apps.spotify || data.widgets.spotify || {};
-    const stateKey = JSON.stringify(activeSlots) + "_" + (sp.track_name || "") + "_" + (sp.album_art_url || "") + "_" + (sp.is_playing ? "1" : "0");
-
-    if (lastSlotsStateKey !== stateKey) {
-      lastSlotsStateKey = stateKey;
-      elSlotsContainer.innerHTML = html;
-
-      // Attach Long Press & Click handlers to cards
-      activeSlots.slice(0, 3).forEach((appId) => {
-        const cardEl = document.getElementById(`card_${appId}`);
-        if (cardEl) setupCardTouchGestures(cardEl, appId);
-      });
-
-      // Attach inner touch action buttons
-      attachSlotActionListeners();
-
-      // Recalculate dashboard widget marquees
-      updateMarqueeForElement(document.getElementById("widgetSpotTitle"), 2);
-      updateMarqueeForElement(document.getElementById("widgetSpotArtist"), 1);
-    }
-
-    // Direct DOM updates for rapidly changing values to prevent innerHTML tearing
-    const spProg = document.getElementById("widget-spotify-progress");
-    if (spProg) {
-      const sp = data.apps.spotify || data.widgets.spotify || {};
-      const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
-      spProg.style.width = `${progress}%`;
-    }
-    if (document.getElementById("card_spotify")) {
-      const sp = data.apps.spotify || data.widgets.spotify || {};
-      updateDashboardSpotifyCard(sp);
-    }
-    const tmText = document.getElementById("widget-timer-text");
-    if (tmText) {
-      const tm = data.widgets.timer || {};
-      if (tmText.innerText !== (tm.time_text || "05:00")) {
-        tmText.innerText = tm.time_text || "05:00";
-      }
-    }
-  }
-
-  // Gesture Handler: Long Press (>700ms) opens Widget Modal, Short Click/Tap opens App Overlay
-  function setupCardTouchGestures(cardEl, appId) {
-    let pressTimer = null;
-    let isLongPress = false;
-
-    cardEl.addEventListener("click", (e) => {
-      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input") || e.target.closest(".spotify-progress-bar-wrap")) {
-        return;
-      }
-      if (!isLongPress) {
-        console.log("Card clicked, opening overlay for:", appId);
-        openOverlayApp(appId);
-      }
-      isLongPress = false;
-    });
-
-    const startPress = (e) => {
-      if (e.target.closest(".mini-ctrl-btn") || e.target.closest("button") || e.target.closest("input") || e.target.closest(".spotify-progress-bar-wrap")) {
-        return;
-      }
-      isLongPress = false;
-      cardEl.classList.add("holding");
-      pressTimer = setTimeout(() => {
-        isLongPress = true;
-        cardEl.classList.remove("holding");
-        if (navigator.vibrate) navigator.vibrate(40);
-        openWidgetModal();
-      }, 700);
-    };
-
-    const endPress = () => {
-      cardEl.classList.remove("holding");
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
-      }
-    };
-
-    cardEl.addEventListener("touchstart", startPress, { passive: true });
-    cardEl.addEventListener("touchend", endPress);
-    cardEl.addEventListener("touchcancel", endPress);
-
-    cardEl.addEventListener("mousedown", startPress);
-    cardEl.addEventListener("mouseup", endPress);
-    cardEl.addEventListener("mouseleave", endPress);
   }
 
   // Dynamic OLED-matching marquee: only when text exceeds allowed line count
@@ -1646,44 +1303,6 @@
     }
   }
 
-  function updateDashboardSpotifyCard(sp) {
-    const track = sp.track_name || "No Track Playing";
-    const artist = sp.artist_name || "Connect Spotify in Settings";
-    const isPlaying = sp.is_playing;
-    const albumArt = sp.album_art_url || "";
-
-    updateSpotifyText("widgetSpotTitle", ".title-text", track, 2);
-    updateSpotifyText("widgetSpotArtist", ".artist-text", artist, 1);
-
-    let artImg = document.getElementById("widgetSpotArtImg");
-    if (!artImg && albumArt) {
-      const placeholder = document.querySelector("#card_spotify .spotify-art-placeholder");
-      if (placeholder) {
-        const wrapper = document.createElement("div");
-        wrapper.className = "spotify-art-wrapper";
-
-        artImg = document.createElement("img");
-        artImg.className = "spotify-art-thumb";
-        artImg.id = "widgetSpotArtImg";
-        artImg.alt = "Album Art";
-
-        const sweep = document.createElement("div");
-        sweep.className = "art-sweep-flash flash-active";
-
-        wrapper.appendChild(artImg);
-        wrapper.appendChild(sweep);
-        placeholder.replaceWith(wrapper);
-      }
-    }
-    updateSpotifyArtImage(artImg, albumArt);
-
-    const playIcon = document.querySelector("#card_spotify .btn-play-main i");
-    if (playIcon) {
-      const iconClass = `fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`;
-      if (playIcon.className !== iconClass) playIcon.className = iconClass;
-    }
-  }
-
   function isSpotifyOverlayVisible() {
     return Boolean(
       elAppOverlayView &&
@@ -1693,157 +1312,13 @@
   }
 
   // Create Card HTML for Dashboard Grid
-  function createWidgetCardHTML(appId, data) {
-    const appDef = AVAILABLE_APPS.find(a => a.id === appId) || { name: appId, icon: "fa-solid fa-square-app" };
-    let bodyHTML = "";
-
-    if (appId === "spotify") {
-      const sp = data.apps.spotify || data.widgets.spotify || {};
-      const track = sp.track_name || "No Track Playing";
-      const artist = sp.artist_name || "Connect Spotify in Settings";
-      const isPlaying = sp.is_playing;
-      const albumArt = sp.album_art_url;
-      const progress = sp.duration_ms ? Math.min(100, (sp.progress_ms / sp.duration_ms) * 100) : 0;
-
-      const artHTML = albumArt ?
-        `<div class="spotify-art-wrapper">
-          <img src="${escapeHTML(albumArt)}" class="spotify-art-thumb" id="widgetSpotArtImg" data-album-art-url="${escapeHTML(albumArt)}" alt="Album Art" />
-          <div class="art-sweep-flash flash-active"></div>
-        </div>` :
-        `<div class="spotify-art-placeholder"><i class="fa-brands fa-spotify"></i></div>`;
-
-      bodyHTML = `
-        <div class="spotify-card-content">
-          ${artHTML}
-          <div class="spotify-info-panel">
-            <div style="width: 100%; min-width: 0; max-width: 100%;">
-              <div class="marquee-clip-box">
-                <h3 class="spotify-track-title" id="widgetSpotTitle"><span class="title-text">${escapeHTML(track)}</span></h3>
-              </div>
-              <div class="marquee-clip-box" style="margin-top: 2px;">
-                <p class="spotify-artist-name" id="widgetSpotArtist"><span class="artist-text">${escapeHTML(artist)}</span></p>
-              </div>
-            </div>
-            <div class="spotify-progress-bar-wrap" id="widgetScrubBar" style="cursor: pointer;">
-              <div class="spotify-progress-fill" id="widget-spotify-progress"></div>
-            </div>
-            <div class="spotify-mini-controls">
-              <button class="mini-ctrl-btn" data-act="spotify_prev"><i class="fa-solid fa-backward-step"></i></button>
-              <button class="mini-ctrl-btn btn-play-main" data-act="spotify_toggle">
-                <i class="fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}"></i>
-              </button>
-              <button class="mini-ctrl-btn" data-act="spotify_next"><i class="fa-solid fa-forward-step"></i></button>
-            </div>
-          </div>
-        </div>
-      `;
-    } else if (appId === "weather") {
-      const w = data.widgets.weather || {};
-      const temp = w.temperature_f != null ? `${Math.round(w.temperature_f)}°F` : "--";
-      const location = w.location || w.location_query || "Location";
-      const condition = w.condition || "Checking...";
-
-      bodyHTML = `
-        <div class="weather-card-content">
-          <span class="weather-location-label"><i class="fa-solid fa-location-dot"></i> ${escapeHTML(location)}</span>
-          <span class="weather-temp-main">${temp}</span>
-          <span class="weather-condition-label">${escapeHTML(condition)}</span>
-        </div>
-      `;
-    } else if (appId === "timer") {
-      const tm = data.widgets.timer || {};
-      const timeText = tm.time_text || "05:00";
-      const running = tm.running;
-
-      bodyHTML = `
-        <div class="timer-card-content">
-          <div class="timer-digits-display" id="widget-timer-text">00:00</div>
-          <div class="spotify-mini-controls">
-            <button class="mini-ctrl-btn" data-act="timer_sub_min">-1m</button>
-            <button class="mini-ctrl-btn btn-play-main" data-act="timer_toggle" style="background:var(--accent-purple); color:#fff;">
-              <i class="fa-solid ${running ? 'fa-pause' : 'fa-play'}"></i>
-            </button>
-            <button class="mini-ctrl-btn" data-act="timer_add_min">+1m</button>
-          </div>
-        </div>
-      `;
-    } else if (appId === "click_counter") {
-      const cnt = data.widgets.click_counter || {};
-      const count = cnt.count ?? 0;
-
-      bodyHTML = `
-        <div class="counter-card-content">
-          <div class="counter-digits-display">${count}</div>
-          <div class="spotify-mini-controls">
-            <button class="mini-ctrl-btn" data-act="counter_dec">-1</button>
-            <button class="mini-ctrl-btn btn-play-main" data-act="counter_inc" style="background:var(--accent-cyan); color:#000;">+1</button>
-            <button class="mini-ctrl-btn" data-act="counter_reset"><i class="fa-solid fa-rotate-left"></i></button>
-          </div>
-        </div>
-      `;
-    } else if (appId === "photo") {
-      const ph = data.widgets.photo || {};
-      if (ph.has_image && ph.image_base64) {
-        bodyHTML = `
-          <div class="photo-card-content" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
-            <img src="data:image/png;base64,${ph.image_base64}" style="max-width:100%; max-height:100%; object-fit:cover; border-radius:12px;" alt="Photo" />
-          </div>
-        `;
-      } else {
-        bodyHTML = `
-          <div class="photo-card-content" style="color:var(--text-muted); text-align:center;">
-            <i class="fa-solid fa-image" style="font-size:2.5rem; color:var(--accent-cyan);"></i>
-            <p style="margin-top:0.5rem;">No Photo Uploaded</p>
-          </div>
-        `;
-      }
-    } else if (appId === "motion_status") {
-      const m = data.motion || {};
-      bodyHTML = `
-        <div class="weather-card-content">
-          <span class="weather-location-label">Display Mode: ${(data.display_mode || 'ON').toUpperCase()}</span>
-          <span class="weather-temp-main" style="font-size:2.2rem; color:var(--accent-cyan);">${m.motion_detected ? 'ACTIVE' : 'IDLE'}</span>
-          <button class="touch-btn" data-act="simulate_motion" style="margin-top:0.5rem;"><i class="fa-solid fa-person-walking"></i> Sim Motion</button>
-        </div>
-      `;
-    }
-
-    return `
-      <article class="widget-card" id="card_${appId}" data-app-id="${appId}">
-        <div class="card-glow"></div>
-        <header class="card-header">
-          <div class="card-title-group">
-            <i class="${appDef.icon} card-icon"></i>
-            <h2 class="card-title">${appDef.name}</h2>
-          </div>
-          <span class="card-expand-hint"><i class="fa-solid fa-expand"></i></span>
-        </header>
-        <div class="card-body">
-          ${bodyHTML}
-        </div>
-      </article>
-    `;
-  }
-
-  // Mini Control Actions
-  function attachSlotActionListeners() {
-    document.querySelectorAll("[data-act]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        btn.blur();
-        const act = btn.getAttribute("data-act");
-        sendAction(act);
-      });
-      btn.addEventListener("touchend", () => {
-        btn.blur();
-      }, { passive: true });
-    });
-
-    attachSeekHandler("widgetScrubBar", "widget-spotify-progress");
-  }
-
   // Full Screen Overlay Management
+  let overlayReturnFocus = null;
   function openOverlayApp(appId) {
+    if (!AVAILABLE_APPS.some(app => app.id === appId)) return;
+    overlayReturnFocus = document.activeElement;
+    document.getElementById("appContainer").inert = true;
+    elAppOverlayView.classList.toggle("photos-active", appId === "photos");
     state.activeOverlayApp = appId;
     lastOverlayStateKey = "";
     try {
@@ -1864,6 +1339,7 @@
     }
 
     revealSurface(elAppOverlayView);
+    requestAnimationFrame(() => elBtnBackToDash?.focus({ preventScroll: true }));
     const dataToRender = state.latestData || MOCK_DEMO_DATA;
     renderOverlayAppContent(appId, dataToRender);
 
@@ -1877,19 +1353,17 @@
   }
 
   function closeOverlayApp(isUserAction = true) {
-    if (state.activeOverlayApp === "spotify") {
-      if (isUserAction) {
-        lastUserClosedSpotifyTime = Date.now();
-      }
-      autoOpenedSpotifyOverlay = false;
-    }
     state.activeOverlayApp = null;
+    document.getElementById("appContainer").inert = state.settingsOpen;
+    window.DashFrame?.showControls();
+    if (overlayReturnFocus?.isConnected && overlayReturnFocus.getClientRects().length && !overlayReturnFocus.closest("dialog:not([open]), .hidden")) overlayReturnFocus.focus?.({ preventScroll: true });
+    else document.getElementById("dashboardView").focus({ preventScroll: true });
     lastOverlayStateKey = "";
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
     } catch (e) { }
     concealSurface(elAppOverlayView, () => {
-      elAppOverlayView.classList.remove("spotify-active");
+      elAppOverlayView.classList.remove("spotify-active", "photos-active");
       elOverlayContent.innerHTML = "";
     });
   }
@@ -1922,11 +1396,13 @@
   // Settings Overlay Management
   function openSettingsOverlay() {
     state.settingsOpen = true;
+    document.getElementById("appContainer").inert = true;
     showSettingsSubpage("main");
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "settings" }));
     } catch (e) { }
     revealSurface(elSettingsOverlayView);
+    requestAnimationFrame(() => elBtnCloseSettings?.focus({ preventScroll: true }));
     if (state.latestData) {
       updateSettingsMetrics(state.latestData);
     }
@@ -1938,6 +1414,9 @@
       return;
     }
     state.settingsOpen = false;
+    document.getElementById("appContainer").inert = Boolean(state.activeOverlayApp);
+    window.DashFrame?.showControls();
+    elBtnOpenSettings?.focus({ preventScroll: true });
     try {
       sessionStorage.setItem("dash_saved_screen", JSON.stringify({ type: "dashboard" }));
     } catch (e) { }
@@ -2214,6 +1693,7 @@
 
   // Render Full Screen App Content
   function renderOverlayAppContent(appId, data) {
+    if (appId === "photos") { window.DashFrame?.renderPhotos(elOverlayContent); return; }
     if (appId === "spotify") {
       updateFullScreenSpotifyUI(data);
       return;
@@ -2303,15 +1783,15 @@
           <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:1.5rem; width:100%; max-width:800px;">
             <div style="background:#0e121c; border:1px solid var(--border-card); padding:1.5rem; border-radius:16px; text-align:center;">
               <span style="color:var(--text-muted); font-size:0.9rem;">Display Mode</span>
-              <h3 style="font-size:1.8rem; margin-top:0.5rem; color:var(--accent-cyan);">${(data.display_mode || 'ON').toUpperCase()}</h3>
+              <h3 class="fs-motion-value" style="font-size:1.8rem; margin-top:0.5rem; color:var(--accent-cyan);">${(data.display_mode || 'ON').toUpperCase()}</h3>
             </div>
             <div style="background:#0e121c; border:1px solid var(--border-card); padding:1.5rem; border-radius:16px; text-align:center;">
               <span style="color:var(--text-muted); font-size:0.9rem;">Motion Sensor</span>
-              <h3 style="font-size:1.8rem; margin-top:0.5rem; color:var(--accent-green);">${m.motion_detected ? 'ACTIVE' : 'IDLE'}</h3>
+              <h3 class="fs-motion-value" style="font-size:1.8rem; margin-top:0.5rem; color:var(--accent-green);">${m.motion_detected ? 'ACTIVE' : 'IDLE'}</h3>
             </div>
             <div style="background:#0e121c; border:1px solid var(--border-card); padding:1.5rem; border-radius:16px; text-align:center;">
               <span style="color:var(--text-muted); font-size:0.9rem;">Idle Time</span>
-              <h3 style="font-size:1.8rem; margin-top:0.5rem;">${m.idle || '00:00'}</h3>
+              <h3 class="fs-motion-value" style="font-size:1.8rem; margin-top:0.5rem;">${m.idle || '00:00'}</h3>
             </div>
           </div>
           <button class="touch-btn btn-primary" id="fsSimulateMotion" style="font-size:1.2rem; padding:1rem 2.5rem;"><i class="fa-solid fa-person-walking"></i> Simulate Motion Activity</button>
@@ -2319,13 +1799,38 @@
       `;
     }
 
-    const sp = data.apps.spotify || data.widgets.spotify || {};
-    const overlayStateKey = appId + "_" + (sp.track_name || "") + "_" + (sp.album_art_url || "") + "_" + (sp.is_playing ? "1" : "0");
+    // Mount interactive controls once; update changing values independently of Spotify.
+    const payload = appId === "weather" ? data.widgets.weather : appId === "photo" ? data.widgets.photo : null;
+    const overlayStateKey = appId + (payload ? JSON.stringify(payload) : "");
 
     if (lastOverlayStateKey !== overlayStateKey) {
       lastOverlayStateKey = overlayStateKey;
       elOverlayContent.innerHTML = html;
       attachOverlayEventListeners(appId, data);
+    }
+    updateOverlayValues(appId, data);
+  }
+
+  function updateOverlayValues(appId, data) {
+    if (appId === "timer") {
+      const timer = data.widgets.timer || {};
+      const digits = document.getElementById("fs-timer-text");
+      if (digits) digits.textContent = timer.time_text || "05:00";
+      const toggle = document.getElementById("fsTimerToggle");
+      const label = timer.running ? "Pause" : "Start";
+      if (toggle && toggle.dataset.label !== label) {
+        toggle.dataset.label = label;
+        toggle.innerHTML = `<i class="fa-solid ${timer.running ? 'fa-pause' : 'fa-play'}"></i> ${label}`;
+      }
+    } else if (appId === "click_counter") {
+      const digits = elOverlayContent.querySelector(".fs-counter-digits");
+      if (digits) digits.textContent = data.widgets.click_counter?.count ?? 0;
+    } else if (appId === "motion_status") {
+      const motion = data.motion || {};
+      const values = elOverlayContent.querySelectorAll(".fs-motion-value");
+      [data.display_mode || "ON", motion.motion_detected ? "ACTIVE" : "IDLE", motion.idle || "00:00"].forEach((value, index) => {
+        if (values[index]) values[index].textContent = value;
+      });
     }
   }
 
@@ -2524,69 +2029,9 @@
         openSettingsOverlay();
       }
 
-      const savedModal = sessionStorage.getItem("dash_saved_modal");
-      if (savedModal === "widget_picker") {
-        openWidgetModal();
-      }
+      sessionStorage.removeItem("dash_saved_modal");
     } catch (e) {
       console.warn("Could not restore saved screen state:", e);
-    }
-  }
-
-  // Modal Widget Picker Handlers
-  function openWidgetModal() {
-    state.pickerSelected = [...state.slots];
-    try {
-      sessionStorage.setItem("dash_saved_modal", "widget_picker");
-    } catch (e) { }
-    renderPickerGrid();
-    revealSurface(elWidgetModal);
-  }
-
-  function closeWidgetModal() {
-    try {
-      sessionStorage.removeItem("dash_saved_modal");
-    } catch (e) { }
-    concealSurface(elWidgetModal);
-  }
-
-  function renderPickerGrid() {
-    let html = "";
-    AVAILABLE_APPS.forEach((app) => {
-      const isSelected = state.pickerSelected.includes(app.id);
-      html += `
-        <div class="picker-item ${isSelected ? 'selected' : ''}" data-picker-id="${app.id}">
-          <i class="${app.icon} picker-item-icon"></i>
-          <div class="picker-item-info">
-            <h4>${app.name}</h4>
-            <p>${app.desc}</p>
-          </div>
-        </div>
-      `;
-    });
-    elPickerGrid.innerHTML = html;
-    updateSlotIndicator();
-
-    document.querySelectorAll("[data-picker-id]").forEach((item) => {
-      item.addEventListener("click", () => {
-        const id = item.getAttribute("data-picker-id");
-        if (state.pickerSelected.includes(id)) {
-          state.pickerSelected = state.pickerSelected.filter(x => x !== id);
-        } else {
-          if (state.pickerSelected.length >= 3) {
-            alert("Maximum 3 apps can be featured at a time on the dashboard!");
-            return;
-          }
-          state.pickerSelected.push(id);
-        }
-        renderPickerGrid();
-      });
-    });
-  }
-
-  function updateSlotIndicator() {
-    if (elSlotCountIndicator) {
-      elSlotCountIndicator.textContent = `${state.pickerSelected.length} / 3 selected`;
     }
   }
 

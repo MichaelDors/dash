@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set up your photo frame</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#151715; color:#eeefe9; }
+    * { box-sizing:border-box; }
+    body { margin:0; }
+    main { max-width:760px; padding:52px 24px 100px; margin:auto; }
+    a { color:#c9d9bd; text-underline-offset:4px; }
+    .back { font-size:14px; text-decoration:none; }
+    h1 { font-size:clamp(32px,6vw,48px); letter-spacing:-.055em; line-height:1.08; margin:36px 0 18px; font-weight:550; }
+    h2 { font-size:22px; letter-spacing:-.035em; margin:0 0 18px; font-weight:550; }
+    p,li { font-size:16px; line-height:1.65; color:#c0c5bc; }
+    .intro { font-size:19px; max-width:600px; }
+    section { margin-top:42px; padding-top:30px; border-top:1px solid #ffffff18; }
+    li { padding-left:5px; margin:12px 0; }
+    strong { color:#eeefe9; font-weight:600; }
+    code { background:#ffffff09; border-radius:5px; padding:2px 5px; font-size:13px; color:#e0e7d9; overflow-wrap:anywhere; }
+    pre { margin:16px 0; padding:18px; border:1px solid #ffffff13; border-radius:14px; background:#ffffff04; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.65; }
+    pre code { background:none; padding:0; }
+    .note { border-left:2px solid #a1b492; padding:4px 0 4px 16px; }
+    .small { font-size:14px; }
+    .flow { font-size:14px; color:#c9d9bd; margin:26px 0; word-spacing:4px; }
+    input { color:inherit; background:#ffffff08; border:1px solid #ffffff25; border-radius:8px; padding:12px; width:100%; font:inherit; }
+    label { display:block; margin-bottom:10px; color:#c0c5bc; }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="/wide">← Back to your frame</a>
+  <h1>A fresh collection.<br>Every morning.</h1>
+  <p class="intro">Choose the photos you love once. Your iPhone can send a different selection to the frame each day.</p>
+  <p class="flow">Photos album → Daily Shortcut → Your frame</p>
+
+  <section>
+    <h2>1. Make your album</h2>
+    <p>In Photos on your iPhone, create an album named <strong>Dash Frame</strong>. Add the pictures you would like to see. The Shortcut chooses up to 24 at random; adding more gives you a different mix each day.</p>
+    <p>Still photos work best. Live Photos can be converted to still JPEGs; exclude videos. Portrait photos fill the display using a crop you can adjust in <strong>Apps → Photos</strong>.</p>
+  </section>
+
+  <section>
+    <h2>2. Connect your frame</h2>
+    <p>Deploy the photo functions to your existing Convex project and set its private <code>DASH_FRAME_TOKEN</code> environment variable. Enter that same token in <strong>Apps → Photos → Connection</strong> on Dash, together with the deployment's <code>.convex.site</code> URL.</p>
+    <label for="site">Your photo endpoint</label>
+    <input id="site" type="url" spellcheck="false" value="https://tremendous-tiger-513.convex.site" aria-describedby="siteHint">
+    <p id="siteHint" class="small">This page fills in your configured URL when available. Photo requests use <code>.convex.site</code>; existing phone-status Shortcuts continue using <code>.convex.cloud</code>.</p>
+    <p class="note">The photo token is shown only when you set it up. Dash saves it privately and never returns it to this page. Keep the same token in the Shortcut described below.</p>
+  </section>
+
+  <section>
+    <h2>3. Build “Send photos to Dash”</h2>
+    <p>In Shortcuts, create a new shortcut named <strong>Send photos to Dash</strong>. Use these actions in order. Wherever a value is in square brackets below, insert that action's <strong>magic variable</strong>, rather than typing the brackets.</p>
+    <ol>
+      <li>Add <strong>Text</strong> containing your photo token; use <strong>Set Variable</strong> to name it <code>Photo Token</code>.</li>
+      <li>Add <strong>Find Photos</strong>: Album is <strong>Dash Frame</strong>, Media Type is <strong>Image</strong>, Sort by <strong>Random</strong>, Limit <strong>24</strong>. Name the result <code>Selected Photos</code>.</li>
+      <li><strong>Count</strong> Selected Photos. If the count is <strong>0</strong>, use <strong>Stop This Shortcut</strong>. Otherwise save the count as <code>Photo Count</code>.</li>
+      <li>Add <strong>Generate UUID</strong> and save it as <code>Request ID</code>. Add <strong>Current Date</strong> → <strong>Format Date</strong> with custom format <code>yyyy-MM-dd</code>; save it as <code>Batch Date</code>.</li>
+      <li><strong>Get Contents of URL</strong> using the start request below. Choose a <strong>JSON</strong> request body and add its three fields individually. Set <code>expected_count</code> to Number. Then <strong>Get Dictionary Value</strong> for <code>batch_id</code> from the response, and name it <code>Batch ID</code>. If Batch ID has no value, stop the Shortcut.</li>
+    </ol>
+    <pre><code>POST <span data-site></span>/frame/batches/start
+Headers:
+  Authorization: Bearer [Photo Token]
+  Content-Type: application/json
+JSON fields:
+  request_id: [Request ID]
+  expected_count: [Photo Count]
+  date: [Batch Date]</code></pre>
+    <ol start="6">
+      <li>Add <strong>Repeat with Each</strong> item in Selected Photos. Within the loop, get the image's width and height. If width is greater than height, <strong>Resize Image</strong> to width <strong>2048</strong>, height Auto; otherwise resize to height <strong>2048</strong>, width Auto. For smaller originals, retain their size.</li>
+      <li><strong>Convert Image</strong> to <strong>JPEG</strong>, quality approximately <strong>80%</strong>, with <strong>Preserve Metadata off</strong>. Name the converted image <code>Upload Photo</code>.</li>
+      <li><strong>Calculate</strong> Repeat Index minus <strong>1</strong>. Use this as <code>Photo Index</code>. Send the upload request below with Request Body set to <strong>File</strong> and Upload Photo selected. A successful response contains <code>id</code>; if it is missing, stop the Shortcut. End Repeat.</li>
+    </ol>
+    <pre><code>POST <span data-site></span>/frame/photos/upload?batch_id=[Batch ID]&amp;index=[Photo Index]
+Headers:
+  Authorization: Bearer [Photo Token]
+  Content-Type: image/jpeg
+Request Body: File → [Upload Photo]</code></pre>
+    <ol start="9">
+      <li>After <strong>End Repeat</strong>, send the commit request below. This makes the complete collection available to Dash. Optional: show a notification only after a successful commit.</li>
+    </ol>
+    <pre><code>POST <span data-site></span>/frame/batches/commit
+Headers:
+  Authorization: Bearer [Photo Token]
+  Content-Type: application/json
+JSON fields:
+  batch_id: [Batch ID]</code></pre>
+    <p class="note">Each photo must be a JPEG under 8 MiB. If a request fails, the old collection stays on screen. You can run the Shortcut again; unfinished batches are cleaned up automatically.</p>
+  </section>
+
+  <section>
+    <h2>4. Try it, then make it daily</h2>
+    <p>Run the Shortcut manually once, allowing Photos and network access when iOS asks. Check <strong>Apps → Photos</strong> for the new collection. Dash checks for new photos every minute and downloads the complete set before showing it.</p>
+    <p>In Shortcuts → <strong>Automation</strong>, create a <strong>Time of Day</strong> automation at a convenient morning time, repeating <strong>Daily</strong>. Choose <strong>Run Immediately</strong> and run <strong>Send photos to Dash</strong>. It may take longer when iCloud needs to download selected originals.</p>
+    <p>Photos change every <strong>15 minutes</strong>. With 24 pictures, the collection repeats every six hours. A missed automation, empty album, or interrupted upload keeps the last complete collection running.</p>
+    <p class="small">On the frame, tap to reveal Settings and Apps. Photos lets you adjust cropping and clock placement. Existing OLED motion, sleep, and away settings still control when the display dims or turns off.</p>
+  </section>
+
+  <section>
+    <h2>If the collection does not arrive</h2>
+    <p>Check the connection status in Apps → Photos. Verify that the server and Shortcut use the same token and that the photo URL ends in <code>.convex.site</code>. Run the Shortcut manually to locate the action that failed, then use the frame's sync control to check again.</p>
+    <p>New uploads never partially replace the current collection. The two most recent complete collections are retained; abandoned uploads expire after 48 hours.</p>
+    <p class="small">Reference: <a href="https://support.apple.com/en-au/guide/shortcuts/apd58d46713f/ios">Apple: API requests and File bodies</a> · <a href="https://support.apple.com/en-euro/guide/shortcuts/-apd602971e63/ios">Apple: automatic personal automations</a> · <a href="https://docs.convex.dev/file-storage/upload-files">Convex file uploads</a></p>
+  </section>
+</main>
+<script>
+  const field = document.getElementById('site');
+  function updateExamples() {
+    let value = field.value.trim().replace(/\/+$/, '');
+    try { if (new URL(value).protocol !== 'https:') return; } catch (_) { return; }
+    document.querySelectorAll('[data-site]').forEach(el => { el.textContent = value; });
+  }
+  field.addEventListener('input', updateExamples);
+  updateExamples();
+  fetch('/api/frame/config', {cache:'no-store'}).then(r => r.ok ? r.json() : null).then(config => {
+    if (config && config.cloud_url) { field.value = config.cloud_url; updateExamples(); }
+  }).catch(() => {});
+</script>
+</body>
+</html>

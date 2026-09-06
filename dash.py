@@ -33,6 +33,7 @@ APP_SCRIPT = REPO_DIR / "dash_app.py"
 REPO_FILES = [
     "dash.py",
     "dash_app.py",
+    "photo_frame.py",
     "oled_driver.py",
     "VERSION",
     "web/index.html",
@@ -43,6 +44,9 @@ REPO_FILES = [
     "web/wide.html",
     "web/wide.css",
     "web/wide.js",
+    "web/frame.js",
+    "web/frame.css",
+    "web/frame-setup.html",
     "web/logo.png",
     "web/displayserif.ttf",
     "web/primarytext.otf",

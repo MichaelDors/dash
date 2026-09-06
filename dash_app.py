@@ -29,6 +29,63 @@ except Exception:
     dash_launcher = None  # type: ignore[assignment]
     DASH_LAUNCHER_AVAILABLE = False
 
+
+def _ensure_photo_frame_assets() -> None:
+    """Finish an upgrade started by an older launcher's in-memory file list.
+
+    The launcher downloads its own replacement before execing this script. A
+    fresh import therefore knows how to fetch new assets the old process missed.
+    This runs only on application startup, before any hardware is initialized.
+    """
+    if not DASH_LAUNCHER_AVAILABLE:
+        return
+    root = Path(__file__).resolve().parent
+    repo = os.getenv("GITHUB_REPO", "MichaelDors/dash").strip()
+    branch = os.getenv("GITHUB_BRANCH", "main").strip()
+    if not repo:
+        return
+    for filename in ("photo_frame.py", "web/frame.js", "web/frame.css", "web/frame-setup.html"):
+        if not (root / filename).is_file():
+            ok, _error = dash_launcher.sync_file(repo, branch, filename)
+            if not ok:
+                print(f"Photo frame file is unavailable: {filename}. Run Update Software to retry.")
+
+
+if __name__ == "__main__":
+    _ensure_photo_frame_assets()
+
+try:
+    from photo_frame import PhotoFrameManager
+except ModuleNotFoundError as exc:
+    if exc.name != "photo_frame":
+        raise
+
+    class PhotoFrameManager:
+        """Keep hardware working if a first-time photo upgrade loses network."""
+
+        def __init__(self, _base_dir):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def get_config(self):
+            return {"cloud_url": "", "token_configured": False, "photo_preferences": {}, "rotation_seconds": 900}
+
+        def get_manifest(self):
+            return {"batch_id": None, "activated_at": None, "photos": [], "photo_preferences": {},
+                    "rotation_seconds": 900, "status": {"configured": False, "syncing": False,
+                    "last_sync": None, "last_error": "Photo frame files are missing. Run Update Software to finish installation."}}
+
+        def get_photo(self, _photo_id):
+            return None
+
+        def update_config(self, _updates):
+            raise ValueError("Run Update Software to finish installing photo frame support")
+
 try:
     import RPi.GPIO as GPIO
 
@@ -2396,6 +2453,8 @@ class DashboardController:
         self.phone_state = PhoneStateManager(BASE_DIR / "phone_state.json")
         self.motion_manager = MotionSensorManager(sensor_available, self.settings, self.phone_state)
         self.convex_syncer = ConvexCloudSyncer(self.settings, self.phone_state, self.motion_manager, self)
+        # Color frame media has its own worker/cache; it never enters OLED widget state.
+        self.photo_frame = PhotoFrameManager(BASE_DIR)
         self.spotify_client = spotify_client or SpotifyClient(BASE_DIR / "spotify_tokens.json")
         self.apps: List[App] = [
             PongApp(),
@@ -2750,8 +2809,10 @@ class DashboardController:
     def start(self) -> None:
         self.motion_manager.start_monitoring()
         self.convex_syncer.start()
+        self.photo_frame.start()
 
     def stop(self) -> None:
+        self.photo_frame.stop()
         self.convex_syncer.stop()
         self.motion_manager.stop_monitoring()
 
@@ -3625,6 +3686,41 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         if path in {"/wide", "/wide.html", "/touch"}:
             self._serve_file("wide.html", "text/html; charset=utf-8")
             return
+        if path == "/frame-setup":
+            self._serve_file("frame-setup.html", "text/html; charset=utf-8")
+            return
+        if path == "/api/frame/photos":
+            self._send_json(self.controller.photo_frame.get_manifest())
+            return
+        if path == "/api/frame/config":
+            self._send_json(self.controller.photo_frame.get_config())
+            return
+        if path.startswith("/api/frame/photos/"):
+            photo_id = path[len("/api/frame/photos/"):]
+            photo_path = self.controller.photo_frame.get_photo(photo_id)
+            if photo_path is None:
+                self._send_json({"error": "Photo not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            try:
+                payload = photo_path.read_bytes()
+            except OSError:
+                self._send_json({"error": "Photo not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            etag = '"' + photo_id + '"'
+            if self.headers.get("If-None-Match") == etag:
+                self.send_response(HTTPStatus.NOT_MODIFIED)
+                self.send_header("ETag", etag)
+                self.end_headers()
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "private, max-age=86400, immutable")
+            self.send_header("ETag", etag)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if path == "/wide.css":
             self._serve_file("wide.css", "text/css; charset=utf-8")
             return
@@ -3731,6 +3827,29 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/frame/config":
+            # Only the local dashboard configures its private cloud credential.
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                self._send_json({"error": "Origin not allowed"}, status=HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 262144:
+                    raise ValueError("Configuration body must be between 1 byte and 256 KiB")
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(body, dict):
+                    raise ValueError("Configuration must be a JSON object")
+                result = self.controller.photo_frame.update_config(body)
+            except (ValueError, UnicodeError) as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            except OSError:
+                self._send_json({"error": "Could not save photo configuration"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self._send_json(result)
+            return
 
         if parsed.path == "/api/phone/state":
             body = self._read_json_body() or {}
