@@ -1,7 +1,8 @@
 """Private, cached color photos for the web frame, independent of OLED state.
 
-Cloud checksums identify the original JPEG. Cached JPEGs are oriented, resized,
-and stripped of metadata; their separate checksum detects local corruption.
+Cloud checksums identify the original JPEGs and optional transparent PNGs.
+Cached images are oriented, resized, and stripped of metadata; their separate
+checksums detect local corruption. Foregrounds share the photo's full canvas.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ except ImportError:
 
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_FOREGROUND_BYTES = 20 * 1024 * 1024
 MAX_PHOTOS = 24
 MAX_MANIFEST_BYTES = 128 * 1024
 ROTATION_SECONDS = 900
@@ -130,7 +132,7 @@ class PhotoFrameManager:
                 raise ValueError("Invalid photo ID in preferences")
             if not isinstance(settings, dict):
                 raise ValueError("Each photo preference must be an object")
-            if any(key not in {"position_x", "position_y", "clock"} for key in settings):
+            if any(key not in {"position_x", "position_y", "clock", "depth"} for key in settings):
                 raise ValueError("Unknown photo preference")
             preference = {}
             for key in ("position_x", "position_y"):
@@ -143,6 +145,10 @@ class PhotoFrameManager:
                 if not isinstance(settings["clock"], str) or settings["clock"] not in CLOCK_POSITIONS:
                     raise ValueError("Invalid clock position")
                 preference["clock"] = settings["clock"]
+            if "depth" in settings:
+                if not isinstance(settings["depth"], bool):
+                    raise ValueError("Depth effect must be true or false")
+                preference["depth"] = settings["depth"]
             result[photo_id] = preference
         return result
 
@@ -196,30 +202,38 @@ class PhotoFrameManager:
             for key in ("width", "height"):
                 if isinstance(photo.get(key), bool) or not isinstance(photo.get(key), int) or not 1 <= photo[key] <= 2048:
                     return None
+            if "foreground" in photo:
+                foreground = photo["foreground"]
+                if (not isinstance(foreground, dict) or not self._cached_photo_valid(batch, foreground, foreground=True)
+                        or any(isinstance(foreground.get(key), bool) or not isinstance(foreground.get(key), int)
+                               or foreground.get(key) != photo[key]
+                               for key in ("width", "height"))):
+                    return None
         return batch
 
-    def _cached_photo_path(self, batch: Dict[str, Any], photo_id: str) -> Optional[Path]:
+    def _cached_photo_path(self, batch: Dict[str, Any], photo_id: str, *, foreground: bool = False) -> Optional[Path]:
         directory = batch.get("cache_dir", "")
         if not isinstance(directory, str) or not CACHE_DIR_RE.fullmatch(directory) or not PHOTO_ID_RE.fullmatch(photo_id):
             return None
-        candidate = self.cache_root / directory / (photo_id + ".jpg")
+        candidate = self.cache_root / directory / (photo_id + (".png" if foreground else ".jpg"))
         if candidate.is_symlink() or candidate.parent.is_symlink():
             return None
         if candidate.resolve().parent.parent != self.cache_root.resolve():
             return None
         return candidate
 
-    def _cached_photo_valid(self, batch: Dict[str, Any], photo: Dict[str, Any]) -> bool:
+    def _cached_photo_valid(self, batch: Dict[str, Any], photo: Dict[str, Any], *, foreground: bool = False) -> bool:
         photo_id, checksum = photo.get("id"), photo.get("cache_sha256")
         if not isinstance(photo_id, str) or not PHOTO_ID_RE.fullmatch(photo_id) or not isinstance(checksum, str) or not PHOTO_ID_RE.fullmatch(checksum):
             return False
-        path = self._cached_photo_path(batch, photo_id)
+        path = self._cached_photo_path(batch, photo_id, foreground=foreground)
         if path is None:
             return False
         try:
+            limit = MAX_FOREGROUND_BYTES if foreground else MAX_IMAGE_BYTES
             with path.open("rb") as handle:
-                raw = handle.read(MAX_IMAGE_BYTES + 1)
-            return 0 < len(raw) <= MAX_IMAGE_BYTES and hashlib.sha256(raw).hexdigest() == checksum
+                raw = handle.read(limit + 1)
+            return 0 < len(raw) <= limit and hashlib.sha256(raw).hexdigest() == checksum
         except OSError:
             return False
 
@@ -279,6 +293,10 @@ class PhotoFrameManager:
             photos = [{
                 "id": photo["id"], "url": "/api/frame/photos/" + photo["id"],
                 "width": photo["width"], "height": photo["height"],
+                **({"foreground": {
+                    "id": photo["foreground"]["id"], "url": "/api/frame/foregrounds/" + photo["foreground"]["id"],
+                    "width": photo["foreground"]["width"], "height": photo["foreground"]["height"],
+                }} if "foreground" in photo else {}),
             } for photo in active.get("photos", [])]
             return {
                 "batch_id": active.get("batch_id"),
@@ -295,12 +313,19 @@ class PhotoFrameManager:
             }
 
     def get_photo(self, photo_id: str) -> Optional[Path]:
+        return self._get_cached_image(photo_id)
+
+    def get_foreground(self, photo_id: str) -> Optional[Path]:
+        return self._get_cached_image(photo_id, foreground=True)
+
+    def _get_cached_image(self, photo_id: str, *, foreground: bool = False) -> Optional[Path]:
         if not isinstance(photo_id, str) or not PHOTO_ID_RE.fullmatch(photo_id):
             return None
         with self._lock:
             for batch in (self._active, self._previous):
-                if batch and any(photo["id"] == photo_id for photo in batch["photos"]):
-                    path = self._cached_photo_path(batch, photo_id)
+                if batch and any((photo.get("foreground", {}) if foreground else photo).get("id") == photo_id
+                                 for photo in batch["photos"]):
+                    path = self._cached_photo_path(batch, photo_id, foreground=foreground)
                     if path is not None and path.is_file():
                         return path
         return None
@@ -337,7 +362,8 @@ class PhotoFrameManager:
     def _request(self, config: Dict[str, Any], path: str, limit: int) -> bytes:
         request = Request(config["cloud_url"] + path, headers={
             "Authorization": "Bearer " + config["token"],
-            "Accept": "application/json" if path == "/frame/manifest" else "image/jpeg",
+            "Accept": ("application/json" if path == "/frame/manifest" else
+                       "image/png" if path.startswith("/frame/foregrounds/") else "image/jpeg"),
             "User-Agent": "Dash-Photo-Frame/1.0",
         })
         with self._opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
@@ -385,13 +411,29 @@ class PhotoFrameManager:
                     or photo.get("mime_type") != "image/jpeg"):
                 raise _FrameError("The photo service returned invalid photo metadata.")
             indices.add(index)
-            parsed.append({"storage_id": storage_id, "id": checksum, "index": index, "size": size})
+            record = {"storage_id": storage_id, "id": checksum, "index": index, "size": size}
+            if "foreground" in photo:
+                foreground = photo["foreground"]
+                if not isinstance(foreground, dict):
+                    raise _FrameError("The photo service returned invalid foreground metadata.")
+                fg_storage_id, fg_checksum, fg_size = foreground.get("id"), foreground.get("sha256"), foreground.get("size")
+                if (not isinstance(fg_storage_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", fg_storage_id)
+                        or not isinstance(fg_checksum, str) or not PHOTO_ID_RE.fullmatch(fg_checksum)
+                        or isinstance(fg_size, bool) or not isinstance(fg_size, int) or not 1 <= fg_size <= MAX_FOREGROUND_BYTES
+                        or foreground.get("mime_type") != "image/png"
+                        or any(isinstance(foreground.get(key), bool) or not isinstance(foreground.get(key), int)
+                               or not 1 <= foreground[key] <= 8192 for key in ("width", "height"))
+                        or foreground["width"] * foreground["height"] > 32_000_000):
+                    raise _FrameError("The photo service returned invalid foreground metadata.")
+                record["foreground"] = {"storage_id": fg_storage_id, "id": fg_checksum, "size": fg_size,
+                                        "width": foreground["width"], "height": foreground["height"]}
+            parsed.append(record)
         if indices != set(range(len(photos))):
             raise _FrameError("The photo batch is incomplete.")
         return {"batch_id": batch_id, "activated_at": int(activated_at), "photos": sorted(parsed, key=lambda photo: photo["index"])}
 
     @staticmethod
-    def _normalize_photo(raw: bytes, source: Dict[str, Any]) -> tuple[bytes, int, int]:
+    def _normalize_photo(raw: bytes, source: Dict[str, Any]) -> tuple[bytes, int, int, tuple[int, int]]:
         if len(raw) != source["size"] or hashlib.sha256(raw).hexdigest() != source["id"]:
             raise _FrameError("A photo failed its integrity check. The previous photos are still available.")
         if Image is None or ImageOps is None:
@@ -404,6 +446,7 @@ class PhotoFrameManager:
             with Image.open(io.BytesIO(raw)) as image:
                 image.load()
                 oriented = ImageOps.exif_transpose(image)
+                source_size = oriented.size
                 rgb = oriented.convert("RGB")
                 rgb.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
                 width, height = rgb.size
@@ -415,41 +458,121 @@ class PhotoFrameManager:
                 normalized = output.getvalue()
                 if len(normalized) > MAX_IMAGE_BYTES:
                     raise _FrameError("A prepared photo exceeded the size limit.")
-                return normalized, width, height
+                return normalized, width, height, source_size
         except _FrameError:
             raise
         except Exception:
             raise _FrameError("A photo could not be decoded. The previous photos are still available.") from None
 
-    def _build_batch(self, config: Dict[str, Any], manifest: Dict[str, Any], stage: Path) -> Dict[str, Any]:
-        photos = []
-        prepared: Dict[str, Dict[str, Any]] = {}
-        with self._lock:
-            cached = [batch for batch in (self._active, self._previous) if batch]
-        for source in manifest["photos"]:
-            if self._stop.is_set():
-                raise _FrameError("Photo sync was stopped.")
-            if source["id"] in prepared:
-                photos.append(dict(prepared[source["id"]]))
-                continue
-            record = None
-            destination = stage / (source["id"] + ".jpg")
+    @staticmethod
+    def _normalize_foreground(raw: bytes, source: Dict[str, Any]) -> tuple[bytes, Dict[str, Any]]:
+        if len(raw) != source["size"] or hashlib.sha256(raw).hexdigest() != source["id"]:
+            raise _FrameError("A foreground failed its integrity check. The previous photos are still available.")
+        if Image is None or ImageOps is None:
+            raise _FrameError("Pillow is required to prepare frame photos.")
+        try:
+            with Image.open(io.BytesIO(raw)) as image:
+                if (image.format != "PNG" or getattr(image, "n_frames", 1) != 1
+                        or image.size != (source["width"], source["height"])
+                        or image.width > 8192 or image.height > 8192 or image.width * image.height > 32_000_000):
+                    raise _FrameError("A foreground has an unsupported format or dimensions.")
+                image.verify()
+            with Image.open(io.BytesIO(raw)) as image:
+                image.load()
+                oriented = ImageOps.exif_transpose(image)
+                rgba = oriented.convert("RGBA")
+                minimum, maximum = rgba.getchannel("A").getextrema()
+                if minimum == 255 or maximum == 0:
+                    raise _FrameError("A foreground must contain both visible content and transparency.")
+                source_width, source_height = rgba.size
+                rgba.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                minimum, maximum = rgba.getchannel("A").getextrema()
+                if minimum == 255 or maximum == 0:
+                    raise _FrameError("A foreground lost its visible content or transparency when resized.")
+                # A fresh RGBA canvas preserves alpha but discards EXIF/GPS and other metadata.
+                clean = Image.new("RGBA", rgba.size)
+                clean.paste(rgba)
+                output = io.BytesIO()
+                clean.save(output, format="PNG", optimize=True)
+                normalized = output.getvalue()
+                if len(normalized) > MAX_FOREGROUND_BYTES:
+                    raise _FrameError("A prepared foreground exceeded the size limit.")
+                return normalized, {"id": source["id"], "width": clean.width, "height": clean.height,
+                                    "source_width": source_width, "source_height": source_height,
+                                    "encoded_width": image.width, "encoded_height": image.height,
+                                    "cache_sha256": hashlib.sha256(normalized).hexdigest()}
+        except _FrameError:
+            raise
+        except Exception:
+            raise _FrameError("A foreground could not be decoded. The previous photos are still available.") from None
+
+    @staticmethod
+    def _has_source_canvas(photo: Dict[str, Any]) -> bool:
+        return all(isinstance(photo.get(key), int) and not isinstance(photo[key], bool)
+                   and 1 <= photo[key] <= 8192 for key in ("source_width", "source_height"))
+
+    def _prepare_foreground(self, config: Dict[str, Any], source: Dict[str, Any], background: Dict[str, Any],
+                            stage: Path, cached: list[Dict[str, Any]], prepared: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        record = prepared.get(source["id"])
+        destination = stage / (source["id"] + ".png")
+        if record is None:
             for batch in cached:
-                candidate = next((photo for photo in batch["photos"] if photo["id"] == source["id"]), None)
-                if candidate and self._cached_photo_valid(batch, candidate):
-                    cached_path = self._cached_photo_path(batch, source["id"])
+                candidate = next((photo["foreground"] for photo in batch["photos"]
+                                  if photo.get("foreground", {}).get("id") == source["id"]), None)
+                if candidate and self._has_source_canvas(candidate) and self._cached_photo_valid(batch, candidate, foreground=True):
+                    cached_path = self._cached_photo_path(batch, source["id"], foreground=True)
                     if cached_path is not None:
                         shutil.copyfile(cached_path, destination)
                         record = dict(candidate)
                         break
             if record is None:
+                raw = self._request(config, "/frame/foregrounds/" + quote(source["storage_id"], safe=""), MAX_FOREGROUND_BYTES)
+                normalized, record = self._normalize_foreground(raw, source)
+                destination.write_bytes(normalized)
+            os.chmod(destination, 0o600)
+            prepared[source["id"]] = record
+        if any(record.get("encoded_" + key) != source[key] for key in ("width", "height")):
+            raise _FrameError("A foreground has inconsistent canvas metadata.")
+        if any(record[key] != background[key] for key in ("source_width", "source_height", "width", "height")):
+            raise _FrameError("A foreground does not align with its photo. Keep the full photo canvas when removing the background.")
+        return dict(record)
+
+    def _build_batch(self, config: Dict[str, Any], manifest: Dict[str, Any], stage: Path) -> Dict[str, Any]:
+        photos = []
+        prepared: Dict[str, Dict[str, Any]] = {}
+        prepared_foregrounds: Dict[str, Dict[str, Any]] = {}
+        with self._lock:
+            cached = [batch for batch in (self._active, self._previous) if batch]
+        for source in manifest["photos"]:
+            if self._stop.is_set():
+                raise _FrameError("Photo sync was stopped.")
+            record = prepared.get(source["id"])
+            if record is not None and "foreground" in source and not self._has_source_canvas(record):
+                record = None
+            destination = stage / (source["id"] + ".jpg")
+            if record is None:
+                for batch in cached:
+                    candidate = next((photo for photo in batch["photos"] if photo["id"] == source["id"]), None)
+                    if (candidate and self._cached_photo_valid(batch, candidate)
+                            and ("foreground" not in source or self._has_source_canvas(candidate))):
+                        cached_path = self._cached_photo_path(batch, source["id"])
+                        if cached_path is not None:
+                            shutil.copyfile(cached_path, destination)
+                            record = {key: value for key, value in candidate.items() if key != "foreground"}
+                            break
+            if record is None:
                 raw = self._request(config, "/frame/photos/" + quote(source["storage_id"], safe=""), MAX_IMAGE_BYTES)
-                normalized, width, height = self._normalize_photo(raw, source)
+                normalized, width, height, source_size = self._normalize_photo(raw, source)
                 destination.write_bytes(normalized)
                 record = {"id": source["id"], "width": width, "height": height,
+                          "source_width": source_size[0], "source_height": source_size[1],
                           "cache_sha256": hashlib.sha256(normalized).hexdigest()}
             os.chmod(destination, 0o600)
             prepared[source["id"]] = record
+            record = dict(record)
+            if "foreground" in source:
+                record["foreground"] = self._prepare_foreground(config, source["foreground"], record,
+                                                                stage, cached, prepared_foregrounds)
             photos.append(record)
         return {"batch_id": manifest["batch_id"], "activated_at": manifest["activated_at"], "photos": photos}
 
@@ -470,7 +593,8 @@ class PhotoFrameManager:
             with self._lock:
                 active = self._active
             unchanged = bool(manifest and active and manifest["batch_id"] == active["batch_id"]
-                             and [p["id"] for p in manifest["photos"]] == [p["id"] for p in active["photos"]]
+                             and [(p["id"], p.get("foreground", {}).get("id")) for p in manifest["photos"]]
+                             == [(p["id"], p.get("foreground", {}).get("id")) for p in active["photos"]]
                              and self._validated_cached_batch(active))
             if manifest is not None and not unchanged:
                 stage = self.cache_root / ("stage-" + uuid.uuid4().hex)

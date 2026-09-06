@@ -995,6 +995,8 @@
 
   let lastSoftwareVersion = null;
   let isInitialLoad = true;
+  let wasSpotifyPlaying = null;
+  let pendingSpotifyAutoOpen = false;
 
   // API Calls
   async function fetchState() {
@@ -1090,6 +1092,9 @@
   function renderUI() {
     const data = state.latestData;
     if (!data) return;
+    const phone = data.phone_state || {};
+    const suspended = phone.is_home === false || phone.sleep_focus === true
+      || String(phone.focus_mode || "").trim().toLowerCase() === "sleep";
 
     // Spotify Dynamic Color Extraction & Background Image
     const spData = data.apps?.spotify || data.widgets?.spotify || {};
@@ -1102,6 +1107,20 @@
     }
 
     window.DashFrame?.update(data);
+
+    // Observe playback edges, not track changes or ordinary refreshes. Missing
+    // Spotify data during reconnects must not manufacture a new playback start.
+    if (typeof spData.is_playing === "boolean") {
+      if (spData.is_playing && wasSpotifyPlaying === false) pendingSpotifyAutoOpen = true;
+      wasSpotifyPlaying = spData.is_playing;
+      if (!spData.is_playing) pendingSpotifyAutoOpen = false;
+    }
+    // Let photo/settings edits finish, and keep Away / Sleep Focus respected.
+    if (pendingSpotifyAutoOpen && spData.track_name && !suspended && !state.settingsOpen && state.activeOverlayApp !== "photos") {
+      pendingSpotifyAutoOpen = false;
+      if (document.getElementById("frameAppsDialog")?.open) window.DashFrame?.closeApps();
+      if (state.activeOverlayApp !== "spotify") openOverlayApp("spotify");
+    }
 
     // If Overlay App is open, update its content live!
     if (state.activeOverlayApp) {
@@ -1123,9 +1142,6 @@
     // OLED's motion timer. Browsing photos must never wake physical hardware.
     const elDisplayOff = document.getElementById("displayOffOverlay");
     if (elDisplayOff) {
-      const phone = data.phone_state || {};
-      const suspended = phone.is_home === false || phone.sleep_focus === true
-        || String(phone.focus_mode || "").trim().toLowerCase() === "sleep";
       for (const id of ["appContainer", "appOverlayView", "settingsOverlayView"]) {
         const surface = document.getElementById(id);
         if (surface) surface.inert = suspended || (id === "appContainer" && (Boolean(state.activeOverlayApp) || state.settingsOpen));

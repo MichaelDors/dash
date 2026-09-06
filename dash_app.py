@@ -83,6 +83,9 @@ except ModuleNotFoundError as exc:
         def get_photo(self, _photo_id):
             return None
 
+        def get_foreground(self, _photo_id):
+            return None
+
         def update_config(self, _updates):
             raise ValueError("Run Update Software to finish installing photo frame support")
 
@@ -3695,9 +3698,13 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/frame/config":
             self._send_json(self.controller.photo_frame.get_config())
             return
-        if path.startswith("/api/frame/photos/"):
-            photo_id = path[len("/api/frame/photos/"):]
-            photo_path = self.controller.photo_frame.get_photo(photo_id)
+        if path.startswith(("/api/frame/photos/", "/api/frame/foregrounds/")):
+            foreground = path.startswith("/api/frame/foregrounds/")
+            photo_id = path[len("/api/frame/foregrounds/" if foreground else "/api/frame/photos/"):]
+            if foreground:
+                photo_path = self.controller.photo_frame.get_foreground(photo_id)
+            else:
+                photo_path = self.controller.photo_frame.get_photo(photo_id)
             if photo_path is None:
                 self._send_json({"error": "Photo not found"}, status=HTTPStatus.NOT_FOUND)
                 return
@@ -3713,7 +3720,7 @@ class DashRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Type", "image/png" if foreground else "image/jpeg")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "private, max-age=86400, immutable")
             self.send_header("ETag", etag)

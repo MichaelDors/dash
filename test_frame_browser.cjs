@@ -18,6 +18,8 @@ let prefs = {};
 let photos = [];
 let activatedAt = Date.now();
 let rotationSeconds = 900;
+const foregroundFixtures = new Map();
+let foregroundUnavailable = false;
 let timer = { type:'timer', running:false, minutes:5, seconds:0, set_minutes:5, time_text:'05:00', flash:false };
 let music = { type:'spotify', authenticated:true, track_name:'', artist_name:'', album_art_url:'', is_playing:false, progress_ms:0, duration_ms:240000 };
 let temperature = 72;
@@ -70,6 +72,10 @@ const server = http.createServer(async(req,res) => {
     if(value.action==='counter_reset') counter=0;
     return json(snapshot());
   }
+  if (url.pathname.startsWith('/foreground-')) {
+    if (foregroundUnavailable || !foregroundFixtures.has(url.pathname)) {res.writeHead(404);return res.end();}
+    res.writeHead(200,{'Content-Type':'image/png'});return res.end(foregroundFixtures.get(url.pathname));
+  }
   if(url.pathname.startsWith('/fixture-')) {
     res.writeHead(200,{'Content-Type':'image/svg+xml'});
     return res.end(url.pathname.includes('portrait')?portrait:url.pathname.includes('busy')?busy:scenery);
@@ -97,6 +103,7 @@ async function main() {
   async function apps() { await page.locator('#dashboardView').click({position:{x:700,y:260}});await page.locator('#btnOpenApps').click(); }
   async function closeApp() { await page.locator('#btnBackToDash').click();await settle(); }
   try {
+    if (!process.env.FRAME_TEST_DEPTH_ONLY) {
     await reloadFrame();
     assert.equal(await page.locator('#dashboardGrid').count(),0);
     assert.match(await page.locator('#frameTime').innerText(),/^\d{1,2}:\d{2}$/);
@@ -115,16 +122,33 @@ async function main() {
     await settle();
     assert.equal(await page.locator('#frameMusic').isVisible(),true);
     assert.equal(await page.locator('#frameTimer').isVisible(),true);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Playback must not auto-open Spotify');
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Playback start opens Spotify');
+    assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true);
+    await closeApp();await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Returning to photos is respected during playback');
     await shot('03-live-activities');
     music={...music,track_name:'Second song',artist_name:'Second artist',album_art_url:'/fixture-portrait.svg'};
     await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Track changes do not reopen Spotify');
     assert.equal(await page.locator('#frameMusicTitle').innerText(),'Second song');
     assert.equal(await page.locator('#frameMusicArtist').innerText(),'Second artist');
     assert.match(await page.locator('#frameMusicArt').getAttribute('src'),/portrait/);
     await page.locator('#frameMusicToggle').click();await settle();
     assert.equal(music.is_playing,false);
     assert.equal(await page.locator('#frameMusic').isVisible(),true);
+
+    await page.locator('#frameMusicToggle').click();await settle();
+    assert.equal(music.is_playing,true);
+    assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true,'Resuming opens Spotify again');
+    await closeApp();
+    music.is_playing=false;await settle();
+    await page.locator('#btnOpenSettings').click();await settle();
+    music.is_playing=true;await settle();
+    assert.equal(await page.locator('#settingsOverlayView').isVisible(),true,'Playback does not interrupt settings edits');
+    await page.locator('#btnCloseSettings').click();await settle();
+    assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true,'Deferred playback opens after leaving settings');
+    await closeApp();
+    music.is_playing=false;await settle();
 
     await page.locator('#frameTimerOpen').click();await settle();
     assert.equal(await page.locator('#appContainer').evaluate(el=>el.inert),true,'Polling preserves modal focus isolation');
@@ -216,6 +240,7 @@ async function main() {
     assert.equal(await page.locator('#btnOpenApps').evaluate(el=>el===document.activeElement),true);
 
     // Bottom clock choices persist through the editor and share space with both activities.
+    await page.goto('about:blank');
     photos=[photoSet[0]];activatedAt=Date.now();
     music={...music,is_playing:true,track_name:'Second song'};
     timer={...timer,running:true,minutes:2,seconds:35,time_text:'02:35'};
@@ -253,6 +278,106 @@ async function main() {
     }
     await page.setViewportSize({width:1280,height:800});
 
+    }
+    // Genuine transparent PNG fixtures; RGB deliberately differs from the photo.
+    // The renderer must use their alpha without introducing color/lighting seams.
+    for(const [name,width,height] of [['landscape',1600,1000],['portrait',800,1400]]) {
+      const data=await page.evaluate(({width,height})=>{
+        const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+        const ctx=canvas.getContext('2d');ctx.fillStyle='#ff00ff';
+        ctx.fillRect(width*.04,height*.04,width*.66,height*.55);
+        return canvas.toDataURL('image/png').split(',')[1];
+      },{width,height});
+      foregroundFixtures.set('/foreground-'+name+'.png',Buffer.from(data,'base64'));
+    }
+    const depthPhotos=photoSet.slice(0,2).map((photo,i)=>({...photo,foreground:{id:(i?'e':'d').repeat(64),url:'/foreground-'+(i?'portrait':'landscape')+'.png',width:photo.width,height:photo.height}}));
+    prefs={[imageId]:{clock:'top-left',position_x:50,position_y:50}};
+    photos=[depthPhotos[0]];activatedAt=Date.now();await reloadFrame();await settle(1500);
+    const clockBox=await page.locator('#frameClock').boundingBox();
+    async function whitePixels() {
+      const png=await page.screenshot({clip:clockBox});
+      return page.evaluate(async b64=>{
+        const img=new Image();img.src='data:image/png;base64,'+b64;await img.decode();
+        const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;
+        const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);
+        const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+        let white=0;for(let i=0;i<pixels.length;i+=4) if(pixels[i]>225&&pixels[i+1]>225&&pixels[i+2]>225) white++;
+        return white;
+      },png.toString('base64'));
+    }
+    const beforeDepth=await whitePixels();assert.ok(beforeDepth>1000);
+    await apps();await page.locator('[data-app="photos"]').click();await settle();
+    assert.equal(await page.locator('#frameDepthChoice').isChecked(),false,'Depth is opt-in');
+    assert.equal(await page.locator('#frameDepthChoice').isDisabled(),false);
+    await page.locator('#frameDepthChoice').check();await settle();
+    assert.equal(await page.locator('#framePreviewForeground').evaluate(el=>el.classList.contains('is-active')),true);
+    await shot('depth-editor');
+    await page.locator('#frameSavePhoto').click();await settle();
+    // Preview and final frame must predict the same overlap, even on phone/short screens.
+    for(const size of [{width:1280,height:800},{width:390,height:844},{width:800,height:480}]) {
+      await page.setViewportSize(size);await settle(800);
+      const geometry=await page.evaluate(()=>{
+        const surface=document.getElementById('dashboardView').getBoundingClientRect();
+        const preview=document.getElementById('framePreviewImage').getBoundingClientRect();
+        const actual=document.getElementById('frameClock').getBoundingClientRect();
+        const mini=document.getElementById('framePreviewClock').getBoundingClientRect();
+        const scale=preview.width/surface.width;
+        return {scale,actual:{x:actual.x-surface.x,y:actual.y-surface.y,width:actual.width,height:actual.height},mini:{x:mini.x-preview.x,y:mini.y-preview.y,width:mini.width,height:mini.height}};
+      });
+      for(const key of ['x','y','width','height']) assert.ok(Math.abs(geometry.mini[key]/geometry.scale-geometry.actual[key])<3,`Preview ${size.width} ${key} matches dashboard: ${JSON.stringify(geometry)}`);
+    }
+    await page.setViewportSize({width:1280,height:800});await settle(800);
+    await closeApp();await settle(1500);
+    assert.equal(prefs[imageId].depth,true);
+    assert.ok(await whitePixels()<beforeDepth*.15,'The opaque subject must occlude clock pixels');
+    await shot('depth-clock-occlusion');
+    assert.equal(await page.locator('#dashboardView > .frame-foreground.is-active').evaluate(el=>getComputedStyle(el).pointerEvents),'none');
+    const foreground=page.locator('#dashboardView > .frame-foreground.is-active');
+    assert.equal(await foreground.locator('img').getAttribute('src'),depthPhotos[0].url,'Use original colors beneath alpha');
+    assert.equal(await foreground.locator('img').evaluate(el=>el.style.objectPosition),await page.locator('.frame-photo.is-active').evaluate(el=>el.style.objectPosition));
+    assert.ok(await page.locator('#frameWeather').evaluate(el=>Number(getComputedStyle(el.parentElement).zIndex))>await foreground.evaluate(el=>Number(getComputedStyle(el).zIndex)),'Widgets stay above foreground');
+    await reloadFrame();await settle(1500);
+    assert.equal(await page.locator('#dashboardView > .frame-foreground.is-active').count(),1,'Depth survives reload');
+    await apps();await page.locator('[data-app="photos"]').click();await settle();
+    await page.locator('#frameCropX').evaluate(el=>{el.value='30';el.dispatchEvent(new Event('input',{bubbles:true}));});
+    await page.locator('#frameClockChoice').selectOption('bottom-center');
+    await page.locator('#frameSavePhoto').click();await settle();await closeApp();await settle(1500);
+    assert.equal(prefs[imageId].depth,true,'Crop and clock edits preserve depth');
+    await page.setViewportSize({width:1024,height:600});await settle(1500);
+    assert.equal(await foreground.evaluate(el=>el.style.maskPosition),await page.locator('.frame-photo.is-active').evaluate(el=>el.style.objectPosition),'Resize keeps crop and alpha aligned');
+    photos=depthPhotos;prefs[secondId]={clock:'top-right',depth:true};activatedAt=Date.now();
+    await reloadFrame();await settle(1500);
+    await page.locator('#dashboardView').click({position:{x:600,y:260}});await settle(300);
+    const transitions=await page.evaluate(()=>['A','B'].map(layer=>({
+      background:Number(getComputedStyle(document.getElementById('framePhoto'+layer)).opacity),
+      foreground:Number(getComputedStyle(document.getElementById('frameForeground'+layer)).opacity)
+    })));
+    transitions.forEach(pair=>assert.ok(Math.abs(pair.background-pair.foreground)<.04,'Paired layers crossfade together'));
+    await settle(1500);assert.match(await foreground.locator('img').getAttribute('src'),/portrait/);
+    apiOffline=true;frameOffline=true;await settle(1000);
+    assert.equal(await foreground.count(),1,'Loaded depth survives disconnection');
+    apiOffline=false;frameOffline=false;
+    // Missing, mismatched, and absent cutouts all retain a usable original photo.
+    for(const foregroundData of [{...depthPhotos[0].foreground,url:'/foreground-missing.png'},depthPhotos[1].foreground,null]) {
+      photos=[{...depthPhotos[0],foreground:foregroundData}];activatedAt=Date.now();
+      prefs={[imageId]:{clock:'top-left',depth:true}};await reloadFrame();await settle(1500);
+      assert.equal(await page.locator('.frame-photo.is-active').count(),1);
+      assert.equal(await page.locator('#dashboardView > .frame-foreground.is-active').count(),0);
+    }
+    await apps();await page.locator('[data-app="photos"]').click();await settle();
+    assert.equal(await page.locator('#frameDepthChoice').isDisabled(),true);
+    await closeApp();
+    await page.emulateMedia({reducedMotion:'reduce'});
+    photos=[depthPhotos[0]];activatedAt=Date.now();await reloadFrame();await settle();
+    assert.ok(await foreground.evaluate(el=>parseFloat(getComputedStyle(el).transitionDuration))<=.001,'Reduced motion makes depth transitions immediate');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await page.setViewportSize({width:1280,height:800});
+
+    if (process.env.FRAME_TEST_DEPTH_ONLY) {
+      assert.equal(errors.length,0,errors.join('\n'));
+      console.log(`Depth browser scenarios passed. Screenshots: ${output}`);
+      return;
+    }
     // A controlled browser clock exercises real scheduling without a 15-minute wait.
     await page.clock.install({time:new Date()});
     activatedAt=Date.now();prefs={};photos=photoSet;

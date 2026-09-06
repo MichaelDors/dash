@@ -70,6 +70,9 @@
   let photosMount = null;
   let previousFocus = null;
   let photoConnectionError = '';
+  let previewVersion = 0;
+  const foregroundLoads = new Map();
+  const failedForegrounds = new Map();
   const placementCache = new Map();
   const failedPhotos = new Map();
   const focalCropCache = new Map();
@@ -152,7 +155,7 @@
   }
 
   function imageKey(photo, prefs) {
-    return `${photo.id}:${prefs.position_x}:${prefs.position_y}:${prefs.clock}:${window.innerWidth}x${window.innerHeight}`;
+    return `${photo.id}:${photo.foreground?.url || ""}:${prefs.depth === true}:${(failedForegrounds.get(photo.foreground?.url) || 0) > Date.now()}:${prefs.position_x}:${prefs.position_y}:${prefs.clock}:${window.innerWidth}x${window.innerHeight}`;
   }
 
   function rotationBatchKey() {
@@ -204,8 +207,10 @@
     const image = new Image();
     image.decoding = 'async';
     const imageTimeout = setTimeout(() => image.onerror?.(), 12000);
-    image.onload = () => {
+    image.onload = async () => {
       clearTimeout(imageTimeout);
+      if (version !== loadVersion) return;
+      const foreground = prefs.depth === true ? await loadForeground(photo, image) : null;
       if (version !== loadVersion) return;
       const resolved = resolvePhotoPreferences(image, prefs);
       const placement = chooseClockPosition(image, resolved);
@@ -216,12 +221,14 @@
       incoming.src = photo.url;
       incoming.classList.add('is-active');
       outgoing.classList.remove('is-active');
+      setForeground($(`frameForeground${nextLayer}`), photo, resolved, foreground);
+      $(`frameForeground${activeLayer}`).classList.remove('is-active');
       $('frameClock').dataset.position = placement;
       scheduleActivityLayout();
       $('frameClock').style.setProperty('--frame-clock-scrim', clockScrimStrength(image, resolved, placement));
       activeLayer = nextLayer;
       activePhoto = photo;
-      activeKey = key;
+      activeKey = imageKey(photo, prefs);
       pendingKey = '';
       pendingPhotoId = null;
       updateCollectionCaption();
@@ -229,6 +236,7 @@
       if (next && next.id !== photo.id && !(failedPhotos.get(next.id) > Date.now())) {
         const preload = new Image();
         preload.src = next.url;
+        if (preferences(next).depth === true) loadForeground(next);
       }
     };
     image.onerror = () => {
@@ -240,6 +248,61 @@
       selectScheduledPhoto();
     };
     image.src = photo.url;
+  }
+
+  function loadForeground(photo, background) {
+    const url = photo?.foreground?.url;
+    if (!url || (failedForegrounds.get(url) || 0) > Date.now()) return Promise.resolve(null);
+    let loading = foregroundLoads.get(url);
+    if (!loading) {
+      loading = new Promise(resolve => {
+        const image = new Image();
+        const timeout = setTimeout(() => finish(false), 12000);
+        const finish = ok => {
+          clearTimeout(timeout);
+          image.onload = image.onerror = null;
+          if (!ok) {
+            if (failedForegrounds.size > 100) failedForegrounds.clear();
+            failedForegrounds.set(url, Date.now() + 60000);
+            foregroundLoads.delete(url);
+          }
+          resolve(ok ? image : null);
+        };
+        image.onload = () => finish(Boolean(image.naturalWidth && image.naturalHeight));
+        image.onerror = () => finish(false);
+        image.src = url;
+      });
+      foregroundLoads.set(url, loading);
+      // Bound decoded cutout references on small always-on displays.
+      if (foregroundLoads.size > 3) foregroundLoads.delete(foregroundLoads.keys().next().value);
+    }
+    return loading.then(image => {
+      if (image && background && (image.naturalWidth !== background.naturalWidth || image.naturalHeight !== background.naturalHeight)) {
+        failedForegrounds.set(url, Date.now() + 60000);
+        foregroundLoads.delete(url);
+        return null;
+      }
+      return image;
+    });
+  }
+
+  function setForeground(layer, photo, prefs, foreground) {
+    if (!foreground) {
+      layer.classList.remove('is-active');
+      return;
+    }
+    const position = `${prefs.position_x}% ${prefs.position_y}%`;
+    const mask = `url(${JSON.stringify(photo.foreground.url)})`;
+    layer.style.maskImage = mask;
+    layer.style.webkitMaskImage = mask;
+    layer.style.maskPosition = position;
+    layer.style.webkitMaskPosition = position;
+    const pixels = layer.querySelector('img');
+    pixels.src = photo.url;
+    pixels.style.objectPosition = position;
+    // The PNG supplies alpha only: original photo pixels + identical shading
+    // avoid a brighter cutout or color seams from background removal.
+    layer.classList.add('is-active');
   }
 
   // Estimate the focal point from detail and color in a small source image. This
@@ -451,12 +514,13 @@
     editorDirty = false;
     container.innerHTML = `<div class="frame-photos-app" id="framePhotosApp">
       <div class="frame-photos-intro"><div><h2>A new view, every day.</h2><p id="frameCollectionSummary">Your photos change every 15 minutes.</p></div><a class="frame-secondary" href="/frame-setup" target="_blank" rel="noopener"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Set up daily photos <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>
-      <div class="frame-photo-layout"><div><div class="frame-photo-preview"><img id="framePreviewImage" alt="Selected photo crop preview" /><div id="framePreviewClock" class="frame-preview-clock" data-position="top-left"><small id="framePreviewDate"></small><span id="framePreviewTime"></span></div></div><div id="framePhotoThumbs" class="frame-photo-thumbs" aria-label="Choose a photo"></div><p id="framePhotosEmpty" class="frame-empty">Your frame is ready. Connect daily photos below, then send your first collection from Shortcuts.</p></div>
-      <div class="frame-editor"><h3>Make room for the moment</h3><label class="frame-field"><span>Clock position</span><select id="frameClockChoice"><option value="auto">Automatic · find a quiet area</option><option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option><option value="middle-left">Middle left</option><option value="middle-right">Middle right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option></select></label><label class="frame-field"><span>Horizontal crop <output id="frameCropXValue">50%</output></span><input id="frameCropX" type="range" min="0" max="100" value="50" /></label><label class="frame-field"><span>Vertical crop <output id="frameCropYValue">50%</output></span><input id="frameCropY" type="range" min="0" max="100" value="50" /></label><p class="frame-editor-note">The frame finds a focal crop automatically. Adjust the sliders to choose your own; Reset restores the automatic crop and clock. Bottom clock positions move the widgets to make room.</p><div class="frame-editor-actions"><button id="frameSavePhoto" class="frame-primary">Save photo</button><button id="frameResetPhoto" class="frame-secondary">Reset</button></div><p id="framePhotoSaveStatus" class="frame-save-message" role="status"></p></div></div>
+      <div class="frame-photo-layout"><div><div class="frame-photo-preview"><img id="framePreviewImage" alt="Selected photo crop preview" /><div id="framePreviewClock" class="frame-preview-clock" data-position="top-left"><small id="framePreviewDate"></small><span id="framePreviewTime"></span></div><div id="framePreviewForeground" class="frame-foreground" aria-hidden="true"><img alt="" /></div></div><div id="framePhotoThumbs" class="frame-photo-thumbs" aria-label="Choose a photo"></div><p id="framePhotosEmpty" class="frame-empty">Your frame is ready. Connect daily photos below, then send your first collection from Shortcuts.</p></div>
+      <div class="frame-editor"><h3>Make room for the moment</h3><label class="frame-field"><span>Clock position</span><select id="frameClockChoice"><option value="auto">Automatic · find a quiet area</option><option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option><option value="middle-left">Middle left</option><option value="middle-right">Middle right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option></select></label><label class="frame-depth-choice" for="frameDepthChoice"><span>Depth effect</span><input id="frameDepthChoice" type="checkbox" aria-describedby="frameDepthStatus" /></label><p id="frameDepthStatus" class="frame-editor-note"></p><label class="frame-field"><span>Horizontal crop <output id="frameCropXValue">50%</output></span><input id="frameCropX" type="range" min="0" max="100" value="50" /></label><label class="frame-field"><span>Vertical crop <output id="frameCropYValue">50%</output></span><input id="frameCropY" type="range" min="0" max="100" value="50" /></label><p class="frame-editor-note">The frame finds a focal crop automatically. Adjust the sliders to choose your own; Reset restores the automatic crop and clock. Bottom clock positions move the widgets to make room.</p><div class="frame-editor-actions"><button id="frameSavePhoto" class="frame-primary">Save photo</button><button id="frameResetPhoto" class="frame-secondary">Reset</button></div><p id="framePhotoSaveStatus" class="frame-save-message" role="status"></p></div></div>
       <section class="frame-cloud"><div class="frame-cloud-heading"><div><h3>Daily photo connection</h3><p id="framePhotoSyncStatus">Checking your connection…</p></div><button id="frameSyncNow" class="frame-secondary"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Sync now</button></div><form id="frameCloudForm" class="frame-cloud-fields"><label class="frame-field">Photo cloud URL<input id="frameCloudUrl" type="url" placeholder="https://your-deployment.convex.site" autocomplete="off" /></label><label class="frame-field">Photo token<input id="frameCloudToken" type="password" placeholder="Enter photo token" autocomplete="new-password" /></label><button class="frame-primary" type="submit">Save connection</button></form><p id="frameCloudSaveStatus" class="frame-save-message" role="status"></p></section>
     </div>`;
     hydrateIcons(container);
     $('frameClockChoice').addEventListener('change', () => updateEditorDraft(true));
+    $('frameDepthChoice').addEventListener('change', () => updateEditorDraft(true));
     $('frameCropX').addEventListener('input', () => updateEditorDraft(false));
     $('frameCropY').addEventListener('input', () => updateEditorDraft(false));
     $('frameSavePhoto').addEventListener('click', savePhotoPreferences);
@@ -528,6 +592,7 @@
     }
     $('framePhotosEmpty').hidden = Boolean(collection.photos.length);
     ['frameClockChoice','frameCropX','frameCropY','frameSavePhoto','frameResetPhoto'].forEach(id => { $(id).disabled = !editorPhotoId || editorSaving; });
+    $('frameDepthChoice').disabled = editorSaving || !collection.photos.find(p => p.id === editorPhotoId)?.foreground?.url;
     if (force || !editorDirty) {
       const photo = collection.photos.find(p => p.id === editorPhotoId);
       editorDraft = preferences(photo);
@@ -539,6 +604,8 @@
 
   function populateEditorControls(values = editorDraft) {
     $('frameClockChoice').value = values.clock || 'auto';
+    $('frameDepthChoice').checked = editorDraft.depth === true;
+    $('frameDepthChoice').disabled = editorSaving || !collection.photos.find(p => p.id === editorPhotoId)?.foreground?.url;
     $('frameCropX').value = clamp(values.position_x);
     $('frameCropY').value = clamp(values.position_y);
     $('frameCropXValue').textContent = `${Math.round(clamp(values.position_x))}%`;
@@ -546,7 +613,7 @@
   }
 
   function updateEditorDraft(clockOnly = false) {
-    editorDraft = clockOnly ? { ...editorDraft, clock: $('frameClockChoice').value } : { position_x: clamp($('frameCropX').value), position_y: clamp($('frameCropY').value), clock: $('frameClockChoice').value };
+    editorDraft = clockOnly ? { ...editorDraft, depth: $('frameDepthChoice').checked, clock: $('frameClockChoice').value } : { ...editorDraft, depth: $('frameDepthChoice').checked, position_x: clamp($('frameCropX').value), position_y: clamp($('frameCropY').value), clock: $('frameClockChoice').value };
     editorDirty = true;
     populateEditorControls();
     updatePreview();
@@ -556,13 +623,43 @@
   function updatePreview() {
     const photo = collection.photos.find(p => p.id === editorPhotoId);
     const preview = $('framePreviewImage');
+    preview.parentElement.style.aspectRatio = `${window.innerWidth} / ${window.innerHeight}`;
     if (photo && preview.getAttribute('src') !== photo.url) preview.src = photo.url;
     if (!photo) preview.removeAttribute('src');
     const resolved = preview.naturalWidth && preview.dataset.loadedUrl === photo?.url ? resolvePhotoPreferences(preview, editorDraft) : { position_x: clamp(editorDraft.position_x), position_y: clamp(editorDraft.position_y), clock: editorDraft.clock || 'auto' };
     preview.style.objectPosition = `${resolved.position_x}% ${resolved.position_y}%`;
     populateEditorControls(resolved);
     updatePreviewClock();
+    updatePreviewForeground(photo, preview, resolved);
     updateClock();
+  }
+
+  async function updatePreviewForeground(photo, preview, resolved) {
+    const version = ++previewVersion;
+    const layer = $('framePreviewForeground');
+    const note = $('frameDepthStatus');
+    if (!photo?.foreground?.url) {
+      layer.classList.remove('is-active');
+      note.textContent = 'Send a foreground cutout from Shortcuts to enable depth for this photo.';
+      return;
+    }
+    if (editorDraft.depth !== true) {
+      layer.classList.remove('is-active');
+      note.textContent = 'Place the clock behind the subject. Adjust its position to choose the overlap.';
+      return;
+    }
+    if (!preview.naturalWidth || preview.dataset.loadedUrl !== photo.url) {
+      layer.classList.remove('is-active');
+      note.textContent = 'Loading preview…';
+      return;
+    }
+    // Clear a previous photo's mask immediately; crop edits keep their current one.
+    if (layer.querySelector('img').getAttribute('src') !== photo.url) layer.classList.remove('is-active');
+    note.textContent = 'Loading depth preview…';
+    const foreground = await loadForeground(photo, preview);
+    if (version !== previewVersion || !layer.isConnected) return;
+    setForeground(layer, photo, resolved, foreground);
+    note.textContent = foreground ? 'Clock behind subject. Adjust its position to choose the overlap.' : 'The cutout could not be loaded or aligned. Showing the original photo.';
   }
 
   function updatePreviewClock() {
@@ -573,6 +670,22 @@
     const position = loaded ? chooseClockPosition(preview, resolved) : (POSITIONS.includes(editorDraft.clock) ? editorDraft.clock : 'top-left');
     $('framePreviewClock').dataset.position = position;
     $('framePreviewClock').style.setProperty('--frame-clock-scrim', loaded ? clockScrimStrength(preview, resolved, position) : '.15');
+    const scale = preview.parentElement.clientWidth / window.innerWidth;
+    const clock = $('framePreviewClock');
+    const timeStyle = getComputedStyle($('frameTime'));
+    const dateStyle = getComputedStyle($('frameDate'));
+    // Scale a full-size clock as a unit. Re-sizing font glyphs independently can
+    // change kerning/optical metrics and misrepresent where the subject overlaps.
+    const horizontal = position.endsWith('center') ? 'center' : position.endsWith('right') ? 'right' : 'left';
+    clock.style.transformOrigin = `${horizontal} ${position.startsWith('bottom') ? 'bottom' : 'top'}`;
+    clock.style.transform = `${horizontal === 'center' ? 'translateX(-50%) ' : ''}scale(${scale})`;
+    clock.style.width = `${$('frameClock').getBoundingClientRect().width}px`;
+    clock.style.setProperty('--preview-clock-scale', 1);
+    $('framePreviewTime').style.fontSize = timeStyle.fontSize;
+    $('framePreviewTime').style.lineHeight = timeStyle.lineHeight;
+    $('framePreviewDate').style.fontSize = dateStyle.fontSize;
+    $('framePreviewDate').style.lineHeight = dateStyle.lineHeight;
+    $('framePreviewDate').style.marginLeft = '5px';
   }
 
   function setMessage(id, message, error = false) {
@@ -671,7 +784,7 @@
     });
     const layoutObserver = new ResizeObserver(scheduleActivityLayout);
     ['dashboardView', 'frameClock', 'frameWeather', 'frameMusic', 'frameTimer'].forEach(id => layoutObserver.observe($(id)));
-    window.addEventListener('resize', () => { scheduleActivityLayout(); activeKey = ''; selectScheduledPhoto(); updatePreviewClock(); });
+    window.addEventListener('resize', () => { scheduleActivityLayout(); activeKey = ''; selectScheduledPhoto(); if ($('framePreviewImage')) updatePreview(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateClock(); refreshPhotos(); } });
     updateClock();
     refreshPhotos();

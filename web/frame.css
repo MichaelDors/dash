@@ -6,6 +6,10 @@
 .frame-fallback { background:radial-gradient(ellipse at 80% 15%,#6b6150 0,transparent 52%),radial-gradient(ellipse at 12% 95%,#574a3e 0,transparent 60%),linear-gradient(145deg,#1c2221,#2c2722 65%,#77715d); }
 .frame-photo { object-fit:cover; opacity:0; transition:opacity 1.4s ease; }
 .frame-photo.is-active { opacity:1; }
+.frame-foreground { position:absolute; inset:0; z-index:2; pointer-events:none; opacity:0; transition:opacity 1.4s ease; mask-size:cover; mask-position:50% 50%; mask-repeat:no-repeat; -webkit-mask-size:cover; -webkit-mask-position:50% 50%; -webkit-mask-repeat:no-repeat; }
+.frame-foreground>img { width:100%; height:100%; object-fit:cover; display:block; }
+.frame-foreground.is-active { opacity:1; }
+.frame-bottom,.frame-chrome { z-index:3; }
 .frame-shade { background:linear-gradient(180deg,rgba(0,0,0,.12),transparent 48%,rgba(0,0,0,.12) 70%,rgba(0,0,0,.33)); }
 .frame-clock { isolation:isolate; position:absolute; top:12%; left:6%; color:#fffdf5; text-shadow:0 2px 32px rgba(0,0,0,.34),0 1px 4px rgba(0,0,0,.18); transition:opacity .35s ease; pointer-events:none; }
 .frame-clock::before { content:""; position:absolute; inset:-38px -65px; z-index:-1; border-radius:50%; background:radial-gradient(ellipse,rgba(0,0,0,var(--frame-clock-scrim,.15)) 10%,transparent 74%); }
@@ -86,11 +90,16 @@
 .frame-secondary:disabled,.frame-primary:disabled { opacity:.5; cursor:wait; }
 .frame-photo-layout { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(250px,1fr); gap:22px; }
 .frame-photo-preview { position:relative; overflow:hidden; aspect-ratio:16/9; width:100%; background:radial-gradient(ellipse at 85% 20%,#665a49,#282b28 80%); border-radius:20px; }
+.frame-photo-preview .frame-foreground { transition:none; }
+.frame-depth-choice { display:flex; align-items:center; justify-content:space-between; gap:16px; color:#efece2; font-size:14px; cursor:pointer; }
+.frame-depth-choice input { width:38px; height:22px; flex-shrink:0; accent-color:#e4d9b9; cursor:pointer; }
+.frame-depth-choice:has(input:disabled) { opacity:.5; cursor:default; }
 .frame-photo-preview>img { width:100%; height:100%; object-fit:cover; }
 .frame-photo-preview>img:not([src]) { display:none; }
 .frame-preview-clock { isolation:isolate; position:absolute; top:12%; left:6%; font-size:clamp(32px,5.7vw,80px); letter-spacing:-.07em; font-weight:600; line-height:1; text-shadow:0 1px 20px #0006; color:#fffaf2; }
-.frame-preview-clock::before { content:""; position:absolute; inset:-16px -26px; z-index:-1; border-radius:50%; background:radial-gradient(ellipse,rgba(0,0,0,var(--frame-clock-scrim,.15)) 10%,transparent 74%); }
-.frame-preview-clock small { display:block; font-size:clamp(9px,1.2vw,15px); font-weight:500; letter-spacing:-.02em; margin-bottom:4px; }
+.frame-preview-clock::before { content:""; position:absolute; inset:calc(-38px * var(--preview-clock-scale,.4)) calc(-65px * var(--preview-clock-scale,.4)); z-index:-1; border-radius:50%; background:radial-gradient(ellipse,rgba(0,0,0,var(--frame-clock-scrim,.15)) 10%,transparent 74%); }
+.frame-preview-clock small { display:block; font-weight:500; letter-spacing:-.02em; margin-bottom:0; }
+#framePreviewTime { display:block; font-weight:620; letter-spacing:-.065em; font-variant-numeric:tabular-nums; }
 .frame-preview-clock[data-position="top-center"] { left:50%; transform:translateX(-50%); text-align:center; }
 .frame-preview-clock[data-position="top-right"] { left:auto; right:6%; text-align:right; }
 .frame-preview-clock[data-position="middle-left"] { top:39%; }
@@ -133,6 +142,7 @@
 }
 @media(max-width:620px) {
  .frame-clock { top:16%; }
+ .frame-preview-clock { top:16%; }
  .frame-time { font-size:23vw; }
  .frame-date { font-size:18px; }
  .frame-chrome { top:18px; left:20px; right:20px; }
@@ -152,7 +162,9 @@
 }
 @media(max-height:520px) and (min-width:621px) {
  .frame-clock { top:16%; }
+ .frame-preview-clock { top:16%; }
  .frame-clock[data-position^="middle"] { top:35%; }
+ .frame-preview-clock[data-position^="middle"] { top:35%; }
  .frame-time { font-size:clamp(76px,19vh,110px); }
  .frame-date { font-size:17px; }
  .frame-bottom { bottom:5%; }
@@ -161,7 +173,7 @@
  .frame-apps-dialog { max-width:620px; padding:22px; }
 }
 @media(prefers-reduced-motion:reduce) {
- .frame-photo,.frame-clock,.frame-chrome,.frame-app-tile,.frame-music-progress span { transition:none; }
+ .frame-photo,.frame-foreground,.frame-clock,.frame-chrome,.frame-app-tile,.frame-music-progress span { transition:none; }
 }
 
 /* Bottom clocks share the lower edge with a responsive activity rail. */
