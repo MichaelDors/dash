@@ -217,12 +217,37 @@
       const nextLayer = activeLayer === 'A' ? 'B' : 'A';
       const incoming = $(`framePhoto${nextLayer}`);
       const outgoing = $(`framePhoto${activeLayer}`);
+      const incomingForeground = $(`frameForeground${nextLayer}`);
+      const outgoingForeground = $(`frameForeground${activeLayer}`);
+      // Reset the reused pair before swapping its content. Cutout arrivals and
+      // crop/viewport edits of the same photo should not replay the entrance.
+      const animate = activePhoto && activePhoto.id !== photo.id;
+      for (const layer of [incoming, incomingForeground]) {
+        layer.style.transition = 'none';
+        layer.classList.remove('is-active', 'is-outgoing');
+      }
       incoming.style.objectPosition = `${resolved.position_x}% ${resolved.position_y}%`;
       incoming.src = photo.url;
+      setForeground(incomingForeground, photo, resolved, foreground);
+      incomingForeground.classList.remove('is-active');
+      void incoming.offsetWidth;
+      if (animate) {
+        incoming.style.transition = '';
+        incomingForeground.style.transition = '';
+      } else {
+        outgoing.style.transition = 'none';
+        outgoingForeground.style.transition = 'none';
+      }
       incoming.classList.add('is-active');
+      incomingForeground.classList.toggle('is-active', Boolean(foreground));
       outgoing.classList.remove('is-active');
-      setForeground($(`frameForeground${nextLayer}`), photo, resolved, foreground);
-      $(`frameForeground${activeLayer}`).classList.remove('is-active');
+      outgoing.classList.add('is-outgoing');
+      outgoingForeground.classList.remove('is-active');
+      outgoingForeground.classList.add('is-outgoing');
+      if (!animate) {
+        void incoming.offsetWidth;
+        for (const layer of [incoming, incomingForeground, outgoing, outgoingForeground]) layer.style.transition = '';
+      }
       $('frameClock').dataset.position = placement;
       scheduleActivityLayout();
       $('frameClock').style.setProperty('--frame-clock-scrim', clockScrimStrength(image, resolved, placement));

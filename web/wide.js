@@ -997,6 +997,10 @@
   let isInitialLoad = true;
   let wasSpotifyPlaying = null;
   let pendingSpotifyAutoOpen = false;
+  let spotifyAutoOpened = false;
+  let spotifyAccumulatedPlayMs = 0;
+  let spotifyPauseStartedAt = null;
+  let lastSpotifyObservationAt = null;
 
   // API Calls
   async function fetchState() {
@@ -1119,7 +1123,28 @@
     if (pendingSpotifyAutoOpen && spData.track_name && !suspended && !state.settingsOpen && state.activeOverlayApp !== "photos") {
       pendingSpotifyAutoOpen = false;
       if (document.getElementById("frameAppsDialog")?.open) window.DashFrame?.closeApps();
-      if (state.activeOverlayApp !== "spotify") openOverlayApp("spotify");
+      if (state.activeOverlayApp !== "spotify") openOverlayApp("spotify", true);
+    }
+
+    // Match the OLED's automatic Spotify exit grace: accumulated playing
+    // time, bounded to 5 seconds–5 minutes. A resume cancels the pause clock.
+    if (state.activeOverlayApp === "spotify" && spotifyAutoOpened) {
+      const now = performance.now();
+      const elapsed = lastSpotifyObservationAt === null ? 0 : Math.max(0, now - lastSpotifyObservationAt);
+      lastSpotifyObservationAt = now;
+      if (spData.is_playing === true) {
+        spotifyAccumulatedPlayMs = Math.min(300000, spotifyAccumulatedPlayMs + elapsed);
+        spotifyPauseStartedAt = null;
+      } else if (spData.is_playing === false) {
+        if (spotifyPauseStartedAt === null) spotifyPauseStartedAt = now;
+        if (!state.settingsOpen && now - spotifyPauseStartedAt >= Math.max(5000, spotifyAccumulatedPlayMs)) {
+          closeOverlayApp(false);
+        }
+      } else {
+        // Reconnects without playback data are not a confirmed continuous pause.
+        spotifyPauseStartedAt = null;
+        lastSpotifyObservationAt = null;
+      }
     }
 
     // If Overlay App is open, update its content live!
@@ -1316,8 +1341,12 @@
   // Create Card HTML for Dashboard Grid
   // Full Screen Overlay Management
   let overlayReturnFocus = null;
-  function openOverlayApp(appId) {
+  function openOverlayApp(appId, autoOpened = false) {
     if (!AVAILABLE_APPS.some(app => app.id === appId)) return;
+    spotifyAutoOpened = appId === "spotify" && autoOpened;
+    spotifyAccumulatedPlayMs = 0;
+    spotifyPauseStartedAt = null;
+    lastSpotifyObservationAt = null;
     overlayReturnFocus = document.activeElement;
     document.getElementById("appContainer").inert = true;
     elAppOverlayView.classList.toggle("photos-active", appId === "photos");
@@ -1355,6 +1384,10 @@
   }
 
   function closeOverlayApp(isUserAction = true) {
+    spotifyAutoOpened = false;
+    spotifyAccumulatedPlayMs = 0;
+    spotifyPauseStartedAt = null;
+    lastSpotifyObservationAt = null;
     state.activeOverlayApp = null;
     document.getElementById("appContainer").inert = state.settingsOpen;
     window.DashFrame?.showControls();

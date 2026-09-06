@@ -140,6 +140,50 @@ async function main() {
     await page.locator('#frameMusicToggle').click();await settle();
     assert.equal(music.is_playing,true);
     assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true,'Resuming opens Spotify again');
+    // Advance the monotonic playback clock while letting real network polls settle.
+    await page.evaluate(()=>{
+      window.spotifyClockOffset=0;
+      window.spotifyRealNow=performance.now.bind(performance);
+      performance.now=()=>window.spotifyRealNow()+window.spotifyClockOffset;
+    });
+    async function advanceSpotifyClock(ms) {
+      await page.evaluate(ms=>window.spotifyClockOffset+=ms,ms);await settle();
+    }
+    delete music.is_playing;await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Missing playback data does not close Spotify');
+    music.is_playing=true;await settle();
+    music.is_playing=false;await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Remote pause keeps Spotify open during grace');
+    await advanceSpotifyClock(3000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Pause grace is at least five seconds');
+    music.is_playing=true;await settle();
+    await advanceSpotifyClock(6000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Resuming cancels the pending close');
+    music.is_playing=false;await settle();
+    await advanceSpotifyClock(5000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Longer playback extends the stop grace');
+    await advanceSpotifyClock(300000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Sustained pause eventually returns to the frame');
+    assert.equal(await page.locator('#frameMusic').isVisible(),true,'Music activity uses its own thirty-second grace');
+    // Check the upper bound after a long playing session.
+    music.is_playing=true;await settle();await advanceSpotifyClock(400000);
+    music.is_playing=false;await settle();await advanceSpotifyClock(298000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Long session waits nearly five minutes');
+    await advanceSpotifyClock(3000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'OLED-compatible grace caps at five minutes');
+    await apps();await page.locator('[data-app="spotify"]').click();await settle();
+    await advanceSpotifyClock(400000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Manually opened Spotify does not auto-close');
+    await closeApp();
+    music.is_playing=true;await settle();
+    await page.locator('#appOverlayView').click({position:{x:600,y:250}});await settle();
+    await page.locator('#fsSpotPlay').click();await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Fullscreen pause also gets a grace period');
+    await advanceSpotifyClock(6000);
+    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Fullscreen pause closes after grace');
+    await page.evaluate(()=>{performance.now=window.spotifyRealNow;});
+    music.is_playing=true;await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Playback can reopen after automatic close');
     await closeApp();
     music.is_playing=false;await settle();
     await page.locator('#btnOpenSettings').click();await settle();
@@ -148,14 +192,20 @@ async function main() {
     await page.locator('#btnCloseSettings').click();await settle();
     assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true,'Deferred playback opens after leaving settings');
     await closeApp();
-    music.is_playing=false;await settle();
 
     await page.locator('#frameTimerOpen').click();await settle();
+    music.is_playing=false;await settle();
+    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Stopped music does not close the Timer app');
     assert.equal(await page.locator('#appContainer').evaluate(el=>el.inert),true,'Polling preserves modal focus isolation');
     timer={...timer,minutes:2,seconds:31,time_text:'02:31'};
     await settle();
     assert.match(await page.locator('#appOverlayContent').innerText(),/02:31/,'Open timer must update without a Spotify change');
     timer={...timer,running:false};await settle();await closeApp();
+    if (process.env.FRAME_TEST_SPOTIFY_ONLY) {
+      assert.equal(errors.length,0,errors.join('\n'));
+      console.log('Spotify playback navigation scenarios passed.');
+      return;
+    }
     assert.equal(await page.locator('#frameTimer').isVisible(),true);
     timer={...timer,minutes:0,seconds:0,time_text:'00:00'};await settle();
     const beforeDismiss=actions.length;
@@ -363,6 +413,15 @@ async function main() {
     photos=depthPhotos;prefs[secondId]={clock:'top-right',depth:true};activatedAt=Date.now();
     await reloadFrame();await settle(1500);
     await page.locator('#dashboardView').click({position:{x:600,y:260}});await settle(300);
+    const motion=await page.evaluate(()=>{
+      const photo=getComputedStyle(document.querySelector('.frame-photo.is-active'));
+      const cutout=getComputedStyle(document.querySelector('#dashboardView>.frame-foreground.is-active'));
+      return {photoTransform:photo.transform,cutoutTransform:cutout.transform,photoBlur:photo.filter,cutoutBlur:cutout.filter};
+    });
+    assert.equal(motion.photoTransform,motion.cutoutTransform,'Photo and subject zoom together');
+    assert.equal(motion.photoBlur,motion.cutoutBlur,'Photo and subject resolve focus together');
+    assert.notEqual(motion.photoTransform,'matrix(1, 0, 0, 1, 0, 0)','Photo enters with a settling zoom');
+    await shot('photo-focus-transition');
     const transitions=await page.evaluate(()=>['A','B'].map(layer=>({
       background:Number(getComputedStyle(document.getElementById('framePhoto'+layer)).opacity),
       foreground:Number(getComputedStyle(document.getElementById('frameForeground'+layer)).opacity)
@@ -387,6 +446,16 @@ async function main() {
     assert.ok(await foreground.evaluate(el=>parseFloat(getComputedStyle(el).transitionDuration))<=.001,'Reduced motion makes depth transitions immediate');
     await page.emulateMedia({reducedMotion:'no-preference'});
     await page.setViewportSize({width:1280,height:800});
+    photos=depthPhotos;prefs[secondId]={clock:'top-right',depth:true};
+    activatedAt=Date.now();await reloadFrame();await settle();
+    for(let tap=0;tap<3;tap++) {
+      await page.locator('#dashboardView').press('ArrowRight');await settle(120);
+    }
+    await settle(2800);
+    assert.equal(await page.locator('.frame-photo.is-active').count(),1,'Rapid changes leave one active photo');
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/portrait/);
+    assert.match(await foreground.locator('img').getAttribute('src'),/portrait/,'Reused cutout follows the final rapid selection');
+    assert.equal(await page.locator('.frame-photo.is-active').evaluate(el=>getComputedStyle(el).filter),'blur(0px)');
 
     if (process.env.FRAME_TEST_DEPTH_ONLY) {
       assert.equal(errors.length,0,errors.join('\n'));
