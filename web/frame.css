@@ -4,7 +4,7 @@
 .frame-backdrop,.frame-fallback,.frame-photo,.frame-shade { position:absolute; inset:0; width:100%; height:100%; }
 .frame-backdrop { z-index:-1; overflow:hidden; }
 .frame-fallback { background:radial-gradient(ellipse at 80% 15%,#6b6150 0,transparent 52%),radial-gradient(ellipse at 12% 95%,#574a3e 0,transparent 60%),linear-gradient(145deg,#1c2221,#2c2722 65%,#77715d); }
-.frame-photo { object-fit:cover; opacity:0; }
+.frame-photo { max-width:none; object-fit:cover; opacity:0; }
 .frame-photo.is-active { opacity:1; }
 .frame-foreground { position:absolute; inset:0; z-index:2; pointer-events:none; opacity:0; mask-size:cover; mask-position:50% 50%; mask-repeat:no-repeat; -webkit-mask-size:cover; -webkit-mask-position:50% 50%; -webkit-mask-repeat:no-repeat; }
 .frame-foreground>img { width:100%; height:100%; object-fit:cover; display:block; }
@@ -211,3 +211,12 @@
 i[data-frame-icon]::before { display:none !important; }
 i[data-frame-icon] { display:inline-grid; place-items:center; flex-shrink:0; }
 .frame-local-icon { display:block; width:1em; height:1em; }
+
+/* Light photo regions use clean dark ink without a shadow or dark halo. */
+.frame-clock[data-ink="dark"],.frame-preview-clock[data-ink="dark"] { color:#171916; text-shadow:none; }
+
+.frame-photo-blur,.frame-photo-preview>img.frame-photo-blur { position:absolute; inset:-5%; width:110%; height:110%; max-width:none; object-fit:cover; filter:blur(24px); opacity:0; transition:opacity 1200ms ease; pointer-events:none; }
+.frame-photo-blur.is-active,.frame-photo-preview>img.frame-photo-blur.is-active { opacity:1; }
+.frame-photo-preview>img#framePreviewImage { max-width:none; }
+.frame-view { overflow:hidden; }
+@media (prefers-reduced-motion:reduce) { .frame-photo-blur { transition:none; } }

@@ -132,7 +132,7 @@ class PhotoFrameManager:
                 raise ValueError("Invalid photo ID in preferences")
             if not isinstance(settings, dict):
                 raise ValueError("Each photo preference must be an object")
-            if any(key not in {"position_x", "position_y", "clock", "depth"} for key in settings):
+            if any(key not in {"position_x", "position_y", "clock", "depth", "zoom"} for key in settings):
                 raise ValueError("Unknown photo preference")
             preference = {}
             for key in ("position_x", "position_y"):
@@ -141,6 +141,11 @@ class PhotoFrameManager:
                     if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not 0 <= number <= 100:
                         raise ValueError("Photo position must be between 0 and 100")
                     preference[key] = number
+            if "zoom" in settings:
+                number = settings["zoom"]
+                if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not 25 <= number <= 300:
+                    raise ValueError("Photo zoom must be between 25 and 300")
+                preference["zoom"] = number
             if "clock" in settings:
                 if not isinstance(settings["clock"], str) or settings["clock"] not in CLOCK_POSITIONS:
                     raise ValueError("Invalid clock position")

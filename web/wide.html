@@ -22,6 +22,8 @@
     <main id="dashboardView" class="frame-view" tabindex="0" aria-label="Photo frame. Tap the photo or press Right Arrow for the next photo. Press Enter to show controls.">
       <div class="frame-backdrop" aria-hidden="true">
         <div class="frame-fallback"></div>
+        <img id="frameBlurA" class="frame-photo-blur" alt="" />
+        <img id="frameBlurB" class="frame-photo-blur" alt="" />
         <img id="framePhotoA" class="frame-photo" alt="" draggable="false" />
         <img id="framePhotoB" class="frame-photo" alt="" draggable="false" />
         <div class="frame-shade"></div>
@@ -33,7 +35,7 @@
       <div id="frameForegroundA" class="frame-foreground" aria-hidden="true"><img alt="" draggable="false" /><div class="frame-shade"></div></div>
       <div id="frameForegroundB" class="frame-foreground" aria-hidden="true"><img alt="" draggable="false" /><div class="frame-shade"></div></div>
       <div id="frameChrome" class="frame-chrome">
-        <div class="frame-caption"><span id="framePhotoCount">Your daily frame</span><span id="frameConnectionStatus" role="status"></span></div>
+        <div class="frame-caption"><span id="frameConnectionStatus" role="status"></span></div>
         <nav class="frame-nav" aria-label="Dashboard controls">
           <button id="btnOpenApps" class="frame-nav-button" aria-haspopup="dialog"><i class="fa-solid fa-shapes" aria-hidden="true"></i><span>Apps</span></button>
           <button id="btnOpenSettings" class="frame-nav-button"><i class="fa-solid fa-gear" aria-hidden="true"></i><span>Settings</span></button>

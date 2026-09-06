@@ -76,9 +76,10 @@
   const placementCache = new Map();
   const failedPhotos = new Map();
   const focalCropCache = new Map();
-  const clockScrimCache = new Map();
+  const clockAppearanceCache = new Map();
   const html = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clamp = (v) => Number.isFinite(Number(v)) ? Math.min(100, Math.max(0, Number(v))) : 50;
+  const zoomValue = (value) => Number.isFinite(Number(value)) ? Math.min(300, Math.max(25, Number(value))) : 100;
   const preferences = (photo) => ({ clock: 'auto', ...(collection.photo_preferences[photo?.id] || {}) });
 
   function showControls() {
@@ -137,7 +138,6 @@
       if (!Array.isArray(data.photos)) throw new Error('Photo collection is unavailable');
       collection = { ...data, photos: data.photos.filter(p => p && typeof p.id === 'string' && typeof p.url === 'string'), photo_preferences: data.photo_preferences || {}, status: data.status || {} };
       photoConnectionError = '';
-      updateCollectionCaption();
       selectScheduledPhoto();
       if (photosMount?.isConnected) updatePhotosApp();
     } catch (error) {
@@ -148,14 +148,8 @@
     }
   }
 
-  function updateCollectionCaption() {
-    const count = collection.photos.length;
-    const index = collection.photos.findIndex(p => p.id === activePhoto?.id);
-    $('framePhotoCount').textContent = count ? `${Math.max(1, index + 1)} / ${count} photos · every 15 min` : 'Your daily frame';
-  }
-
   function imageKey(photo, prefs) {
-    return `${photo.id}:${photo.foreground?.url || ""}:${prefs.depth === true}:${(failedForegrounds.get(photo.foreground?.url) || 0) > Date.now()}:${prefs.position_x}:${prefs.position_y}:${prefs.clock}:${window.innerWidth}x${window.innerHeight}`;
+    return `${photo.id}:${photo.foreground?.url || ""}:${prefs.depth === true}:${(failedForegrounds.get(photo.foreground?.url) || 0) > Date.now()}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${prefs.clock}:${window.innerWidth}x${window.innerHeight}`;
   }
 
   function rotationBatchKey() {
@@ -168,7 +162,33 @@
       && Number.isInteger(manualRotation.index) && manualRotation.index >= 0
       && Number.isFinite(manualRotation.startedAt) ? manualRotation : null;
     const start = manual ? manual.startedAt : Number(collection.activated_at) || 0;
-    return ((manual?.index || 0) + Math.max(0, Math.floor((Date.now() - start) / interval))) % collection.photos.length;
+    const now = Number.isFinite(manual?.pausedAt) ? manual.pausedAt : Date.now();
+    return ((manual?.index || 0) + Math.max(0, Math.floor((now - start) / interval))) % collection.photos.length;
+  }
+
+  function syncRotationPause() {
+    if (!collection.photos.length) return;
+    const phone = latestData.phone_state;
+    // Wait for phone state before resuming a pause restored from storage.
+    if (!phone) return;
+    const suspended = phone.is_home === false || phone.sleep_focus === true
+      || String(phone.focus_mode || '').trim().toLowerCase() === 'sleep';
+    const valid = manualRotation?.batch === rotationBatchKey()
+      && Number.isInteger(manualRotation.index) && manualRotation.index >= 0
+      && Number.isFinite(manualRotation.startedAt);
+    const paused = valid && Number.isFinite(manualRotation.pausedAt);
+    if (suspended && !paused) {
+      manualRotation = {
+        batch: rotationBatchKey(),
+        index: valid ? manualRotation.index : 0,
+        startedAt: valid ? manualRotation.startedAt : Number(collection.activated_at) || 0,
+        pausedAt: Date.now()
+      };
+    } else if (!suspended && paused) {
+      manualRotation.startedAt += Math.max(0, Date.now() - manualRotation.pausedAt);
+      delete manualRotation.pausedAt;
+    } else return;
+    try { localStorage.setItem(ROTATION_STORAGE_KEY, JSON.stringify(manualRotation)); } catch (_) {}
   }
 
   function advancePhoto() {
@@ -185,6 +205,7 @@
 
   function selectScheduledPhoto() {
     if (!collection.photos.length) return;
+    syncRotationPause();
     const index = scheduledPhotoIndex();
     let photo = null;
     for (let n = 0; n < collection.photos.length; n++) {
@@ -226,7 +247,12 @@
         layer.style.transition = 'none';
         layer.classList.remove('is-active', 'is-outgoing');
       }
-      incoming.style.objectPosition = `${resolved.position_x}% ${resolved.position_y}%`;
+      applyPhotoGeometry(incoming, image, resolved);
+      const incomingBlur = $(`frameBlur${nextLayer}`);
+      const outgoingBlur = $(`frameBlur${activeLayer}`);
+      incomingBlur.src = photo.url;
+      incomingBlur.classList.toggle('is-active', resolved.zoom < 100);
+      outgoingBlur.classList.remove('is-active');
       incoming.src = photo.url;
       setForeground(incomingForeground, photo, resolved, foreground);
       incomingForeground.classList.remove('is-active');
@@ -250,13 +276,12 @@
       }
       $('frameClock').dataset.position = placement;
       scheduleActivityLayout();
-      $('frameClock').style.setProperty('--frame-clock-scrim', clockScrimStrength(image, resolved, placement));
+      applyClockAppearance($('frameClock'), clockAppearance(image, resolved, placement));
       activeLayer = nextLayer;
       activePhoto = photo;
       activeKey = imageKey(photo, prefs);
       pendingKey = '';
       pendingPhotoId = null;
-      updateCollectionCaption();
       const next = collection.photos[(collection.photos.findIndex(p => p.id === photo.id) + 1) % collection.photos.length];
       if (next && next.id !== photo.id && !(failedPhotos.get(next.id) > Date.now())) {
         const preload = new Image();
@@ -324,10 +349,40 @@
     layer.style.webkitMaskPosition = position;
     const pixels = layer.querySelector('img');
     pixels.src = photo.url;
-    pixels.style.objectPosition = position;
+    applyPhotoGeometry(pixels, foreground, prefs);
+    const geometry = photoGeometry(foreground, prefs, window.innerWidth, window.innerHeight);
+    const maskSize = `${geometry.width / window.innerWidth * 100}% ${geometry.height / window.innerHeight * 100}%`;
+    layer.style.maskSize = maskSize;
+    layer.style.webkitMaskSize = maskSize;
     // The PNG supplies alpha only: original photo pixels + identical shading
     // avoid a brighter cutout or color seams from background removal.
     layer.classList.add('is-active');
+  }
+
+  function photoGeometry(image, prefs, viewportWidth, viewportHeight) {
+    const scale = Math.max(viewportWidth / image.naturalWidth, viewportHeight / image.naturalHeight) * zoomValue(prefs.zoom) / 100;
+    const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+    return { width, height, x: (viewportWidth - width) * clamp(prefs.position_x) / 100, y: (viewportHeight - height) * clamp(prefs.position_y) / 100 };
+  }
+
+  function applyPhotoGeometry(element, image, prefs) {
+    if (!image.naturalWidth || !image.naturalHeight) return;
+    const g = photoGeometry(image, prefs, window.innerWidth, window.innerHeight);
+    Object.assign(element.style, { position: 'absolute', right: 'auto', bottom: 'auto',
+      width: `${g.width / window.innerWidth * 100}%`, height: `${g.height / window.innerHeight * 100}%`,
+      left: `${g.x / window.innerWidth * 100}%`, top: `${g.y / window.innerHeight * 100}%` });
+  }
+
+  // Analyze the same composition as the display, including the zoom-out backdrop.
+  function drawPhotoComposition(ctx, canvas, image, prefs) {
+    if (zoomValue(prefs.zoom) < 100) {
+      const cover = photoGeometry(image, { position_x: 50, position_y: 50, zoom: 110 }, canvas.width, canvas.height);
+      ctx.filter = 'blur(3px)';
+      ctx.drawImage(image, cover.x, cover.y, cover.width, cover.height);
+      ctx.filter = 'none';
+    }
+    const g = photoGeometry(image, prefs, canvas.width, canvas.height);
+    ctx.drawImage(image, g.x, g.y, g.width, g.height);
   }
 
   // Estimate the focal point from detail and color in a small source image. This
@@ -378,45 +433,57 @@
     return {
       position_x: typeof prefs.position_x === 'number' && Number.isFinite(prefs.position_x) ? clamp(prefs.position_x) : automatic.position_x,
       position_y: typeof prefs.position_y === 'number' && Number.isFinite(prefs.position_y) ? clamp(prefs.position_y) : automatic.position_y,
+      zoom: zoomValue(prefs.zoom),
       clock: prefs.clock || 'auto'
     };
   }
 
-  function clockScrimStrength(image, prefs, position) {
-    const key = `${image.src}:${prefs.position_x}:${prefs.position_y}:${position}:${window.innerWidth}x${window.innerHeight}`;
-    if (clockScrimCache.has(key)) return clockScrimCache.get(key);
+  function clockAppearance(image, prefs, position) {
+    const key = `${image.src}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${position}:${window.innerWidth}x${window.innerHeight}`;
+    if (clockAppearanceCache.has(key)) return clockAppearanceCache.get(key);
     let strength = .15;
+    let dark = false;
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 96;
       canvas.height = Math.max(36, Math.round(96 * window.innerHeight / window.innerWidth));
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
-      const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
-      ctx.drawImage(image, (canvas.width - width) * prefs.position_x / 100, (canvas.height - height) * prefs.position_y / 100, width, height);
+      drawPhotoComposition(ctx, canvas, image, prefs);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const gray = (x,y) => { const i = (y * canvas.width + x) * 4; return (pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722) / 255; };
       const [left,top] = CLOCK_REGIONS[Math.max(0,POSITIONS.indexOf(position))];
-      let total = 0, light = 0, edges = 0;
+      let total = 0, light = 0, edges = 0, lightPixels = 0;
       for (let y = Math.floor(top * canvas.height); y < Math.min(canvas.height - 1, (top + .25) * canvas.height); y++) {
         for (let x = Math.floor(left * canvas.width); x < Math.min(canvas.width - 1, (left + .29) * canvas.width); x++) {
           const value = gray(x,y);
           light += value;
+          if (value > .45) lightPixels++;
           edges += Math.abs(value - gray(x + 1,y)) + Math.abs(value - gray(x,y + 1));
           total++;
         }
       }
-      if (total) strength = Math.min(.62, .08 + light / total * .37 + edges / total * 1.2);
+      if (total) {
+        // Use ink on predominantly light areas; mixed areas retain white type
+        // and a local scrim so a bright patch cannot hide the rest of the clock.
+        dark = light / total >= .62 && lightPixels / total >= .8;
+        strength = dark ? 0 : Math.min(.62, .08 + light / total * .37 + edges / total * 1.2);
+      }
     } catch (_) { /* A moderate local scrim also covers images that cannot be read. */ }
-    if (clockScrimCache.size > 100) clockScrimCache.clear();
-    clockScrimCache.set(key, strength.toFixed(3));
-    return strength.toFixed(3);
+    if (clockAppearanceCache.size > 100) clockAppearanceCache.clear();
+    const appearance = { dark, scrim: strength.toFixed(3) };
+    clockAppearanceCache.set(key, appearance);
+    return appearance;
+  }
+
+  function applyClockAppearance(clock, appearance) {
+    clock.dataset.ink = appearance.dark ? 'dark' : 'light';
+    clock.style.setProperty('--frame-clock-scrim', appearance.scrim);
   }
 
   // Score a tiny, already-cropped canvas. Quiet/darker areas give white clock type room.
   function chooseClockPosition(image, prefs) {
     if (POSITIONS.includes(prefs.clock)) return prefs.clock;
-    const cacheKey = `${image.src}:${prefs.position_x}:${prefs.position_y}:${window.innerWidth}x${window.innerHeight}`;
+    const cacheKey = `${image.src}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${window.innerWidth}x${window.innerHeight}`;
     if (placementCache.has(cacheKey)) return placementCache.get(cacheKey);
     let choice = 'top-left';
     try {
@@ -424,10 +491,7 @@
       canvas.width = 120;
       canvas.height = Math.max(45, Math.round(120 * window.innerHeight / window.innerWidth));
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
-      const width = image.naturalWidth * scale;
-      const height = image.naturalHeight * scale;
-      ctx.drawImage(image, (canvas.width - width) * clamp(prefs.position_x) / 100, (canvas.height - height) * clamp(prefs.position_y) / 100, width, height);
+      drawPhotoComposition(ctx, canvas, image, prefs);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const gray = (x, y) => { const i = (y * canvas.width + x) * 4; return (pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722) / 255; };
       const regions = CLOCK_REGIONS;
@@ -539,13 +603,14 @@
     editorDirty = false;
     container.innerHTML = `<div class="frame-photos-app" id="framePhotosApp">
       <div class="frame-photos-intro"><div><h2>A new view, every day.</h2><p id="frameCollectionSummary">Your photos change every 15 minutes.</p></div><a class="frame-secondary" href="/frame-setup" target="_blank" rel="noopener"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Set up daily photos <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>
-      <div class="frame-photo-layout"><div><div class="frame-photo-preview"><img id="framePreviewImage" alt="Selected photo crop preview" /><div id="framePreviewClock" class="frame-preview-clock" data-position="top-left"><small id="framePreviewDate"></small><span id="framePreviewTime"></span></div><div id="framePreviewForeground" class="frame-foreground" aria-hidden="true"><img alt="" /></div></div><div id="framePhotoThumbs" class="frame-photo-thumbs" aria-label="Choose a photo"></div><p id="framePhotosEmpty" class="frame-empty">Your frame is ready. Connect daily photos below, then send your first collection from Shortcuts.</p></div>
-      <div class="frame-editor"><h3>Make room for the moment</h3><label class="frame-field"><span>Clock position</span><select id="frameClockChoice"><option value="auto">Automatic · find a quiet area</option><option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option><option value="middle-left">Middle left</option><option value="middle-right">Middle right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option></select></label><label class="frame-depth-choice" for="frameDepthChoice"><span>Depth effect</span><input id="frameDepthChoice" type="checkbox" aria-describedby="frameDepthStatus" /></label><p id="frameDepthStatus" class="frame-editor-note"></p><label class="frame-field"><span>Horizontal crop <output id="frameCropXValue">50%</output></span><input id="frameCropX" type="range" min="0" max="100" value="50" /></label><label class="frame-field"><span>Vertical crop <output id="frameCropYValue">50%</output></span><input id="frameCropY" type="range" min="0" max="100" value="50" /></label><p class="frame-editor-note">The frame finds a focal crop automatically. Adjust the sliders to choose your own; Reset restores the automatic crop and clock. Bottom clock positions move the widgets to make room.</p><div class="frame-editor-actions"><button id="frameSavePhoto" class="frame-primary">Save photo</button><button id="frameResetPhoto" class="frame-secondary">Reset</button></div><p id="framePhotoSaveStatus" class="frame-save-message" role="status"></p></div></div>
+      <div class="frame-photo-layout"><div><div class="frame-photo-preview"><img id="framePreviewBlur" class="frame-photo-blur" alt="" aria-hidden="true" /><img id="framePreviewImage" alt="Selected photo crop preview" /><div id="framePreviewClock" class="frame-preview-clock" data-position="top-left"><small id="framePreviewDate"></small><span id="framePreviewTime"></span></div><div id="framePreviewForeground" class="frame-foreground" aria-hidden="true"><img alt="" /></div></div><div id="framePhotoThumbs" class="frame-photo-thumbs" aria-label="Choose a photo"></div><p id="framePhotosEmpty" class="frame-empty">Your frame is ready. Connect daily photos below, then send your first collection from Shortcuts.</p></div>
+      <div class="frame-editor"><h3>Make room for the moment</h3><label class="frame-field"><span>Clock position</span><select id="frameClockChoice"><option value="auto">Automatic · find a quiet area</option><option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option><option value="middle-left">Middle left</option><option value="middle-right">Middle right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option></select></label><label class="frame-depth-choice" for="frameDepthChoice"><span>Depth effect</span><input id="frameDepthChoice" type="checkbox" aria-describedby="frameDepthStatus" /></label><p id="frameDepthStatus" class="frame-editor-note"></p><label class="frame-field"><span>Zoom <output id="frameZoomValue">100% · Fill</output></span><input id="frameZoom" type="range" min="25" max="300" step="1" value="100" aria-describedby="frameZoomHint" /></label><p id="frameZoomHint" class="frame-editor-note">100% fills the screen. Zoom in for a tighter crop, or out to reveal a blurred backdrop.</p><label class="frame-field"><span>Horizontal crop <output id="frameCropXValue">50%</output></span><input id="frameCropX" type="range" min="0" max="100" value="50" /></label><label class="frame-field"><span>Vertical crop <output id="frameCropYValue">50%</output></span><input id="frameCropY" type="range" min="0" max="100" value="50" /></label><p class="frame-editor-note">The frame finds a focal crop automatically. Adjust the sliders to choose your own; Reset restores the automatic crop and clock. Bottom clock positions move the widgets to make room.</p><div class="frame-editor-actions"><button id="frameSavePhoto" class="frame-primary">Save photo</button><button id="frameResetPhoto" class="frame-secondary">Reset</button></div><p id="framePhotoSaveStatus" class="frame-save-message" role="status"></p></div></div>
       <section class="frame-cloud"><div class="frame-cloud-heading"><div><h3>Daily photo connection</h3><p id="framePhotoSyncStatus">Checking your connection…</p></div><button id="frameSyncNow" class="frame-secondary"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Sync now</button></div><form id="frameCloudForm" class="frame-cloud-fields"><label class="frame-field">Photo cloud URL<input id="frameCloudUrl" type="url" placeholder="https://your-deployment.convex.site" autocomplete="off" /></label><label class="frame-field">Photo token<input id="frameCloudToken" type="password" placeholder="Enter photo token" autocomplete="new-password" /></label><button class="frame-primary" type="submit">Save connection</button></form><p id="frameCloudSaveStatus" class="frame-save-message" role="status"></p></section>
     </div>`;
     hydrateIcons(container);
     $('frameClockChoice').addEventListener('change', () => updateEditorDraft(true));
     $('frameDepthChoice').addEventListener('change', () => updateEditorDraft(true));
+    $('frameZoom').addEventListener('input', () => updateEditorDraft(false));
     $('frameCropX').addEventListener('input', () => updateEditorDraft(false));
     $('frameCropY').addEventListener('input', () => updateEditorDraft(false));
     $('frameSavePhoto').addEventListener('click', savePhotoPreferences);
@@ -616,7 +681,7 @@
       }
     }
     $('framePhotosEmpty').hidden = Boolean(collection.photos.length);
-    ['frameClockChoice','frameCropX','frameCropY','frameSavePhoto','frameResetPhoto'].forEach(id => { $(id).disabled = !editorPhotoId || editorSaving; });
+    ['frameClockChoice','frameZoom','frameCropX','frameCropY','frameSavePhoto','frameResetPhoto'].forEach(id => { $(id).disabled = !editorPhotoId || editorSaving; });
     $('frameDepthChoice').disabled = editorSaving || !collection.photos.find(p => p.id === editorPhotoId)?.foreground?.url;
     if (force || !editorDirty) {
       const photo = collection.photos.find(p => p.id === editorPhotoId);
@@ -631,6 +696,8 @@
     $('frameClockChoice').value = values.clock || 'auto';
     $('frameDepthChoice').checked = editorDraft.depth === true;
     $('frameDepthChoice').disabled = editorSaving || !collection.photos.find(p => p.id === editorPhotoId)?.foreground?.url;
+    $('frameZoom').value = zoomValue(values.zoom);
+    $('frameZoomValue').textContent = `${zoomValue(values.zoom)}%${zoomValue(values.zoom) === 100 ? ' · Fill' : ''}`;
     $('frameCropX').value = clamp(values.position_x);
     $('frameCropY').value = clamp(values.position_y);
     $('frameCropXValue').textContent = `${Math.round(clamp(values.position_x))}%`;
@@ -638,7 +705,7 @@
   }
 
   function updateEditorDraft(clockOnly = false) {
-    editorDraft = clockOnly ? { ...editorDraft, depth: $('frameDepthChoice').checked, clock: $('frameClockChoice').value } : { ...editorDraft, depth: $('frameDepthChoice').checked, position_x: clamp($('frameCropX').value), position_y: clamp($('frameCropY').value), clock: $('frameClockChoice').value };
+    editorDraft = clockOnly ? { ...editorDraft, depth: $('frameDepthChoice').checked, clock: $('frameClockChoice').value } : { ...editorDraft, depth: $('frameDepthChoice').checked, zoom: zoomValue($('frameZoom').value), position_x: clamp($('frameCropX').value), position_y: clamp($('frameCropY').value), clock: $('frameClockChoice').value };
     editorDirty = true;
     populateEditorControls();
     updatePreview();
@@ -651,8 +718,12 @@
     preview.parentElement.style.aspectRatio = `${window.innerWidth} / ${window.innerHeight}`;
     if (photo && preview.getAttribute('src') !== photo.url) preview.src = photo.url;
     if (!photo) preview.removeAttribute('src');
-    const resolved = preview.naturalWidth && preview.dataset.loadedUrl === photo?.url ? resolvePhotoPreferences(preview, editorDraft) : { position_x: clamp(editorDraft.position_x), position_y: clamp(editorDraft.position_y), clock: editorDraft.clock || 'auto' };
-    preview.style.objectPosition = `${resolved.position_x}% ${resolved.position_y}%`;
+    const resolved = preview.naturalWidth && preview.dataset.loadedUrl === photo?.url ? resolvePhotoPreferences(preview, editorDraft) : { zoom: zoomValue(editorDraft.zoom), position_x: clamp(editorDraft.position_x), position_y: clamp(editorDraft.position_y), clock: editorDraft.clock || 'auto' };
+    applyPhotoGeometry(preview, preview, resolved);
+    const blur = $('framePreviewBlur');
+    if (photo) blur.src = photo.url;
+    else blur.removeAttribute('src');
+    blur.classList.toggle('is-active', Boolean(photo) && resolved.zoom < 100);
     populateEditorControls(resolved);
     updatePreviewClock();
     updatePreviewForeground(photo, preview, resolved);
@@ -694,7 +765,7 @@
     const resolved = loaded ? resolvePhotoPreferences(preview, editorDraft) : editorDraft;
     const position = loaded ? chooseClockPosition(preview, resolved) : (POSITIONS.includes(editorDraft.clock) ? editorDraft.clock : 'top-left');
     $('framePreviewClock').dataset.position = position;
-    $('framePreviewClock').style.setProperty('--frame-clock-scrim', loaded ? clockScrimStrength(preview, resolved, position) : '.15');
+    applyClockAppearance($('framePreviewClock'), loaded ? clockAppearance(preview, resolved, position) : { dark: false, scrim: '.15' });
     const scale = preview.parentElement.clientWidth / window.innerWidth;
     const clock = $('framePreviewClock');
     const timeStyle = getComputedStyle($('frameTime'));
@@ -817,5 +888,5 @@
     setInterval(refreshPhotos,30000);
   }
 
-  window.DashFrame = { init, update(data) { latestData = data; updateActivities(data); }, setConnection, renderPhotos, showControls, closeApps };
+  window.DashFrame = { init, update(data) { latestData = data; syncRotationPause(); updateActivities(data); }, setConnection, renderPhotos, showControls, closeApps };
 })();
