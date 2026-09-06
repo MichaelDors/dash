@@ -2423,7 +2423,7 @@ body {
   transform: scale(0.96);
 }
 
-/* Screen Off / Sleep Blackout Overlay */
+/* Web privacy cover for Away / Sleep Focus. */
 .display-off-overlay {
   position: fixed;
   top: 0;
@@ -2438,7 +2438,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -2447,31 +2446,6 @@ body {
   pointer-events: auto;
 }
 
-.display-off-overlay.is-dim {
-  opacity: 0.88;
-  pointer-events: auto;
-}
-
-.display-off-hint {
-  color: rgba(255, 255, 255, 0.25);
-  font-family: var(--font-primary, "Outfit", sans-serif);
-  font-size: 0.95rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-}
-
-.display-off-hint i {
-  font-size: 1.6rem;
-  color: var(--accent-purple, #bf7af0);
-  filter: drop-shadow(0 0 10px rgba(191, 122, 240, 0.5));
-}
-
-.display-off-overlay.is-dim .display-off-hint,
-.display-off-overlay:active .display-off-hint {
-  opacity: 0.7;
+.display-off-overlay.hidden {
+  display: none;
 }

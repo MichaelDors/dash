@@ -43,7 +43,8 @@
     element.innerHTML = `<svg class="frame-local-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
   }
   function hydrateIcons(root) { root.querySelectorAll('i').forEach(paintIcon); }
-  const POSITIONS = ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right'];
+  const POSITIONS = ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+  const CLOCK_REGIONS = [[.06,.12],[.35,.12],[.65,.12],[.06,.39],[.65,.39],[.06,.69],[.35,.69],[.65,.69]];
   let bridge;
   let collection = { photos: [], photo_preferences: {}, status: {} };
   let frameConfig = {};
@@ -51,6 +52,10 @@
   let activePhoto = null;
   let activeKey = '';
   let pendingKey = '';
+  let pendingPhotoId = null;
+  const ROTATION_STORAGE_KEY = 'dash.frame.rotation.v1';
+  let manualRotation = null;
+  try { manualRotation = JSON.parse(localStorage.getItem(ROTATION_STORAGE_KEY)); } catch (_) {}
   let loadVersion = 0;
   let activeLayer = 'B';
   let fetching = false;
@@ -150,11 +155,34 @@
     return `${photo.id}:${prefs.position_x}:${prefs.position_y}:${prefs.clock}:${window.innerWidth}x${window.innerHeight}`;
   }
 
+  function rotationBatchKey() {
+    return `${collection.batch_id || collection.photos.map(photo => photo.id).join(',')}:${collection.activated_at || 0}`;
+  }
+
+  function scheduledPhotoIndex() {
+    const interval = Math.max(60, Number(collection.rotation_seconds) || 900) * 1000;
+    const manual = manualRotation?.batch === rotationBatchKey()
+      && Number.isInteger(manualRotation.index) && manualRotation.index >= 0
+      && Number.isFinite(manualRotation.startedAt) ? manualRotation : null;
+    const start = manual ? manual.startedAt : Number(collection.activated_at) || 0;
+    return ((manual?.index || 0) + Math.max(0, Math.floor((Date.now() - start) / interval))) % collection.photos.length;
+  }
+
+  function advancePhoto() {
+    if (collection.photos.length < 2) return;
+    const current = collection.photos.findIndex(photo => photo.id === (pendingPhotoId || activePhoto?.id));
+    manualRotation = {
+      batch: rotationBatchKey(),
+      index: ((current < 0 ? scheduledPhotoIndex() : current) + 1) % collection.photos.length,
+      startedAt: Date.now()
+    };
+    try { localStorage.setItem(ROTATION_STORAGE_KEY, JSON.stringify(manualRotation)); } catch (_) {}
+    selectScheduledPhoto();
+  }
+
   function selectScheduledPhoto() {
     if (!collection.photos.length) return;
-    const interval = Math.max(60, Number(collection.rotation_seconds) || 900) * 1000;
-    const start = Number(collection.activated_at) || 0;
-    const index = Math.max(0, Math.floor((Date.now() - start) / interval)) % collection.photos.length;
+    const index = scheduledPhotoIndex();
     let photo = null;
     for (let n = 0; n < collection.photos.length; n++) {
       const candidate = collection.photos[(index + n) % collection.photos.length];
@@ -163,8 +191,15 @@
     if (!photo) return;
     const prefs = preferences(photo);
     const key = imageKey(photo, prefs);
-    if (key === activeKey || key === pendingKey) return;
+    if (key === pendingKey) return;
+    if (key === activeKey) {
+      // Rapid taps can wrap back to the visible image before another finishes.
+      // Cancel that pending selection so its eventual load cannot replace it.
+      if (pendingKey) { loadVersion++; pendingKey = ''; pendingPhotoId = null; }
+      return;
+    }
     pendingKey = key;
+    pendingPhotoId = photo.id;
     const version = ++loadVersion;
     const image = new Image();
     image.decoding = 'async';
@@ -182,11 +217,13 @@
       incoming.classList.add('is-active');
       outgoing.classList.remove('is-active');
       $('frameClock').dataset.position = placement;
+      scheduleActivityLayout();
       $('frameClock').style.setProperty('--frame-clock-scrim', clockScrimStrength(image, resolved, placement));
       activeLayer = nextLayer;
       activePhoto = photo;
       activeKey = key;
       pendingKey = '';
+      pendingPhotoId = null;
       updateCollectionCaption();
       const next = collection.photos[(collection.photos.findIndex(p => p.id === photo.id) + 1) % collection.photos.length];
       if (next && next.id !== photo.id && !(failedPhotos.get(next.id) > Date.now())) {
@@ -199,6 +236,7 @@
       if (version !== loadVersion) return;
       failedPhotos.set(photo.id, Date.now() + 60000);
       pendingKey = '';
+      pendingPhotoId = null;
       selectScheduledPhoto();
     };
     image.src = photo.url;
@@ -270,7 +308,7 @@
       ctx.drawImage(image, (canvas.width - width) * prefs.position_x / 100, (canvas.height - height) * prefs.position_y / 100, width, height);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const gray = (x,y) => { const i = (y * canvas.width + x) * 4; return (pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722) / 255; };
-      const [left,top] = [[.06,.12],[.35,.12],[.65,.12],[.06,.39],[.65,.39]][Math.max(0,POSITIONS.indexOf(position))];
+      const [left,top] = CLOCK_REGIONS[Math.max(0,POSITIONS.indexOf(position))];
       let total = 0, light = 0, edges = 0;
       for (let y = Math.floor(top * canvas.height); y < Math.min(canvas.height - 1, (top + .25) * canvas.height); y++) {
         for (let x = Math.floor(left * canvas.width); x < Math.min(canvas.width - 1, (left + .29) * canvas.width); x++) {
@@ -304,7 +342,7 @@
       ctx.drawImage(image, (canvas.width - width) * clamp(prefs.position_x) / 100, (canvas.height - height) * clamp(prefs.position_y) / 100, width, height);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const gray = (x, y) => { const i = (y * canvas.width + x) * 4; return (pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722) / 255; };
-      const regions = [[.06,.12],[.35,.12],[.65,.12],[.06,.39],[.65,.39]];
+      const regions = CLOCK_REGIONS;
       let best = Infinity;
       regions.forEach(([x,y], index) => {
         let sum = 0, squares = 0, edges = 0, count = 0;
@@ -327,6 +365,44 @@
     if (placementCache.size > 100) placementCache.clear();
     placementCache.set(cacheKey, choice);
     return choice;
+  }
+
+  // Keep the clock anchored to the photo; activities use the space around it.
+  let activityLayoutPending = false;
+  function scheduleActivityLayout() {
+    if (activityLayoutPending) return;
+    activityLayoutPending = true;
+    requestAnimationFrame(() => {
+      activityLayoutPending = false;
+      const rail = document.querySelector('.frame-bottom');
+      const clock = $('frameClock');
+      const surface = $('dashboardView').getBoundingClientRect();
+      if (!surface.width || !surface.height) return;
+      const position = clock.dataset.position || '';
+      if (!position.startsWith('bottom-')) {
+        rail.removeAttribute('data-layout');
+        rail.style.cssText = '';
+        return;
+      }
+      const box = clock.getBoundingClientRect();
+      const gap = 24;
+      const margin = surface.width * .05;
+      const leftSpace = box.left - surface.left - gap - margin;
+      const rightSpace = surface.right - box.right - gap - margin;
+      let layout = 'above';
+      let left = margin, right = margin, bottom = surface.height * .06;
+      if (position === 'bottom-left' && rightSpace >= 250) {
+        layout = 'right'; left = box.right - surface.left + gap;
+      } else if (position === 'bottom-right' && leftSpace >= 250) {
+        layout = 'left'; right = surface.right - box.left + gap;
+      } else if (position === 'bottom-center' && Math.min(leftSpace, rightSpace) >= 250) {
+        layout = 'split';
+      } else {
+        bottom = surface.bottom - box.top + gap;
+      }
+      rail.dataset.layout = layout;
+      rail.style.cssText = `left:${left}px;right:${right}px;bottom:${bottom}px;--frame-side-left:${leftSpace}px;--frame-side-right:${rightSpace}px`;
+    });
   }
 
   function updateActivities(data) {
@@ -365,6 +441,7 @@
     $('frameTimerAction').setAttribute('aria-label', phase === 'completed' ? 'Dismiss finished timer' : phase === 'running' ? 'Pause timer' : 'Resume timer');
     $('frameTimerAction').firstElementChild.className = `fa-solid ${phase === 'completed' ? 'fa-xmark' : phase === 'running' ? 'fa-pause' : 'fa-play'}`;
     paintIcon($('frameTimerAction').firstElementChild);
+    scheduleActivityLayout();
   }
 
   function renderPhotos(container) {
@@ -375,7 +452,7 @@
     container.innerHTML = `<div class="frame-photos-app" id="framePhotosApp">
       <div class="frame-photos-intro"><div><h2>A new view, every day.</h2><p id="frameCollectionSummary">Your photos change every 15 minutes.</p></div><a class="frame-secondary" href="/frame-setup" target="_blank" rel="noopener"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Set up daily photos <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>
       <div class="frame-photo-layout"><div><div class="frame-photo-preview"><img id="framePreviewImage" alt="Selected photo crop preview" /><div id="framePreviewClock" class="frame-preview-clock" data-position="top-left"><small id="framePreviewDate"></small><span id="framePreviewTime"></span></div></div><div id="framePhotoThumbs" class="frame-photo-thumbs" aria-label="Choose a photo"></div><p id="framePhotosEmpty" class="frame-empty">Your frame is ready. Connect daily photos below, then send your first collection from Shortcuts.</p></div>
-      <div class="frame-editor"><h3>Make room for the moment</h3><label class="frame-field"><span>Clock position</span><select id="frameClockChoice"><option value="auto">Automatic · find a quiet area</option><option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option><option value="middle-left">Middle left</option><option value="middle-right">Middle right</option></select></label><label class="frame-field"><span>Horizontal crop <output id="frameCropXValue">50%</output></span><input id="frameCropX" type="range" min="0" max="100" value="50" /></label><label class="frame-field"><span>Vertical crop <output id="frameCropYValue">50%</output></span><input id="frameCropY" type="range" min="0" max="100" value="50" /></label><p class="frame-editor-note">The frame finds a focal crop automatically. Adjust the sliders to choose your own; Reset restores the automatic crop and clock.</p><div class="frame-editor-actions"><button id="frameSavePhoto" class="frame-primary">Save photo</button><button id="frameResetPhoto" class="frame-secondary">Reset</button></div><p id="framePhotoSaveStatus" class="frame-save-message" role="status"></p></div></div>
+      <div class="frame-editor"><h3>Make room for the moment</h3><label class="frame-field"><span>Clock position</span><select id="frameClockChoice"><option value="auto">Automatic · find a quiet area</option><option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option><option value="middle-left">Middle left</option><option value="middle-right">Middle right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option></select></label><label class="frame-field"><span>Horizontal crop <output id="frameCropXValue">50%</output></span><input id="frameCropX" type="range" min="0" max="100" value="50" /></label><label class="frame-field"><span>Vertical crop <output id="frameCropYValue">50%</output></span><input id="frameCropY" type="range" min="0" max="100" value="50" /></label><p class="frame-editor-note">The frame finds a focal crop automatically. Adjust the sliders to choose your own; Reset restores the automatic crop and clock. Bottom clock positions move the widgets to make room.</p><div class="frame-editor-actions"><button id="frameSavePhoto" class="frame-primary">Save photo</button><button id="frameResetPhoto" class="frame-secondary">Reset</button></div><p id="framePhotoSaveStatus" class="frame-save-message" role="status"></p></div></div>
       <section class="frame-cloud"><div class="frame-cloud-heading"><div><h3>Daily photo connection</h3><p id="framePhotoSyncStatus">Checking your connection…</p></div><button id="frameSyncNow" class="frame-secondary"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Sync now</button></div><form id="frameCloudForm" class="frame-cloud-fields"><label class="frame-field">Photo cloud URL<input id="frameCloudUrl" type="url" placeholder="https://your-deployment.convex.site" autocomplete="off" /></label><label class="frame-field">Photo token<input id="frameCloudToken" type="password" placeholder="Enter photo token" autocomplete="new-password" /></label><button class="frame-primary" type="submit">Save connection</button></form><p id="frameCloudSaveStatus" class="frame-save-message" role="status"></p></section>
     </div>`;
     hydrateIcons(container);
@@ -572,11 +649,16 @@
       if (event.target === $('frameAppsDialog') && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) closeApps();
     });
     $('frameAppsDialog').addEventListener('close', showControls);
-    $('dashboardView').addEventListener('pointerdown', showControls);
+    $('dashboardView').addEventListener('click', event => {
+      showControls();
+      if (event.button !== 0 || event.target.closest('button,a,input,select,textarea,[role="button"],#frameChrome,.frame-glass')) return;
+      advancePhoto();
+    });
     $('dashboardView').addEventListener('focusin', showControls);
     $('dashboardView').addEventListener('keydown', event => {
       showControls();
       if (event.target === $('dashboardView') && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); $('btnOpenApps').focus(); }
+      if (event.target === $('dashboardView') && event.key === 'ArrowRight') { event.preventDefault(); advancePhoto(); }
     });
     $('frameWeather').addEventListener('click', () => bridge.openApp('weather'));
     $('frameMusicOpen').addEventListener('click', () => bridge.openApp('spotify'));
@@ -587,7 +669,9 @@
       if (timerPhase === 'completed') { completedTimerDismissed = true; updateActivities(latestData); }
       else bridge.sendAction('timer_toggle');
     });
-    window.addEventListener('resize', () => { activeKey = ''; selectScheduledPhoto(); updatePreviewClock(); });
+    const layoutObserver = new ResizeObserver(scheduleActivityLayout);
+    ['dashboardView', 'frameClock', 'frameWeather', 'frameMusic', 'frameTimer'].forEach(id => layoutObserver.observe($(id)));
+    window.addEventListener('resize', () => { scheduleActivityLayout(); activeKey = ''; selectScheduledPhoto(); updatePreviewClock(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateClock(); refreshPhotos(); } });
     updateClock();
     refreshPhotos();

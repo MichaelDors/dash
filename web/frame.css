@@ -164,6 +164,29 @@
  .frame-photo,.frame-clock,.frame-chrome,.frame-app-tile,.frame-music-progress span { transition:none; }
 }
 
+/* Bottom clocks share the lower edge with a responsive activity rail. */
+.frame-clock[data-position^="bottom"],.frame-preview-clock[data-position^="bottom"] { top:auto; bottom:6%; }
+.frame-clock[data-position="bottom-center"],.frame-preview-clock[data-position="bottom-center"] { left:50%; transform:translateX(-50%); text-align:center; }
+.frame-clock[data-position="bottom-right"],.frame-preview-clock[data-position="bottom-right"] { left:auto; right:6%; text-align:right; }
+.frame-bottom[data-layout] { gap:12px; }
+.frame-bottom[data-layout] .frame-activities { flex-wrap:wrap; gap:12px; }
+.frame-bottom[data-layout] .frame-music { flex:0 1 390px; width:clamp(235px,29vw,390px); max-width:100%; }
+.frame-bottom[data-layout] .frame-timer { flex-shrink:0; }
+.frame-bottom[data-layout="left"],.frame-bottom[data-layout="right"] { flex-direction:column; }
+.frame-bottom[data-layout="left"] .frame-activities,.frame-bottom[data-layout="right"] .frame-activities { width:100%; }
+.frame-bottom[data-layout="left"] { align-items:flex-start; }
+.frame-bottom[data-layout="right"] { align-items:flex-end; }
+.frame-bottom[data-layout="left"] .frame-activities { justify-content:flex-start; }
+.frame-bottom[data-layout="right"] .frame-weather { align-self:flex-end; }
+.frame-bottom[data-layout="split"] { display:grid; grid-template-columns:var(--frame-side-left) minmax(0,1fr) var(--frame-side-right); align-items:end; gap:0; }
+.frame-bottom[data-layout="split"] .frame-weather { grid-column:1; justify-self:start; max-width:100%; }
+.frame-bottom[data-layout="split"] .frame-activities { grid-column:3; flex-direction:column; align-items:flex-end; }
+.frame-bottom[data-layout="split"] .frame-music { flex:none; width:100%; }
+.frame-bottom[data-layout="above"] { flex-wrap:wrap; }
+@media(max-width:620px) {
+ .frame-bottom[data-layout="above"] .frame-music { flex:1 1 235px; width:auto; }
+}
+
 /* Inline SVGs keep the new frame usable when external icon fonts are offline. */
 i[data-frame-icon]::before { display:none !important; }
 i[data-frame-icon] { display:inline-grid; place-items:center; flex-shrink:0; }

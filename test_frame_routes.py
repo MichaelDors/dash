@@ -95,6 +95,17 @@ class FrameRoutesTest(unittest.TestCase):
         self.assertEqual(phone_before, controller.phone_state.get_state())
         self.assertEqual(controller.timer_widget.remaining_seconds, 300)
 
+    def test_bottom_clock_preferences_survive_restart(self):
+        for position in ["bottom-left", "bottom-center", "bottom-right"]:
+            with self.subTest(position=position):
+                response = self.request("POST", "/api/frame/config", {"photo_preferences": {
+                    "a" * 64: {"clock": position},
+                }})
+                self.assertIn(b"200 OK", response)
+                restored = PhotoFrameManager(Path(self.temp.name))
+                self.assertEqual(restored.get_config()["photo_preferences"]["a" * 64]["clock"], position)
+        self.controller.handle_wide_action.assert_not_called()
+
     def test_first_upgrade_fetches_only_missing_new_assets(self):
         with patch("dash_app.__file__", str(Path(self.temp.name) / "dash_app.py")), \
                 patch("dash_app.dash_launcher.sync_file", return_value=(True, None)) as sync, \

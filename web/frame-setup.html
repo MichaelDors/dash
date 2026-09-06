@@ -55,10 +55,10 @@
     <p>In Shortcuts, create a new shortcut named <strong>Send photos to Dash</strong>. Use these actions in order. Wherever a value is in square brackets below, insert that action's <strong>magic variable</strong>, rather than typing the brackets.</p>
     <ol>
       <li>Add <strong>Text</strong> containing your photo token; use <strong>Set Variable</strong> to name it <code>Photo Token</code>.</li>
-      <li>Add <strong>Find Photos</strong>: Album is <strong>Dash Frame</strong>, Media Type is <strong>Image</strong>, Sort by <strong>Random</strong>, Limit <strong>24</strong>. Name the result <code>Selected Photos</code>.</li>
+      <li>Add <strong>Find Photos</strong>: Album is <strong>Dash Frame</strong>, Media Type is <strong>Image</strong>, Sort by <strong>Random</strong>, Limit <strong>24</strong>. If it says <strong>Filter Photo Token</strong>, tap that input variable and choose <strong>Clear</strong> so it searches All Photos. Add <strong>Set Variable</strong>, name it <code>Selected Photos</code>, and select the Photos output.</li>
       <li><strong>Count</strong> Selected Photos. If the count is <strong>0</strong>, use <strong>Stop This Shortcut</strong>. Otherwise save the count as <code>Photo Count</code>.</li>
       <li>Add <strong>Generate UUID</strong> and save it as <code>Request ID</code>. Add <strong>Current Date</strong> → <strong>Format Date</strong> with custom format <code>yyyy-MM-dd</code>; save it as <code>Batch Date</code>.</li>
-      <li><strong>Get Contents of URL</strong> using the start request below. Choose a <strong>JSON</strong> request body and add its three fields individually. Set <code>expected_count</code> to Number. Then <strong>Get Dictionary Value</strong> for <code>batch_id</code> from the response, and name it <code>Batch ID</code>. If Batch ID has no value, stop the Shortcut.</li>
+      <li><strong>Get Contents of URL</strong> using the start request below. Choose a <strong>JSON</strong> request body and add its three fields individually. Add <code>expected_count</code> as a <strong>Number</strong> field. Immediately afterward, add <strong>Get Dictionary Value</strong>: key <code>batch_id</code>, dictionary <strong>Contents of URL</strong> from this start request. Add <strong>Set Variable</strong>: name <code>Batch ID</code>, value <strong>Dictionary Value</strong>. Batch ID is returned by Convex; Request ID is the UUID you generated earlier. Add <strong>If Batch ID does not have any value</strong> → <strong>Show Result</strong> with the start request's Contents of URL → <strong>Stop This Shortcut</strong> → <strong>End If</strong>.</li>
     </ol>
     <pre><code>POST <span data-site></span>/frame/batches/start
 Headers:
@@ -69,16 +69,17 @@ JSON fields:
   expected_count: [Photo Count]
   date: [Batch Date]</code></pre>
     <ol start="6">
-      <li>Add <strong>Repeat with Each</strong> item in Selected Photos. Within the loop, get the image's width and height. If width is greater than height, <strong>Resize Image</strong> to width <strong>2048</strong>, height Auto; otherwise resize to height <strong>2048</strong>, width Auto. For smaller originals, retain their size.</li>
-      <li><strong>Convert Image</strong> to <strong>JPEG</strong>, quality approximately <strong>80%</strong>, with <strong>Preserve Metadata off</strong>. Name the converted image <code>Upload Photo</code>.</li>
-      <li><strong>Calculate</strong> Repeat Index minus <strong>1</strong>. Use this as <code>Photo Index</code>. Send the upload request below with Request Body set to <strong>File</strong> and Upload Photo selected. A successful response contains <code>id</code>; if it is missing, stop the Shortcut. End Repeat.</li>
+      <li>Add <strong>Repeat with Each</strong> item in Selected Photos. First inside the loop, add <strong>Convert Image</strong>: input <strong>Repeat Item</strong>, format <strong>JPEG</strong>, high quality, <strong>Preserve Metadata off</strong>. Add <strong>Set Variable</strong>: name <code>SourceJPEG</code>, value <strong>Converted Image</strong> from this action. Convert before resizing: testing on the iPhone found an empty resize result for a Photos item that worked when converted to JPEG first.</li>
+      <li>Use <strong>Get Details of Images</strong> to get Width and Height from <code>SourceJPEG</code>. Set <code>Resized Photo</code> to <code>SourceJPEG</code> first. If either dimension exceeds 2048, add an inner <strong>If Width is greater than Height</strong>: <strong>Resize Image</strong> with input <code>SourceJPEG</code>, width <strong>2048</strong>, height Auto. In <strong>Otherwise</strong>, resize <code>SourceJPEG</code> to height <strong>2048</strong>, width Auto; this also handles square photos. Immediately after each Resize action, add <strong>Set Variable</strong> to assign <code>Resized Photo</code> the <strong>Resized Image</strong> output from that same branch. End both If blocks. Smaller photos keep SourceJPEG.</li>
+      <li>Add <strong>Convert Image</strong>: input <code>Resized Photo</code>, format <strong>JPEG</strong>, quality approximately <strong>80%</strong>, <strong>Preserve Metadata off</strong>. Add <strong>Set Variable</strong>: name <code>Upload Photo</code>, value <strong>Converted Image</strong> from this final conversion.</li>
+      <li><strong>Calculate</strong> Repeat Index minus <strong>1</strong>; use <strong>Set Variable</strong> to save the Calculation Result as <code>Photo Index</code>. Send the upload request below. In <strong>Get Contents of URL</strong>, choose <strong>Request Body → File</strong>, tap the File input, and select the <code>Upload Photo</code> variable. This sends the JPEG's actual contents. After the request, add <strong>Get Dictionary Value</strong>: key <code>id</code>, dictionary <strong>Contents of URL</strong> from this upload request. Add <strong>If Dictionary Value does not have any value</strong> → <strong>Show Result</strong> with the upload request's Contents of URL → <strong>Stop This Shortcut</strong> → <strong>End If</strong>. End Repeat.</li>
     </ol>
     <pre><code>POST <span data-site></span>/frame/photos/upload?batch_id=[Batch ID]&amp;index=[Photo Index]
 Headers:
   Authorization: Bearer [Photo Token]
   Content-Type: image/jpeg
 Request Body: File → [Upload Photo]</code></pre>
-    <ol start="9">
+    <ol start="10">
       <li>After <strong>End Repeat</strong>, send the commit request below. This makes the complete collection available to Dash. Optional: show a notification only after a successful commit.</li>
     </ol>
     <pre><code>POST <span data-site></span>/frame/batches/commit
@@ -87,15 +88,15 @@ Headers:
   Content-Type: application/json
 JSON fields:
   batch_id: [Batch ID]</code></pre>
-    <p class="note">Each photo must be a JPEG under 8 MiB. If a request fails, the old collection stays on screen. You can run the Shortcut again; unfinished batches are cleaned up automatically.</p>
+    <p class="note">Each photo must be a JPEG under 8 MiB. Delete any empty header rows: a blank header reproduced “The network connection was lost” in Apple's networking API. If a request fails, the old collection stays on screen. You can run the Shortcut again; unfinished batches are cleaned up automatically.</p>
   </section>
 
   <section>
     <h2>4. Try it, then make it daily</h2>
     <p>Run the Shortcut manually once, allowing Photos and network access when iOS asks. Check <strong>Apps → Photos</strong> for the new collection. Dash checks for new photos every minute and downloads the complete set before showing it.</p>
     <p>In Shortcuts → <strong>Automation</strong>, create a <strong>Time of Day</strong> automation at a convenient morning time, repeating <strong>Daily</strong>. Choose <strong>Run Immediately</strong> and run <strong>Send photos to Dash</strong>. It may take longer when iCloud needs to download selected originals.</p>
-    <p>Photos change every <strong>15 minutes</strong>. With 24 pictures, the collection repeats every six hours. A missed automation, empty album, or interrupted upload keeps the last complete collection running.</p>
-    <p class="small">On the frame, tap to reveal Settings and Apps. Photos lets you adjust cropping and clock placement. Existing OLED motion, sleep, and away settings still control when the display dims or turns off.</p>
+    <p>Photos change every <strong>15 minutes</strong>. Tap the photo to advance immediately and start a fresh 15-minute interval; the position survives a page reload. With 24 pictures, automatic rotation repeats every six hours. A missed automation, empty album, or interrupted upload keeps the last complete collection running.</p>
+    <p class="small">Tapping the photo also reveals Settings and Apps. Tapping a widget or control does not advance the photo. Photos lets you adjust cropping and clock placement, including bottom left, center, and right. Weather and live activities rearrange around the clock. The web frame stays on while you are home with Sleep Focus off; Away and Sleep Focus still cover the display. Physical OLED motion dimming and sleep behavior remain independent.</p>
   </section>
 
   <section>

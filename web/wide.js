@@ -864,19 +864,6 @@
       });
     });
 
-    // Screen Off / Sleep Blackout Tap to Wake Listener
-    const elDisplayOffOverlay = document.getElementById("displayOffOverlay");
-    if (elDisplayOffOverlay) {
-      const wakeDisplay = (e) => {
-        if (e) e.preventDefault();
-        sendAction("activity");
-        elDisplayOffOverlay.classList.remove("is-off", "is-dim");
-        elDisplayOffOverlay.classList.add("hidden");
-      };
-      elDisplayOffOverlay.addEventListener("click", wakeDisplay);
-      elDisplayOffOverlay.addEventListener("touchstart", wakeDisplay, { passive: false });
-    }
-
     if (elCfgSpotifyForm) {
       elCfgSpotifyForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1132,21 +1119,20 @@
       updateSettingsMetrics(data);
     }
 
-    // Update Screen Off / Dim Sleep Overlay for Touch Displays
+    // Web visibility follows phone presence / Sleep Focus independently of the
+    // OLED's motion timer. Browsing photos must never wake physical hardware.
     const elDisplayOff = document.getElementById("displayOffOverlay");
     if (elDisplayOff) {
-      const mode = (data.display_mode || "on").toLowerCase();
-      if (mode !== "on" && document.getElementById("frameAppsDialog")?.open) document.getElementById("frameAppsDialog").close();
-      if (mode === "off") {
-        elDisplayOff.classList.add("is-off");
-        elDisplayOff.classList.remove("is-dim", "hidden");
-      } else if (mode === "dim") {
-        elDisplayOff.classList.add("is-dim");
-        elDisplayOff.classList.remove("is-off", "hidden");
-      } else {
-        elDisplayOff.classList.remove("is-off", "is-dim");
-        elDisplayOff.classList.add("hidden");
+      const phone = data.phone_state || {};
+      const suspended = phone.is_home === false || phone.sleep_focus === true
+        || String(phone.focus_mode || "").trim().toLowerCase() === "sleep";
+      for (const id of ["appContainer", "appOverlayView", "settingsOverlayView"]) {
+        const surface = document.getElementById(id);
+        if (surface) surface.inert = suspended || (id === "appContainer" && (Boolean(state.activeOverlayApp) || state.settingsOpen));
       }
+      if (suspended && document.getElementById("frameAppsDialog")?.open) document.getElementById("frameAppsDialog").close();
+      elDisplayOff.classList.toggle("is-off", suspended);
+      elDisplayOff.classList.toggle("hidden", !suspended);
     }
   }
 

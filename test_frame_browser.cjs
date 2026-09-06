@@ -23,12 +23,13 @@ let music = { type:'spotify', authenticated:true, track_name:'', artist_name:'',
 let temperature = 72;
 let counter = 0;
 let mode = 'on';
+let phoneState = { sleep_focus:false, is_home:true, focus_mode:'none' };
 
 function snapshot() {
   const now = new Date();
   const time = { time_main:'10:24', seconds:String(now.getSeconds()).padStart(2,'0'), day:5, month:'SEP', year:2026, day_name:'SATURDAY' };
   return { generated_at:now.toISOString(), version:'browser-fixture', display_mode:mode,
-    phone_state:{sleep_focus:false,is_home:true}, motion:{motion_detected:true,display_off:mode==='off',display_dimmed:mode==='dim'},
+    phone_state:{...phoneState}, motion:{motion_detected:mode==='on',display_off:mode==='off',display_dimmed:mode==='dim'},
     settings:{}, spotify_status:{configured:true,authenticated:true}, convex_status:{enabled:false},
     widgets:{ time, timer:{...timer}, weather:{type:'weather',temperature_f:temperature,condition:'Partly cloudy',location:'New York',weather_code:2,is_day:1,forecast:[]},
       click_counter:{type:'click_counter',count:counter}, motion_status:{}, photo:{has_image:false} },
@@ -84,7 +85,7 @@ async function main() {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({channel:'chrome',headless:true});
-  const context=await browser.newContext({viewport:{width:1280,height:800}});
+  const context=await browser.newContext({viewport:{width:1280,height:800},hasTouch:true});
   const page=await context.newPage();
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
@@ -126,6 +127,7 @@ async function main() {
     assert.equal(await page.locator('#frameMusic').isVisible(),true);
 
     await page.locator('#frameTimerOpen').click();await settle();
+    assert.equal(await page.locator('#appContainer').evaluate(el=>el.inert),true,'Polling preserves modal focus isolation');
     timer={...timer,minutes:2,seconds:31,time_text:'02:31'};
     await settle();
     assert.match(await page.locator('#appOverlayContent').innerText(),/02:31/,'Open timer must update without a Spotify change');
@@ -154,11 +156,37 @@ async function main() {
     for(const [label,photo] of [['portrait',photoSet[1]],['busy',photoSet[2]]]) {
       photos=[photo];await reloadFrame();await settle(1800);await shot(`07-${label}`);
       const bounds=await page.locator('#frameClock').boundingBox();
-      assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=1280&&bounds.y+bounds.height<690);
+      assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=1280&&bounds.y+bounds.height<=800);
     }
     await page.setViewportSize({width:1024,height:600});await settle();await shot('08-small-landscape');
-    mode='off';await settle();assert.equal(await page.locator('#displayOffOverlay').isVisible(),true);
-    await page.locator('#displayOffOverlay').click();await settle();assert.equal(mode,'on');
+    const beforeDisplayActions=actions.length;
+    for(const hardwareMode of ['dim','off']) {
+      mode=hardwareMode;await settle();
+      assert.equal(await page.locator('#displayOffOverlay').isVisible(),false,'Home with no Sleep Focus must ignore OLED motion sleep');
+      assert.equal(await page.locator('#appContainer').evaluate(el=>el.inert),false);
+    }
+    await page.locator('#dashboardView').click({position:{x:500,y:240}});await settle();
+    assert.equal(mode,'off','Photo taps must not wake the OLED');
+    assert.equal(actions.length,beforeDisplayActions);
+    assert.equal(await page.getByText('Tap anywhere to wake').count(),0);
+    phoneState.is_home=false;await settle();
+    assert.equal(await page.locator('#displayOffOverlay').isVisible(),true,'Away still covers the web view');
+    assert.equal(await page.locator('#appContainer').evaluate(el=>el.inert),true);
+    await page.locator('#displayOffOverlay').click();await settle();
+    assert.equal(await page.locator('#displayOffOverlay').isVisible(),true,'Taps do not override phone presence');
+    assert.equal(actions.length,beforeDisplayActions);
+    phoneState.is_home=true;await settle();
+    assert.equal(await page.locator('#displayOffOverlay').isVisible(),false,'Returning home restores the frame even while the OLED is off');
+    await apps();
+    phoneState.sleep_focus=true;await settle();
+    assert.equal(await page.locator('#frameAppsDialog').evaluate(el=>el.open),false);
+    assert.equal(await page.locator('#displayOffOverlay').isVisible(),true,'Sleep Focus still covers the web view');
+    phoneState.sleep_focus=false;phoneState.focus_mode='sleep';await settle();
+    assert.equal(await page.locator('#displayOffOverlay').isVisible(),true);
+    phoneState.focus_mode='none';await settle();
+    assert.equal(await page.locator('#displayOffOverlay').isVisible(),false);
+    assert.equal(actions.length,beforeDisplayActions,'Web visibility must not change hardware state');
+    await shot('09-home-with-oled-off');
 
     // Verify per-photo edits through the real editor and preserve other photos.
     photos=[photoSet[0],photoSet[1]];activatedAt=Date.now();
@@ -187,6 +215,44 @@ async function main() {
     assert.equal(await page.locator('#frameAppsDialog').evaluate(el=>el.open),false);
     assert.equal(await page.locator('#btnOpenApps').evaluate(el=>el===document.activeElement),true);
 
+    // Bottom clock choices persist through the editor and share space with both activities.
+    photos=[photoSet[0]];activatedAt=Date.now();
+    music={...music,is_playing:true,track_name:'Second song'};
+    timer={...timer,running:true,minutes:2,seconds:35,time_text:'02:35'};
+    await reloadFrame();
+    async function assertComposition(label) {
+      const boxes=[];
+      const viewport=page.viewportSize();
+      for(const id of ['frameClock','frameWeather','frameMusic','frameTimer']) {
+        if(!await page.locator('#'+id).isVisible()) continue;
+        const b=await page.locator('#'+id).boundingBox();
+        assert.ok(b.x>=0&&b.y>=0&&b.x+b.width<=viewport.width+1&&b.y+b.height<=viewport.height+1,`${label}: ${id} inside viewport ${JSON.stringify(b)}`);
+        for(const [other,a] of boxes) assert.ok(b.x+b.width<=a.x+1||a.x+a.width<=b.x+1||b.y+b.height<=a.y+1||a.y+a.height<=b.y+1,`${label}: ${id} overlaps ${other}`);
+        boxes.push([id,b]);
+      }
+    }
+    for(const position of ['bottom-left','bottom-center','bottom-right']) {
+      await page.setViewportSize({width:1280,height:800});
+      await apps();await page.locator('[data-app="photos"]').click();await settle();
+      await page.locator('#frameClockChoice').selectOption(position);
+      await page.locator('#frameSavePhoto').click();await settle();
+      assert.equal(prefs[imageId].clock,position);
+      assert.equal(await page.locator('#framePreviewClock').getAttribute('data-position'),position);
+      await closeApp();await settle();
+      for(const size of [{width:1280,height:800},{width:1024,height:600},{width:800,height:480},{width:390,height:844}]) {
+        await page.setViewportSize(size);await settle(1100);
+        assert.equal(await page.locator('#frameClock').getAttribute('data-position'),position);
+        await assertComposition(position+' '+size.width);
+        await shot('bottom-'+position+'-'+size.width);
+      }
+      const anchored=await page.locator('#frameClock').boundingBox();
+      music.track_name='';timer={...timer,running:false,minutes:5,seconds:0,time_text:'05:00'};await settle();
+      assert.deepEqual(await page.locator('#frameClock').boundingBox(),anchored,'Clock stays anchored when activities disappear');
+      await assertComposition(position+' idle');
+      music.track_name='Second song';timer={...timer,running:true,minutes:2,seconds:35,time_text:'02:35'};await settle();
+    }
+    await page.setViewportSize({width:1280,height:800});
+
     // A controlled browser clock exercises real scheduling without a 15-minute wait.
     await page.clock.install({time:new Date()});
     activatedAt=Date.now();prefs={};photos=photoSet;
@@ -196,6 +262,39 @@ async function main() {
     assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/portrait/);
     await reloadFrame();
     assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/portrait/,'Reload must retain scheduled photo');
+
+    await page.clock.fastForward(420000);await settle();
+    const beforePhotoActions=actions.length;
+    await page.locator('#dashboardView').click({position:{x:700,y:260}});await settle(1700);
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'A photo tap advances immediately');
+    assert.equal(await page.locator('#dashboardView').evaluate(el=>el.classList.contains('controls-visible')),true);
+    await page.locator('#btnOpenApps').click();await settle();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Apps control must not advance photos');
+    await page.keyboard.press('Escape');
+    await page.locator('#frameWeather').click();await settle();
+    await closeApp();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Weather activity must not advance photos');
+    await page.locator('#btnOpenSettings').click();await settle();
+    await page.locator('#btnCloseSettings').click();await settle();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Settings control must not advance photos');
+    await page.clock.fastForward(480000);await settle();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'A tap starts a fresh interval even across the old scheduled boundary');
+    await reloadFrame();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Reload must preserve a manual advance');
+    await page.clock.fastForward(420000);await settle(1700);
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/landscape/,'Automatic rotation continues after manual selection');
+    await page.locator('#dashboardView').evaluate(el=>{el.click();el.click();el.click();});
+    await settle(1700);
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/landscape/,'Rapid taps that wrap around must cancel pending images');
+    await page.locator('#dashboardView').focus();await page.keyboard.press('ArrowRight');await settle(1700);
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/portrait/,'Keyboard can advance the photo');
+    await page.touchscreen.tap(700,260);await settle(1700);
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'A touch tap advances exactly one photo');
+    assert.equal(actions.length,beforePhotoActions,'Manual photo selection must stay web-only');
+    // A new daily batch gets its own rotation, independent of yesterday's taps.
+    activatedAt=await page.evaluate(()=>Date.now());
+    await reloadFrame();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/landscape/);
     apiOffline=true;
     const beforeMinute=await page.locator('#frameTime').innerText();
     await page.clock.fastForward(65000);await settle();

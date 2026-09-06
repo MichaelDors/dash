@@ -39,6 +39,7 @@ PHOTO_ID_RE = re.compile(r"^[a-f0-9]{64}$")
 CACHE_DIR_RE = re.compile(r"^(?:batch|stage)-[a-f0-9]{32}$")
 CLOCK_POSITIONS = frozenset({
     "auto", "top-left", "top-center", "top-right", "middle-left", "middle-right",
+    "bottom-left", "bottom-center", "bottom-right",
 })
 
 
