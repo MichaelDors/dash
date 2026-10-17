@@ -45,6 +45,7 @@ REPO_FILES = [
     "web/wide.html",
     "web/wide.css",
     "web/wide.js",
+    "web/value-motion.js",
     "web/workspace-state.js",
     "web/workspace-apps.js",
     "web/workspace-music.js",

@@ -128,9 +128,9 @@
 
   function updateClock() {
     const now = new Date();
-    $('frameTime').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s*[AP]M$/i, '');
+    window.DashValueMotion.setText($('frameTime'), now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s*[AP]M$/i, ''));
     $('frameTime').dateTime = now.toISOString();
-    $('frameDate').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    window.DashValueMotion.setText($('frameDate'), now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
     if ($('framePreviewTime')) $('framePreviewTime').textContent = $('frameTime').textContent;
     if ($('framePreviewDate')) $('framePreviewDate').textContent = $('frameDate').textContent;
     if (latestData.widgets) updateActivities(latestData);
@@ -589,8 +589,8 @@
 
   function updateActivities(data) {
     const weather = data.widgets?.weather || {};
-    $('frameTemperature').textContent = weather.temperature_f != null ? `${Math.round(weather.temperature_f)}°` : '—°';
-    $('frameCondition').textContent = weather.temperature_f != null ? (weather.condition || 'Weather') : 'Weather unavailable';
+    window.DashValueMotion.setText($('frameTemperature'), weather.temperature_f != null ? `${Math.round(weather.temperature_f)}°` : '—°');
+    window.DashValueMotion.setText($('frameCondition'), weather.temperature_f != null ? (weather.condition || 'Weather') : 'Weather unavailable');
     const condition = (weather.condition || '').toLowerCase();
     $('frameWeatherIcon').className = `fa-solid ${/snow/.test(condition) ? 'fa-snowflake' : /rain|drizzle/.test(condition) ? 'fa-cloud-rain' : /thunder/.test(condition) ? 'fa-cloud-bolt' : /cloud|overcast/.test(condition) ? 'fa-cloud-sun' : /fog|mist/.test(condition) ? 'fa-smog' : 'fa-sun'}`;
     paintIcon($('frameWeatherIcon'));
@@ -600,9 +600,9 @@
     $('frameMusic').hidden = !showMusic || (workspace.split && workspace.visibleApps.includes('spotify'));
     $('frameWeather').hidden = workspace.split && workspace.visibleApps.includes('weather');
     if (showMusic) {
-      $('frameMusicTitle').textContent = music.track_name;
-      $('frameMusicArtist').textContent = music.artist_name || '';
-      $('frameMusicLabel').textContent = music.is_playing ? 'NOW PLAYING' : 'PAUSED';
+      window.DashValueMotion.setText($('frameMusicTitle'), music.track_name);
+      window.DashValueMotion.setText($('frameMusicArtist'), music.artist_name || '');
+      window.DashValueMotion.setText($('frameMusicLabel'), music.is_playing ? 'NOW PLAYING' : 'PAUSED');
       const art = $('frameMusicArt');
       if (music.album_art_url && art.getAttribute('src') !== music.album_art_url) art.src = music.album_art_url;
       else if (!music.album_art_url) art.removeAttribute('src');
@@ -619,8 +619,8 @@
     timerPhase = phase;
     $('frameTimer').hidden = phase === 'idle' || (phase === 'completed' && completedTimerDismissed) || (workspace.split && workspace.visibleApps.includes('timer'));
     $('frameTimer').classList.toggle('is-complete', phase === 'completed');
-    $('frameTimerLabel').textContent = phase === 'completed' ? 'TIME’S UP' : phase === 'paused' ? 'PAUSED' : 'TIMER';
-    $('frameTimerTime').textContent = timer.time_text || '00:00';
+    window.DashValueMotion.setText($('frameTimerLabel'), phase === 'completed' ? 'TIME’S UP' : phase === 'paused' ? 'PAUSED' : 'TIMER');
+    window.DashValueMotion.setText($('frameTimerTime'), timer.time_text || '00:00');
     $('frameTimerAction').setAttribute('aria-label', phase === 'completed' ? 'Dismiss finished timer' : phase === 'running' ? 'Pause timer' : 'Resume timer');
     $('frameTimerAction').firstElementChild.className = `fa-solid ${phase === 'completed' ? 'fa-xmark' : phase === 'running' ? 'fa-pause' : 'fa-play'}`;
     paintIcon($('frameTimerAction').firstElementChild);
@@ -629,9 +629,9 @@
     const game = (sports.games || []).find(game => ['live', 'delayed'].includes(game.status) && (followed.has(game.away?.id) || followed.has(game.home?.id))) || sports.live_followed_games?.[0] || window.DashWorkspace?.getState().session('sports')?.data;
     $('frameSports').hidden = !game || (workspace.split && workspace.visibleApps.includes('sports'));
     if (game) {
-      $('frameSportsScore').textContent = `${game.away?.abbreviation || 'MLB'} ${game.away?.score ?? '–'} · ${game.home?.abbreviation || ''} ${game.home?.score ?? '–'}`;
-      $('frameSportsPhase').textContent = game.status === 'live' ? `${game.inning_half || 'Inning'} ${game.inning || ''}` : game.status_text || 'Delayed';
-      $('frameSportsStatus').textContent = sports.stale || sports.error ? 'LAST SCORE' : game.status === 'live' ? 'LIVE GAME' : 'GAME DELAYED';
+      window.DashValueMotion.setText($('frameSportsScore'), `${game.away?.abbreviation || 'MLB'} ${game.away?.score ?? '–'} · ${game.home?.abbreviation || ''} ${game.home?.score ?? '–'}`);
+      window.DashValueMotion.setText($('frameSportsPhase'), game.status === 'live' ? `${game.inning_half || 'Inning'} ${game.inning || ''}` : game.status_text || 'Delayed');
+      window.DashValueMotion.setText($('frameSportsStatus'), sports.stale || sports.error ? 'LAST SCORE' : game.status === 'live' ? 'LIVE GAME' : 'GAME DELAYED');
     }
     scheduleActivityLayout();
   }

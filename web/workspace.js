@@ -11,7 +11,7 @@
   const name = appId => definitions.find(app => app.id === appId)?.name || appId;
   const photoVisible = () => model.mode === 'home' || model.panes.some(pane => pane.appId === 'clock');
   const isSuspended = () => latest.phone_state?.is_home === false || latest.phone_state?.sleep_focus === true || String(latest.phone_state?.focus_mode || '').trim().toLowerCase() === 'sleep';
-  const setText = (node, value) => { if (node.textContent !== String(value ?? '')) node.textContent = String(value ?? ''); };
+  const setText = (node, value) => window.DashValueMotion.setText(node, value);
 
   function setControls(visible, keyboard = false) {
     clearTimeout(chromeTimer);

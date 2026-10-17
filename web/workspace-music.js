@@ -10,7 +10,7 @@
     const get = id => root.querySelector(`[id="${id}"]`);
     const abort = new AbortController();
     const on = (node, type, listener) => node.addEventListener(type, listener, { signal: abort.signal });
-    const text = (node, value) => { if (node && node.textContent !== String(value ?? '')) node.textContent = String(value ?? ''); };
+    const text = (node, value) => window.DashValueMotion.setText(node, value);
     const formatMsToMinSec = ms => { const s = Math.max(0, Math.floor((Number(ms) || 0) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
     let latest = {}, updatedAt = 0, scrubbing = false, visible = false, mode, sizeKey;
   let currentAlbumArtUrl = null;

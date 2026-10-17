@@ -216,3 +216,7 @@
   .is-split .workspace-legacy-content .fs-timer-actions button { padding:12px 22px !important; font-size:18px !important; }
   .is-split .workspace-legacy-content .ws-temperature { font-size:clamp(48px,20cqw,112px) !important; }
 }
+
+/* Outgoing numeral layer; generated text is decorative and never read twice. */
+.value-motion-old { position:absolute; inset:0; pointer-events:none; }
+.value-motion-old::before { content:attr(data-glyph); }

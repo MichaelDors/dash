@@ -61,7 +61,7 @@ def _ensure_sports_assets() -> None:
     if not repo:
         return
     for filename in ("sports.py", "web/sports-wide.js", "web/sports-wide.css",
-                     "web/workspace-state.js", "web/workspace-apps.js", "web/workspace-music.js", "web/workspace.js", "web/workspace.css"):
+                     "web/value-motion.js", "web/workspace-state.js", "web/workspace-apps.js", "web/workspace-music.js", "web/workspace.js", "web/workspace.css"):
         if not (root / filename).is_file():
             ok, _error = dash_launcher.sync_file(repo, branch, filename)
             if not ok:

@@ -11,7 +11,7 @@
     { id: 'motion_status', name: 'System Status', icon: '☷', detail: 'Device diagnostics' }
   ];
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const setText = (root, selector, value) => { const el = root.querySelector(selector); if (el && el.textContent !== String(value ?? '')) el.textContent = String(value ?? ''); };
+  const setText = (root, selector, value) => window.DashValueMotion.setText(root.querySelector(selector), value);
   function setImage(image, url) {
     let safe = '';
     try { const parsed = new URL(url, location.href); if (['http:', 'https:'].includes(parsed.protocol) || /^data:image\//.test(url)) safe = url; } catch (_) {}
