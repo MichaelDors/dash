@@ -51,8 +51,67 @@ def _ensure_photo_frame_assets() -> None:
                 print(f"Photo frame file is unavailable: {filename}. Run Update Software to retry.")
 
 
+def _ensure_sports_assets() -> None:
+    """Let older launchers finish installing the sports app on first upgrade."""
+    if not DASH_LAUNCHER_AVAILABLE:
+        return
+    root = Path(__file__).resolve().parent
+    repo = os.getenv("GITHUB_REPO", "MichaelDors/dash").strip()
+    branch = os.getenv("GITHUB_BRANCH", "main").strip()
+    if not repo:
+        return
+    for filename in ("sports.py", "web/sports-wide.js", "web/sports-wide.css",
+                     "web/workspace-state.js", "web/workspace-apps.js", "web/workspace-music.js", "web/workspace.js", "web/workspace.css"):
+        if not (root / filename).is_file():
+            ok, _error = dash_launcher.sync_file(repo, branch, filename)
+            if not ok:
+                print(f"Sports file is unavailable: {filename}. Reconnect and restart Dash to retry.")
+
+
 if __name__ == "__main__":
     _ensure_photo_frame_assets()
+    _ensure_sports_assets()
+
+try:
+    from sports import SportsManager
+except ModuleNotFoundError as exc:
+    if exc.name != "sports":
+        raise
+
+    class SportsManager:
+        """Keep the device usable if a first-time update loses its connection."""
+        def __init__(self, _base_dir):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def get_config(self):
+            return {"league": "mlb", "favorite_team_ids": [], "favorites_only": False,
+                    "auto_rotate": True, "rotation_seconds": 15,
+                    "timezone": "America/New_York", "teams": []}
+
+        def get_payload(self):
+            return {"id": "sports", "name": "Sports", "type": "sports", "league": "mlb",
+                    "games": [], "selected_game": None, "selected_game_id": None,
+                    "teams": [], "config": self.get_config(), "loading": False,
+                    "stale": False, "last_updated": None,
+                    "error": "Reconnect and restart Dash to finish installing Sports."}
+
+        def update_config(self, _updates):
+            raise ValueError("Reconnect and restart Dash to finish installing Sports")
+
+        def select_game(self, _delta):
+            pass
+
+        def select_game_id(self, _game_id):
+            return False
+
+        def request_refresh(self):
+            pass
 
 try:
     from photo_frame import PhotoFrameManager
@@ -1559,6 +1618,86 @@ class App:
         }
 
 
+def _sports_oled_summary(payload: Dict[str, Any]) -> Dict[str, str]:
+    """One compact presentation shared by hardware and the web OLED preview."""
+    game = payload.get("selected_game")
+    if not game:
+        empty = "Loading scores" if payload.get("loading") else "Scores unavailable" if payload.get("error") else "No games today"
+        filtered = (payload.get("config") or {}).get("favorites_only")
+        return {"header": "MLB", "empty": empty,
+                "empty_detail": "Check web portal" if payload.get("error") else "For your teams" if filtered else "Check back later",
+                "footer": "HOLD DIAL TO EXIT"}
+    status = game.get("status")
+    header = str(game.get("status_text") or "MLB").upper()
+    if status == "live" and game.get("inning"):
+        half = str(game.get("inning_half") or "").upper().replace("BOTTOM", "BOT")
+        header = f"{half} {game['inning']}"
+        if game.get("outs") is not None:
+            header += f"  {game['outs']} OUT"
+    elif status == "scheduled":
+        try:
+            from zoneinfo import ZoneInfo
+            zone = ZoneInfo((payload.get("config") or {}).get("timezone", "America/New_York"))
+            start = datetime.fromisoformat(str(game.get("start_time")).replace("Z", "+00:00")).astimezone(zone)
+            header = start.strftime("%I:%M%p %Z").lstrip("0")
+        except (ValueError, TypeError, KeyError):
+            header = "TIME TBD" if not game.get("start_time") else "SCHEDULED"
+    games = payload.get("games") or []
+    index = next((i + 1 for i, item in enumerate(games) if item.get("id") == game.get("id")), 1)
+    footer = f"MLB  {index}/{len(games) or 1}  TURN DIAL"
+    if payload.get("preview"):
+        footer = "FOLLOWING LIVE GAME"
+    if payload.get("stale") or payload.get("error"):
+        footer = "OFFLINE - SAVED SCORE"
+    away, home = game.get("away") or {}, game.get("home") or {}
+    return {"header": header[:21], "away": str(away.get("abbreviation") or "AWAY")[:4],
+            "home": str(home.get("abbreviation") or "HOME")[:4],
+            "away_score": str(away["score"]) if away.get("score") is not None else "-",
+            "home_score": str(home["score"]) if home.get("score") is not None else "-",
+            "footer": footer, "empty": "", "empty_detail": ""}
+
+
+class SportsApp(App):
+    """Simple hardware controls over the shared, cached sports scoreboard."""
+
+    def __init__(self, manager: SportsManager):
+        super().__init__("sports", "Sports")
+        self.manager = manager
+        self.preview = False
+        self.game_id = None
+
+    def reset(self) -> None:
+        self.preview = False
+        self.game_id = None
+
+    def on_encoder(self, delta: int) -> None:
+        if self.game_id is not None:
+            self.manager.select_game_id(self.game_id)
+        self.preview = False
+        self.manager.select_game(delta)
+        self.game_id = self.manager.get_payload().get("selected_game_id")
+
+    def on_button1(self) -> None:
+        self.on_encoder(1)
+
+    def on_button2(self) -> None:
+        self.on_encoder(-1)
+
+    def on_dial_press(self) -> None:
+        if self.preview:
+            return
+        self.on_encoder(1)
+
+    def to_payload(self) -> Dict[str, Any]:
+        payload = self.manager.get_payload()
+        game = next((game for game in payload.get("games", []) if game["id"] == self.game_id), None)
+        if game:
+            payload = {**payload, "selected_game": game, "selected_game_id": game["id"]}
+        payload["preview"] = self.preview
+        payload["oled"] = _sports_oled_summary(payload)
+        return payload
+
+
 class PongApp(App):
     """Simple Pong clone for the 128x64 display."""
 
@@ -2458,11 +2597,13 @@ class DashboardController:
         self.convex_syncer = ConvexCloudSyncer(self.settings, self.phone_state, self.motion_manager, self)
         # Color frame media has its own worker/cache; it never enters OLED widget state.
         self.photo_frame = PhotoFrameManager(BASE_DIR)
+        self.sports = SportsManager(BASE_DIR)
         self.spotify_client = spotify_client or SpotifyClient(BASE_DIR / "spotify_tokens.json")
         self.apps: List[App] = [
             PongApp(),
             SpotifyApp(self.spotify_client),
             SettingsApp(self, self.settings),
+            SportsApp(self.sports),
         ]
         self._app_by_id = {app.app_id: app for app in self.apps}
         self.active_app: Optional[App] = None
@@ -2474,6 +2615,8 @@ class DashboardController:
         self._spotify_app_auto_opened = False
         self._spotify_accumulated_play_time = 0.0
         self._spotify_pause_start_time = 0.0
+        self._sports_preview_seen = set()
+        self._sports_preview_return_index = None
         self._previous_widget_index: Optional[int] = None
         self._power_off_progress = 0.0
         self._power_off_pressed_at: Optional[float] = None
@@ -2537,7 +2680,7 @@ class DashboardController:
             print(f"Error loading wide widget state: {exc}")
 
     def save_wide_slots(self, slots: List[str]) -> List[str]:
-        valid_apps = {"spotify", "weather", "timer", "click_counter", "photo", "motion_status", "version_status"}
+        valid_apps = {"spotify", "weather", "timer", "click_counter", "photo", "motion_status", "version_status", "sports"}
         filtered = [s for s in slots if isinstance(s, str) and s in valid_apps][:3]
         with self._lock:
             self.wide_slots = filtered
@@ -2616,6 +2759,18 @@ class DashboardController:
 
     def dispatch_wide_action(self, action: str, params: Dict[str, Any]) -> bool:
         with self._lock:
+            if action in ("sports_next", "sports_prev", "sports_select"):
+                if action == "sports_select":
+                    try:
+                        selected = self.sports.select_game_id(params.get("game_id"))
+                    except (ValueError, TypeError):
+                        return False
+                    if not selected:
+                        return False
+                else:
+                    self.sports.select_game(1 if action == "sports_next" else -1)
+                self.motion_manager.report_user_activity(motion=False)
+                return True
             if action in ("activity", "wake", "press"):
                 self.motion_manager.report_user_activity(motion=False)
                 self.mark_state_dirty()
@@ -2813,8 +2968,10 @@ class DashboardController:
         self.motion_manager.start_monitoring()
         self.convex_syncer.start()
         self.photo_frame.start()
+        self.sports.start()
 
     def stop(self) -> None:
+        self.sports.stop()
         self.photo_frame.stop()
         self.convex_syncer.stop()
         self.motion_manager.stop_monitoring()
@@ -2870,6 +3027,7 @@ class DashboardController:
                 self._dial_exit_progress = 0.0
                 self._dial_exit_hold_active = False
             self._update_power_off_locked(now, dt)
+            self._update_sports_preview_locked(now)
             self._update_restart_locked(now, dt)
             
             self._check_auto_update(now)
@@ -2878,6 +3036,38 @@ class DashboardController:
                 self.save_widget_state()
                 self._state_dirty = False
                 self._last_save_time = now
+
+    def _update_sports_preview_locked(self, now: float) -> None:
+        payload = self.sports.get_payload()
+        fresh = not (payload.get("stale") or payload.get("error") or payload.get("loading"))
+        live = payload.get("live_followed_games") or []
+        config = payload.get("config") or {}
+        if isinstance(self.active_app, SportsApp) and self.active_app.preview:
+            game = next((game for game in payload.get("games", []) if game["id"] == self.active_app.game_id), None)
+            still_going = game is not None and game.get("status") in {"live", "delayed"}
+            if (not config.get("auto_preview", True) or (fresh and not still_going)):
+                self._exit_app_locked(ignore_release=False)
+                if self._sports_preview_return_index is not None:
+                    self.current_widget_index = self._sports_preview_return_index
+                self._sports_preview_return_index = None
+            return
+        phone = self.phone_state.get_state()
+        suspended = (phone.get("is_home") is False or phone.get("sleep_focus")
+                     or str(phone.get("focus_mode", "")).lower() == "sleep")
+        spotify_playing = self.spotify_app is not None and self.spotify_app.is_playing
+        if (not fresh or not config.get("auto_preview", True) or self.active_app is not None
+                or suspended or spotify_playing or (self.timer_widget and self.timer_widget.running)
+                or now - self._last_interaction_time < SPOTIFY_AUTO_SWITCH_IDLE_SECONDS):
+            return
+        game = next((game for game in live if game["id"] not in self._sports_preview_seen), None)
+        if game is None:
+            return
+        self._sports_preview_seen.add(game["id"])
+        self._sports_preview_return_index = self.current_widget_index
+        self.sports.select_game_id(game["id"])
+        self._launch_app_locked("sports", auto_preview=True)
+        self.active_app.preview = True
+        self.active_app.game_id = game["id"]
 
     def _check_auto_update(self, now: float) -> None:
         if getattr(self, "_last_auto_update_check", 0) + 60 > now:
@@ -3039,10 +3229,12 @@ class DashboardController:
             self._exit_app_locked(ignore_release=False)
         self.motion_manager.report_user_activity()
 
-    def _launch_app_locked(self, app_id: str) -> None:
+    def _launch_app_locked(self, app_id: str, *, auto_preview: bool = False) -> None:
         app = self._app_by_id.get(app_id)
         if app is None:
             return
+        if app_id == "sports" and not auto_preview:
+            self._sports_preview_seen.update(game["id"] for game in self.sports.get_payload().get("live_followed_games", []))
         self.active_app = app
         app.reset()
         self._dial_exit_progress = 0.0
@@ -3055,6 +3247,8 @@ class DashboardController:
         if self.active_app is None:
             return
         print(f"Exiting app: {self.active_app.name}")
+        if isinstance(self.active_app, SportsApp):
+            self.active_app.preview = False
         self.active_app = None
         self._dial_exit_progress = 0.0
         self._dial_exit_hold_active = False
@@ -3255,6 +3449,7 @@ class DashboardController:
             "power_off": power_off,
             "restart": restart,
             "motion": motion,
+            "sports": self.sports.get_payload(),
         }
 
 
@@ -3363,6 +3558,17 @@ def _render_oled_widget_html(state: Dict[str, Any]) -> str:
     if mode == "app":
         app = state.get("active_app") or {}
         app_type = (app.get("type") or "").lower()
+        if app_type == "sports":
+            summary = app.get("oled") or _sports_oled_summary(app)
+            progress = min(1.0, max(0.0, float((state.get("app_exit") or {}).get("progress") or 0)))
+            esc = lambda key: _escape_html(str(summary.get(key) or ""))
+            if summary.get("empty"):
+                body = f'<div class="sports-oled-empty">{esc("empty")}<small>{esc("empty_detail")}</small></div>'
+            else:
+                body = (f'<div class="sports-oled-row"><span>{esc("away")}</span><strong>{esc("away_score")}</strong></div>'
+                        f'<div class="sports-oled-row"><span>{esc("home")}</span><strong>{esc("home_score")}</strong></div>')
+            return (f'<section class="sports-oled"><header>{esc("header")}</header>{body}'
+                    f'<footer>{esc("footer")}</footer><div class="pong-exit" style="height:{progress * 100}%"></div></section>')
         if app_type == "pong":
             field = app.get("field") or {}
             width = float(field.get("width") or 128)
@@ -3743,6 +3949,13 @@ class DashRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/wide/state":
             self._send_json(self.controller.get_wide_snapshot())
             return
+        if path == "/api/sports":
+            self._send_json(self.controller.sports.get_payload())
+            return
+        if path == "/api/sports/config":
+            self._send_json({**self.controller.sports.get_config(),
+                             "teams": self.controller.sports.get_payload().get("teams", [])})
+            return
         if path == "/api/wide/config":
             self._send_json({"slots": self.controller.get_wide_slots()})
             return
@@ -3834,6 +4047,28 @@ class DashRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/sports/config":
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                self._send_json({"error": "Origin not allowed"}, status=HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 16384:
+                    raise ValueError("Sports configuration must be between 1 byte and 16 KiB")
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(body, dict):
+                    raise ValueError("Sports configuration must be a JSON object")
+                config = self.controller.sports.update_config(body)
+            except (ValueError, UnicodeError) as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            except OSError:
+                self._send_json({"error": "Could not save sports settings. Please try again."}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self._send_json({**config, "teams": self.controller.sports.get_payload().get("teams", [])})
+            return
 
         if parsed.path == "/api/frame/config":
             # Only the local dashboard configures its private cloud credential.
@@ -4419,6 +4654,36 @@ def _oled_render_image_from_state(state: Dict[str, Any]) -> Optional["Image.Imag
     if mode == "app":
         app = state.get("active_app") or {}
         app_type = str(app.get("type") or "").lower()
+        if app_type == "sports":
+            summary = app.get("oled") or _sports_oled_summary(app)
+            small_font, score_font = _font(10), _font(18)
+
+            def sports_text(x, y, value, font, max_width=124):
+                text = str(value)
+                while text and _text_size(text, font)[0] > max_width:
+                    text = text[:-1]
+                # Render visible glyph tops at the requested pixel, independent of font metrics.
+                bbox = draw.textbbox((0, 0), text, font=font)
+                draw.text((x - bbox[0], y - bbox[1]), text, fill=1, font=font)
+
+            sports_text(2, 1, summary["header"], small_font)
+            draw.line((2, 11, 125, 11), fill=1)
+            if summary.get("empty"):
+                sports_text(2, 22, summary["empty"], small_font)
+                sports_text(2, 36, summary["empty_detail"], small_font)
+            else:
+                for side, y in (("away", 15), ("home", 34)):
+                    sports_text(4, y, summary[side], score_font, 70)
+                    score = summary[side + "_score"]
+                    width, _height = _text_size(score, score_font)
+                    sports_text(max(76, 123 - width), y, score, score_font, 47)
+            sports_text(2, 52, summary["footer"], small_font)
+            progress = float((state.get("app_exit") or {}).get("progress") or 0)
+            height = int(64 * min(1.0, max(0.0, progress)))
+            if height:
+                draw.rectangle((0, 64 - height, 127, 63), fill=1)
+            return img
+
         if app_type == "pong":
             field = app.get("field") or {}
             width = int(field.get("width") or 128)

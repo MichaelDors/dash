@@ -804,3 +804,345 @@ a:hover {
   animation: marquee-ping-pong 12s linear infinite !important;
   will-change: transform;
 }
+
+/* Sports preferences live in the companion portal, outside the device preview. */
+.sports-settings {
+  min-width: 0;
+  padding: 1.5rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  scroll-margin-top: 1rem;
+}
+
+.sports-settings-heading,
+.sports-preview-top,
+.sports-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.sports-settings-heading h2 {
+  font-size: 1rem;
+  letter-spacing: 0.1em;
+}
+
+.sports-league-badge {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0.28rem 0.6rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  color: var(--color-ink-soft);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.sports-settings-intro {
+  margin: 0.7rem 0 1.3rem;
+  color: var(--color-ink-soft);
+}
+
+#sportsConfigFields {
+  display: grid;
+  min-width: 0;
+  gap: 1.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sports-preferences-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.sports-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+}
+
+.sports-field select,
+.sports-field input,
+#sportsTeamSearch {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: var(--color-surface-strong);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.sports-field small,
+.sports-field-help {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+}
+
+.sports-favorites {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sports-favorites legend {
+  padding: 0;
+  margin-bottom: 0.65rem;
+  font-size: 0.85rem;
+}
+
+#sportsFavoriteCount {
+  margin-left: 0.5rem;
+  color: var(--color-ink-soft);
+  font-size: 0.75rem;
+}
+
+#sportsTeamSearch {
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.sports-team-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  max-height: 245px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 3px;
+  margin: -3px -3px 0.6rem;
+  scrollbar-width: thin;
+}
+
+.sports-team-option {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9px;
+  background: var(--color-surface-strong);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.sports-team-option[hidden],
+.sports-settings [hidden] {
+  display: none;
+}
+
+.sports-team-option:has(input:checked) {
+  border-color: var(--color-brand);
+  background: rgba(0, 157, 177, 0.06);
+}
+
+.sports-team-option span {
+  flex: 1;
+  min-width: 0;
+}
+
+.sports-team-option small {
+  color: var(--color-ink-soft);
+  font-size: 0.65rem;
+}
+
+.sports-settings input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-brand);
+}
+
+.sports-rotation-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  align-items: center;
+}
+
+.sports-checkbox-label {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sports-rotation-interval {
+  flex: 0 0 160px;
+}
+
+.sports-field input:disabled {
+  opacity: 0.55;
+}
+
+.sports-save-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.sports-button {
+  min-height: 44px;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.sports-save-button {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: white;
+}
+
+.sports-save-button:hover {
+  background: #343a40;
+  color: white;
+}
+
+.sports-settings :is(input, select, button):focus-visible {
+  outline: 3px solid rgba(0, 157, 177, 0.55);
+  outline-offset: 3px;
+}
+
+.sports-settings-status {
+  min-height: 1.5em;
+  margin-top: 0.7rem;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+.sports-settings-status.is-error,
+.sports-preview-notice {
+  color: #8c4c28;
+}
+
+.sports-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sports-preview {
+  position: relative;
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  height: 100%;
+  gap: 0.9rem;
+}
+
+.sports-preview-status {
+  font-size: 0.85rem;
+  text-align: right;
+}
+
+.sports-preview-status.is-live::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: #24764c;
+  vertical-align: middle;
+}
+
+.sports-preview-scoreboard {
+  display: grid;
+}
+
+.sports-preview-team {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.sports-preview-abbr {
+  flex: 0 0 3.4rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.sports-preview-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.sports-preview-name small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--color-ink-soft);
+  font-size: 0.7rem;
+}
+
+.sports-preview-score {
+  font-size: 2.1rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.sports-preview-count,
+.sports-preview-meta,
+.sports-preview-hint,
+.sports-preview-notice {
+  font-size: 0.76rem;
+}
+
+.sports-preview-count span {
+  display: block;
+  color: var(--color-ink-soft);
+}
+
+.sports-preview-meta,
+.sports-preview-hint,
+.sports-preview-empty p {
+  color: var(--color-ink-soft);
+}
+
+.sports-preview-empty {
+  display: grid;
+  gap: 0.6rem;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .sports-team-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 540px) {
+  .sports-settings { padding: 1rem; }
+  .sports-preferences-grid { grid-template-columns: 1fr; }
+  .sports-team-list { grid-template-columns: 1fr; }
+  .sports-preview-team { flex-wrap: wrap; gap: 0.5rem; }
+  .sports-preview-abbr { flex-basis: auto; }
+  .sports-preview-name { flex: 1 1 90px; }
+  .sports-preview-score { font-size: 1.7rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sports-settings button { transition: none; }
+}

@@ -6,6 +6,7 @@
     ['photos', 'Photos', 'fa-regular fa-images'],
     ['spotify', 'Music', 'fa-brands fa-spotify'],
     ['weather', 'Weather', 'fa-solid fa-cloud-sun'],
+    ['sports', 'Sports', 'fa-solid fa-baseball'],
     ['timer', 'Timer', 'fa-solid fa-stopwatch'],
     ['click_counter', 'Counter', 'fa-solid fa-plus-minus'],
     ['motion_status', 'System status', 'fa-solid fa-sliders']
@@ -13,6 +14,7 @@
   // The ambient surface works without a font or icon CDN. Existing app/settings
   // icons keep their own styling; only these frame controls use local SVGs.
   const ICON_PATHS = {
+    'fa-baseball': '<circle cx="12" cy="12" r="9"/><path d="M5 6c7 2 7 10 0 12M19 6c-7 2-7 10 0 12M7 7l-1 2m3 2-2 1m1 3-2-1m11-7 1 2m-3 2 2 1m-1 3 2-1"/>',
     'fa-shapes': '<rect x="3" y="3" width="7" height="7" rx="2"/><circle cx="17" cy="6.5" r="3.5"/><path d="m6.5 14 4 7h-8z"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
     'fa-gear': '<path d="m10 3-.7 2.3-2.1 1.2-2.4-.5-2 3.5 1.6 1.8v2.4l-1.6 1.8 2 3.5 2.4-.5 2.1 1.2.7 2.3h4l.7-2.3 2.1-1.2 2.4.5 2-3.5-1.6-1.8v-2.4l1.6-1.8-2-3.5-2.4.5-2.1-1.2L14 3z"/><circle cx="12" cy="12" r="3"/>',
     'fa-cloud-sun': '<path d="M7 9a4 4 0 1 1 7.7-2M7 1v2M1 7h2m.1-3.9 1.4 1.4M14.5 2.5l-1.4 1.4"/><path d="M7 20a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 11a4.5 4.5 0 0 1 .5 9z"/>',
@@ -46,6 +48,24 @@
   const POSITIONS = ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'];
   const CLOCK_REGIONS = [[.06,.12],[.35,.12],[.65,.12],[.06,.39],[.65,.39],[.06,.69],[.35,.69],[.65,.69]];
   let bridge;
+  let workspace = { split: false, visibleApps: [] };
+  let lastFrameSize = { width: window.innerWidth, height: window.innerHeight };
+  let lastMeasuredSize = '';
+  function frameSize() {
+    const view = $('dashboardView');
+    if (view?.clientWidth && view.clientHeight) lastFrameSize = { width: view.clientWidth, height: view.clientHeight };
+    return lastFrameSize;
+  }
+  function resizeFrame() {
+    const size = frameSize();
+    const key = `${size.width}x${size.height}`;
+    if (key === lastMeasuredSize) return;
+    lastMeasuredSize = key;
+    activeKey = '';
+    scheduleActivityLayout();
+    selectScheduledPhoto();
+    if ($('framePreviewImage')) updatePreview();
+  }
   let collection = { photos: [], photo_preferences: {}, status: {} };
   let frameConfig = {};
   let latestData = {};
@@ -149,7 +169,7 @@
   }
 
   function imageKey(photo, prefs) {
-    return `${photo.id}:${photo.foreground?.url || ""}:${prefs.depth === true}:${(failedForegrounds.get(photo.foreground?.url) || 0) > Date.now()}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${prefs.clock}:${window.innerWidth}x${window.innerHeight}`;
+    return `${photo.id}:${photo.foreground?.url || ""}:${prefs.depth === true}:${(failedForegrounds.get(photo.foreground?.url) || 0) > Date.now()}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${prefs.clock}:${frameSize().width}x${frameSize().height}`;
   }
 
   function rotationBatchKey() {
@@ -169,10 +189,11 @@
   function syncRotationPause() {
     if (!collection.photos.length) return;
     const phone = latestData.phone_state;
-    // Wait for phone state before resuming a pause restored from storage.
-    if (!phone) return;
-    const suspended = phone.is_home === false || phone.sleep_focus === true
-      || String(phone.focus_mode || '').trim().toLowerCase() === 'sleep';
+    const overlayOpen = bridge?.isOverlayOpen?.() === true;
+    // An open overlay can pause immediately; wait for phone state before resuming.
+    if (!phone && !overlayOpen) return;
+    const suspended = overlayOpen || phone?.is_home === false || phone?.sleep_focus === true
+      || String(phone?.focus_mode || '').trim().toLowerCase() === 'sleep';
     const valid = manualRotation?.batch === rotationBatchKey()
       && Number.isInteger(manualRotation.index) && manualRotation.index >= 0
       && Number.isFinite(manualRotation.startedAt);
@@ -350,8 +371,8 @@
     const pixels = layer.querySelector('img');
     pixels.src = photo.url;
     applyPhotoGeometry(pixels, foreground, prefs);
-    const geometry = photoGeometry(foreground, prefs, window.innerWidth, window.innerHeight);
-    const maskSize = `${geometry.width / window.innerWidth * 100}% ${geometry.height / window.innerHeight * 100}%`;
+    const geometry = photoGeometry(foreground, prefs, frameSize().width, frameSize().height);
+    const maskSize = `${geometry.width / frameSize().width * 100}% ${geometry.height / frameSize().height * 100}%`;
     layer.style.maskSize = maskSize;
     layer.style.webkitMaskSize = maskSize;
     // The PNG supplies alpha only: original photo pixels + identical shading
@@ -367,10 +388,10 @@
 
   function applyPhotoGeometry(element, image, prefs) {
     if (!image.naturalWidth || !image.naturalHeight) return;
-    const g = photoGeometry(image, prefs, window.innerWidth, window.innerHeight);
+    const g = photoGeometry(image, prefs, frameSize().width, frameSize().height);
     Object.assign(element.style, { position: 'absolute', right: 'auto', bottom: 'auto',
-      width: `${g.width / window.innerWidth * 100}%`, height: `${g.height / window.innerHeight * 100}%`,
-      left: `${g.x / window.innerWidth * 100}%`, top: `${g.y / window.innerHeight * 100}%` });
+      width: `${g.width / frameSize().width * 100}%`, height: `${g.height / frameSize().height * 100}%`,
+      left: `${g.x / frameSize().width * 100}%`, top: `${g.y / frameSize().height * 100}%` });
   }
 
   // Analyze the same composition as the display, including the zoom-out backdrop.
@@ -388,7 +409,7 @@
   // Estimate the focal point from detail and color in a small source image. This
   // stays local and inexpensive; manual crop coordinates always take precedence.
   function resolvePhotoPreferences(image, prefs = {}) {
-    const key = `${image.src}:${window.innerWidth}x${window.innerHeight}`;
+    const key = `${image.src}:${frameSize().width}x${frameSize().height}`;
     let automatic = focalCropCache.get(key);
     if (!automatic) {
       automatic = { position_x: 50, position_y: 50 };
@@ -417,9 +438,9 @@
         if (total > .05) {
           const centerX = weightedX / total * image.naturalWidth;
           const centerY = weightedY / total * image.naturalHeight;
-          const coverScale = Math.max(window.innerWidth / image.naturalWidth, window.innerHeight / image.naturalHeight);
-          const cropWidth = window.innerWidth / coverScale;
-          const cropHeight = window.innerHeight / coverScale;
+          const coverScale = Math.max(frameSize().width / image.naturalWidth, frameSize().height / image.naturalHeight);
+          const cropWidth = frameSize().width / coverScale;
+          const cropHeight = frameSize().height / coverScale;
           // CSS object-position is the fraction of the overflow, not of the image.
           const overflowX = image.naturalWidth - cropWidth;
           const overflowY = image.naturalHeight - cropHeight;
@@ -439,14 +460,14 @@
   }
 
   function clockAppearance(image, prefs, position) {
-    const key = `${image.src}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${position}:${window.innerWidth}x${window.innerHeight}`;
+    const key = `${image.src}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${position}:${frameSize().width}x${frameSize().height}`;
     if (clockAppearanceCache.has(key)) return clockAppearanceCache.get(key);
     let strength = .15;
     let dark = false;
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 96;
-      canvas.height = Math.max(36, Math.round(96 * window.innerHeight / window.innerWidth));
+      canvas.height = Math.max(36, Math.round(96 * frameSize().height / frameSize().width));
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       drawPhotoComposition(ctx, canvas, image, prefs);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -483,13 +504,13 @@
   // Score a tiny, already-cropped canvas. Quiet/darker areas give white clock type room.
   function chooseClockPosition(image, prefs) {
     if (POSITIONS.includes(prefs.clock)) return prefs.clock;
-    const cacheKey = `${image.src}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${window.innerWidth}x${window.innerHeight}`;
+    const cacheKey = `${image.src}:${prefs.position_x}:${prefs.position_y}:${zoomValue(prefs.zoom)}:${frameSize().width}x${frameSize().height}`;
     if (placementCache.has(cacheKey)) return placementCache.get(cacheKey);
     let choice = 'top-left';
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 120;
-      canvas.height = Math.max(45, Math.round(120 * window.innerHeight / window.innerWidth));
+      canvas.height = Math.max(45, Math.round(120 * frameSize().height / frameSize().width));
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       drawPhotoComposition(ctx, canvas, image, prefs);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -531,6 +552,15 @@
       const surface = $('dashboardView').getBoundingClientRect();
       if (!surface.width || !surface.height) return;
       const position = clock.dataset.position || '';
+      if (workspace.split) {
+        const box = clock.getBoundingClientRect();
+        const below = surface.bottom - box.bottom - 32;
+        const above = box.top - surface.top - 32;
+        const useBelow = below >= 72 || below >= above;
+        rail.dataset.layout = 'pane';
+        rail.style.cssText = `left:16px;right:16px;bottom:${useBelow ? 16 : surface.bottom - box.top + 16}px;max-height:${Math.max(52, useBelow ? below : above)}px`;
+        return;
+      }
       if (!position.startsWith('bottom-')) {
         rail.removeAttribute('data-layout');
         rail.style.cssText = '';
@@ -567,7 +597,8 @@
     const music = data.apps?.spotify || data.widgets?.spotify || {};
     if (music.is_playing && music.track_name) lastMusicPlaying = Date.now();
     const showMusic = Boolean(music.track_name && (music.is_playing || (lastMusicPlaying && Date.now() - lastMusicPlaying < 30000)));
-    $('frameMusic').hidden = !showMusic;
+    $('frameMusic').hidden = !showMusic || (workspace.split && workspace.visibleApps.includes('spotify'));
+    $('frameWeather').hidden = workspace.split && workspace.visibleApps.includes('weather');
     if (showMusic) {
       $('frameMusicTitle').textContent = music.track_name;
       $('frameMusicArtist').textContent = music.artist_name || '';
@@ -586,13 +617,22 @@
     const phase = timer.running ? 'running' : remaining === 0 ? 'completed' : remaining > 0 && remaining < Number(timer.set_minutes) * 60 ? 'paused' : 'idle';
     if (phase !== 'completed') completedTimerDismissed = false;
     timerPhase = phase;
-    $('frameTimer').hidden = phase === 'idle' || (phase === 'completed' && completedTimerDismissed);
+    $('frameTimer').hidden = phase === 'idle' || (phase === 'completed' && completedTimerDismissed) || (workspace.split && workspace.visibleApps.includes('timer'));
     $('frameTimer').classList.toggle('is-complete', phase === 'completed');
     $('frameTimerLabel').textContent = phase === 'completed' ? 'TIME’S UP' : phase === 'paused' ? 'PAUSED' : 'TIMER';
     $('frameTimerTime').textContent = timer.time_text || '00:00';
     $('frameTimerAction').setAttribute('aria-label', phase === 'completed' ? 'Dismiss finished timer' : phase === 'running' ? 'Pause timer' : 'Resume timer');
     $('frameTimerAction').firstElementChild.className = `fa-solid ${phase === 'completed' ? 'fa-xmark' : phase === 'running' ? 'fa-pause' : 'fa-play'}`;
     paintIcon($('frameTimerAction').firstElementChild);
+    const sports = data.apps?.sports || {};
+    const followed = new Set(sports.config?.favorite_team_ids || []);
+    const game = (sports.games || []).find(game => ['live', 'delayed'].includes(game.status) && (followed.has(game.away?.id) || followed.has(game.home?.id))) || sports.live_followed_games?.[0] || window.DashWorkspace?.getState().session('sports')?.data;
+    $('frameSports').hidden = !game || (workspace.split && workspace.visibleApps.includes('sports'));
+    if (game) {
+      $('frameSportsScore').textContent = `${game.away?.abbreviation || 'MLB'} ${game.away?.score ?? '–'} · ${game.home?.abbreviation || ''} ${game.home?.score ?? '–'}`;
+      $('frameSportsPhase').textContent = game.status === 'live' ? `${game.inning_half || 'Inning'} ${game.inning || ''}` : game.status_text || 'Delayed';
+      $('frameSportsStatus').textContent = sports.stale || sports.error ? 'LAST SCORE' : game.status === 'live' ? 'LIVE GAME' : 'GAME DELAYED';
+    }
     scheduleActivityLayout();
   }
 
@@ -715,7 +755,7 @@
   function updatePreview() {
     const photo = collection.photos.find(p => p.id === editorPhotoId);
     const preview = $('framePreviewImage');
-    preview.parentElement.style.aspectRatio = `${window.innerWidth} / ${window.innerHeight}`;
+    preview.parentElement.style.aspectRatio = `${frameSize().width} / ${frameSize().height}`;
     if (photo && preview.getAttribute('src') !== photo.url) preview.src = photo.url;
     if (!photo) preview.removeAttribute('src');
     const resolved = preview.naturalWidth && preview.dataset.loadedUrl === photo?.url ? resolvePhotoPreferences(preview, editorDraft) : { zoom: zoomValue(editorDraft.zoom), position_x: clamp(editorDraft.position_x), position_y: clamp(editorDraft.position_y), clock: editorDraft.clock || 'auto' };
@@ -766,7 +806,7 @@
     const position = loaded ? chooseClockPosition(preview, resolved) : (POSITIONS.includes(editorDraft.clock) ? editorDraft.clock : 'top-left');
     $('framePreviewClock').dataset.position = position;
     applyClockAppearance($('framePreviewClock'), loaded ? clockAppearance(preview, resolved, position) : { dark: false, scrim: '.15' });
-    const scale = preview.parentElement.clientWidth / window.innerWidth;
+    const scale = preview.parentElement.clientWidth / frameSize().width;
     const clock = $('framePreviewClock');
     const timeStyle = getComputedStyle($('frameTime'));
     const dateStyle = getComputedStyle($('frameDate'));
@@ -870,6 +910,7 @@
       if (event.target === $('dashboardView') && event.key === 'ArrowRight') { event.preventDefault(); advancePhoto(); }
     });
     $('frameWeather').addEventListener('click', () => bridge.openApp('weather'));
+    $('frameSportsOpen').addEventListener('click', () => bridge.openApp('sports'));
     $('frameMusicOpen').addEventListener('click', () => bridge.openApp('spotify'));
     $('frameMusicToggle').addEventListener('click', () => bridge.sendAction('spotify_toggle'));
     $('frameMusicArt').addEventListener('error', () => $('frameMusicArt').removeAttribute('src'));
@@ -879,8 +920,9 @@
       else bridge.sendAction('timer_toggle');
     });
     const layoutObserver = new ResizeObserver(scheduleActivityLayout);
-    ['dashboardView', 'frameClock', 'frameWeather', 'frameMusic', 'frameTimer'].forEach(id => layoutObserver.observe($(id)));
-    window.addEventListener('resize', () => { scheduleActivityLayout(); activeKey = ''; selectScheduledPhoto(); if ($('framePreviewImage')) updatePreview(); });
+    ['dashboardView', 'frameClock', 'frameWeather', 'frameMusic', 'frameTimer', 'frameSports'].forEach(id => layoutObserver.observe($(id)));
+    new ResizeObserver(resizeFrame).observe($('dashboardView'));
+    window.addEventListener('resize', resizeFrame);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateClock(); refreshPhotos(); } });
     updateClock();
     refreshPhotos();
@@ -888,5 +930,8 @@
     setInterval(refreshPhotos,30000);
   }
 
-  window.DashFrame = { init, update(data) { latestData = data; syncRotationPause(); updateActivities(data); }, setConnection, renderPhotos, showControls, closeApps };
+  window.DashFrame = { init, update(data) { latestData = data; syncRotationPause(); updateActivities(data); }, setConnection, renderPhotos, showControls, closeApps, syncRotationPause, resize: resizeFrame, setWorkspace(next) {
+    if (JSON.stringify(next) === JSON.stringify(workspace)) return;
+    workspace = next; updateActivities(latestData); resizeFrame();
+  } };
 })();

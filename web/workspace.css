@@ -1,0 +1,218 @@
+/* One native workspace: app views size themselves to their own pane. */
+#workspaceRoot[hidden],#workspaceRoot [hidden],#appContainer[hidden],.frame-sports[hidden] { display:none !important; }
+.workspace-root { --workspace-ratio:50%; position:fixed; inset:0; z-index:30; background:#0c1012; color:#f7f5ee; overflow:hidden; outline:none; font-family:var(--font-sans,sans-serif); }
+.workspace-panes { display:grid; width:100%; height:100%; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
+.workspace-root.is-split .workspace-panes { grid-template-columns:minmax(240px,calc(var(--workspace-ratio) - 4px)) 8px minmax(240px,1fr); }
+.workspace-pane { min-width:0; min-height:0; position:relative; overflow:hidden; container-type:size; background:#101619; }
+.workspace-pane-content { position:absolute; inset:0; overflow:hidden; }
+.workspace-root:not(.is-split) .workspace-pane { container-type:normal; overflow:visible; }
+.workspace-root:not(.is-split) .workspace-pane-content { overflow:visible; }
+.workspace-app { position:relative; width:100%; height:100%; min-width:0; min-height:0; overflow:auto; box-sizing:border-box; background:#000; color:var(--text-main); font-family:inherit; }
+.workspace-root :is(.workspace-toolbar,.workspace-pane-header,.workspace-island) :is(button,a,input):focus-visible,.workspace-picker :is(button,a):focus-visible { outline:2px solid #e2d5ae; outline-offset:3px; }
+.workspace-root :is(.workspace-toolbar,.workspace-pane-header,.workspace-island) button,.workspace-picker button { font:inherit; cursor:pointer; color:inherit; }
+.workspace-root :is(.workspace-toolbar,.workspace-pane-header,.workspace-island) button:disabled,.workspace-picker button:disabled { opacity:.35; cursor:default; }
+.workspace-toolbar { position:absolute; z-index:20; inset:0 0 auto; display:flex; justify-content:space-between; align-items:center; gap:16px; padding:18px 24px; pointer-events:none; opacity:0; visibility:hidden; transform:translateY(-8px); transition:opacity .25s,transform .25s,visibility .25s; background:linear-gradient(#05090cb3,transparent); }
+.workspace-toolbar nav { display:flex; gap:8px; }
+.workspace-toolbar button,.workspace-pane-header button { border:1px solid #ffffff24; background:#151d26a6; backdrop-filter:blur(24px); border-radius:24px; padding:10px 16px; font-size:12px; box-shadow:inset 0 1px #ffffff15; }
+.workspace-root.controls-visible .workspace-toolbar { opacity:1; visibility:visible; transform:none; pointer-events:auto; }
+.workspace-pane-header { position:absolute; inset:78px 16px auto; z-index:10; display:none; justify-content:space-between; align-items:center; gap:10px; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .25s,visibility .25s; }
+.is-split .workspace-pane-header { display:flex; }
+.controls-visible .workspace-pane-header { opacity:1; visibility:visible; pointer-events:auto; }
+.workspace-pane-name { font-size:12px; font-weight:550; padding:8px 12px; border-radius:20px; background:#0d151ab3; backdrop-filter:blur(24px); }
+.workspace-pane-header>div { display:flex; gap:5px; }
+.workspace-pane-header button { width:32px; height:32px; padding:0; font-size:18px; }
+.workspace-divider { position:relative; z-index:15; background:#080c0e; cursor:col-resize; touch-action:none; outline:none; }
+.workspace-divider::after { content:''; position:absolute; left:2px; right:2px; height:44px; top:calc(50% - 22px); border-radius:8px; background:#70818c88; transition:background .2s; }
+.workspace-divider:focus-visible { outline:2px solid #e2d5ae; outline-offset:-2px; }
+.workspace-divider:hover::after,.workspace-divider:focus-visible::after { background:#d7e3df; }
+.workspace-root.is-stacked.is-split .workspace-panes { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(200px,calc(var(--workspace-ratio) - 4px)) 8px minmax(200px,1fr); min-height:408px; }
+.workspace-root.is-stacked { overflow-y:auto; }
+.is-stacked .workspace-divider { cursor:row-resize; }
+.is-stacked .workspace-divider::after { width:44px; height:4px; top:2px; left:calc(50% - 22px); right:auto; }
+.workspace-island { position:absolute; z-index:30; top:12px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:0; max-width:min(560px,calc(100% - 500px)); min-height:48px; padding:3px 5px; border:1px solid #ffffff20; border-radius:32px; color:#f4f5ef; background:#080b0ff2; backdrop-filter:blur(30px); box-shadow:0 10px 30px #0005,inset 0 1px #ffffff0b; }
+.workspace-island-item { display:flex; align-items:center; min-width:0; flex:1 1 150px; position:relative; touch-action:pan-y; user-select:none; transition:opacity .15s; }
+.workspace-island-item+.workspace-island-item { border-left:1px solid #ffffff19; }
+.workspace-island-open { border:0; background:none; display:flex; align-items:center; gap:9px; padding:6px 3px 6px 8px; color:inherit; min-width:0; flex:1; text-align:left; border-radius:24px; }
+.workspace-island-icon { font-size:21px; color:#d6e4c8; width:25px; text-align:center; flex-shrink:0; }
+.workspace-island-open:has(img:not([hidden])) .workspace-island-icon { display:none; }
+.workspace-island-open>img { width:29px; height:29px; object-fit:cover; border-radius:8px; flex-shrink:0; }
+.workspace-island-copy { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.workspace-island-copy strong { font-size:11px; font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.workspace-island-copy small { font-size:9px; color:#a2b2ad; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.workspace-island-hide { background:none; border:0; border-radius:50%; font-size:14px !important; color:#a4b0ae !important; width:26px; min-width:26px; height:32px; padding:0; }
+.workspace-island-hide:hover { color:#fff !important; background:#ffffff15; }
+.workspace-picker { width:min(680px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:28px; box-sizing:border-box; overflow:auto; border:1px solid #ffffff24; border-radius:28px; background:#192024; color:#f6f5ef; font-family:var(--font-sans,sans-serif); }
+.workspace-picker::backdrop { background:#0008; backdrop-filter:blur(14px); }
+.workspace-picker-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; gap:12px; }
+.workspace-picker-heading h2 { font-size:29px; font-weight:550; letter-spacing:-.04em; margin:5px 0 0; }
+.workspace-picker-heading>button { width:36px; height:36px; border:1px solid #ffffff25; border-radius:50%; background:#ffffff08; font-size:22px; }
+.workspace-picker-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.workspace-picker-grid button { display:flex; flex-direction:column; align-items:flex-start; text-align:left; gap:9px; padding:18px 14px; min-width:0; border:1px solid #ffffff16; border-radius:18px; background:#ffffff04; }
+.workspace-picker-grid button:hover:not(:disabled) { background:#ffffff10; }
+.workspace-picker-icon { color:#d1dfc2; font-size:26px; height:34px; }
+.workspace-picker-grid strong { font-size:13px; font-weight:550; }
+.workspace-picker-grid small { font-size:10px; color:#a4b3ae; }
+.workspace-picker footer { display:flex; gap:12px; flex-wrap:wrap; margin-top:20px; }
+.workspace-picker footer button { border:0; background:none; color:#c4cfca; padding:8px 0; font-size:12px; text-decoration:underline; text-underline-offset:4px; }
+.ws-eyebrow { color:#a9b9b3; font-size:10px; letter-spacing:.15em; font-weight:550; }
+.workspace-legacy-content { min-height:0; }
+.workspace-layout-header { visibility:hidden !important; pointer-events:none; }
+.is-split .workspace-legacy-content>div { max-width:100%; }
+.workspace-legacy-content .fs-timer-display { font-size:clamp(6rem,12cqw,10rem); }
+.workspace-legacy-content .fs-counter-digits { font-size:clamp(7rem,14cqw,12rem); }
+.is-split :is(.ws-presets,.fs-timer-actions,.fs-counter-pads) { flex-wrap:wrap; justify-content:center; }
+.ws-photo-view { display:flex; flex-direction:column; align-items:center; gap:2rem; }
+.ws-photo-view.has-image { width:100%; height:100%; justify-content:center; gap:1.5rem; }
+.ws-photo-status:empty { display:none; }
+.ws-photo-view>img { max-width:90cqw; max-height:60cqh; border-radius:16px; box-shadow:0 20px 60px #000c; }
+.ws-photo-upload { display:flex; gap:1rem; align-items:center; }
+.is-split .ws-photo-upload { flex-wrap:wrap; justify-content:center; }
+.ws-photo-upload input { max-width:100%; color:#fff; }
+.ws-reveal { position:absolute; inset:0; width:100%; height:100%; z-index:2; border:0; background:none; }
+.ws-reveal:focus-visible { outline-offset:-5px !important; }
+.workspace-music-content.overlay-content { position:relative; inset:auto; z-index:3; pointer-events:none; }
+.workspace-music-content .fs-spotify-art-wrapper,.workspace-music-content .fs-spotify-scrub-wrap,.workspace-music-content .fs-spotify-controls,#fsSpotifyNotConnected,#fsSpotifyNothingPlaying { pointer-events:auto; }
+.ws-spotify .spotify-bg-stage { opacity:1; }
+.ws-spotify .fs-spotify-title { font-size:clamp(2rem,3.5cqw,3.2rem); }
+.ws-spotify .fs-spotify-artist { font-size:clamp(1.2rem,1.8cqw,1.6rem); }
+.ws-spotify .ws-seek { position:absolute; inset:-9px 0; width:100%; height:28px; margin:0; opacity:0; cursor:pointer; z-index:5; }
+.ws-spotify .fs-spotify-progress:focus-within { outline:2px solid var(--spotify-accent,#fff); outline-offset:5px; }
+.ws-empty { padding:120px 24px; text-align:center; color:#c3cec6; }
+/* Sports retains its game renderer, inside this pane rather than the viewport. */
+.workspace-app.app-overlay-view { position:relative; inset:auto; display:block; opacity:1; visibility:visible; filter:none; transform:none; z-index:auto; padding:0; border-radius:0; overflow:hidden; }
+.workspace-app.workspace-legacy-app { display:flex; padding:1.25rem 2rem; transform:translateY(0) scale(1); filter:blur(0); }
+.workspace-app.ws-spotify { display:flex; padding:1.25rem 1.75rem 1.75rem; transform:translateY(0) scale(1); filter:blur(0); }
+.workspace-root:not(.is-split) .workspace-app.app-overlay-view { position:fixed; inset:0; z-index:1; }
+.workspace-app.sports-active .overlay-content { inset:0; padding:0; }
+.is-split .workspace-app .sports-matchup { padding:0 5cqw; }
+.is-split .workspace-app .sports-team .sports-logo { width:clamp(68px,13cqw,170px); height:clamp(68px,13cqw,170px); }
+.is-split .workspace-app .sports-team-abbr { font-size:clamp(22px,4cqw,48px); margin-top:15px; }
+.is-split .workspace-app .sports-team-name { font-size:clamp(10px,1.4cqw,17px); }
+.is-split .workspace-app .sports-team-record { font-size:clamp(9px,1.1cqw,13px); }
+.is-split .workspace-app .sports-score { font-size:clamp(64px,12cqw,150px); }
+.is-split .workspace-app .sports-game-phase { font-size:clamp(20px,3.4cqw,40px); }
+.is-split .workspace-app .sports-toolbar { left:24px; right:24px; top:90px; }
+.is-split .workspace-app .sports-games-section { left:24px; right:24px; }
+.is-split .workspace-app .sports-notice { top:76px; }
+.is-split .workspace-app .sports-game-meta { top:14%; }
+.is-split .workspace-app .sports-toolbar { top:124px; }
+.is-split .workspace-app .sports-team-name { max-width:110px; }
+.is-split .workspace-app .sports-game-meta { top:20%; }
+.workspace-root.has-island .sports-game-meta { top:90px; }
+.workspace-pane #appContainer { position:absolute; inset:0; width:100%; height:100%; z-index:0; transform:none; filter:none; opacity:1; }
+.workspace-pane .frame-chrome { display:none; }
+.workspace-pane .frame-time { font-size:clamp(50px,16cqw,120px); }
+.workspace-pane .frame-date { font-size:clamp(11px,2.8cqw,20px); }
+.workspace-pane .frame-clock { max-width:88%; }
+.workspace-pane .frame-bottom[data-layout="pane"] { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.workspace-pane .frame-activities { flex-wrap:wrap; justify-content:flex-start; max-width:100%; }
+.workspace-pane .frame-music { flex:0 1 390px; width:clamp(235px,60cqw,390px); max-width:100%; }
+.frame-sports { min-width:180px; height:88px; padding:14px 20px; flex-shrink:0; }
+.frame-sports-open { display:flex; gap:12px; align-items:center; border:0; background:none; font:inherit; color:inherit; text-align:left; cursor:pointer; width:100%; height:100%; }
+.frame-sports-icon { font-size:22px; color:#ffe0a1; }
+.frame-sports-open>span:last-child { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.frame-sports strong { font-size:19px; font-weight:550; font-variant-numeric:tabular-nums; white-space:nowrap; }
+#frameSportsPhase { font-size:10px; color:#ffffffb3; }
+.frame-activities { flex-wrap:wrap; }
+@container (max-width:600px) {
+  .is-split .workspace-app .sports-matchup { grid-template-columns:minmax(0,1fr) minmax(74px,.75fr) minmax(0,1fr); padding:0 10px; }
+  .is-split .workspace-app .sports-team .sports-logo { width:64px; height:64px; }
+  .is-split .workspace-app .sports-team-abbr { font-size:23px; }
+  .is-split .workspace-app .sports-team-name { font-size:10px; min-height:28px; }
+  .is-split .workspace-app .sports-score { font-size:64px; margin-top:8px; }
+  .is-split .workspace-app .sports-game-phase { font-size:19px; }
+  .is-split .workspace-app .sports-count { font-size:7px; gap:12px; }
+  .is-split .workspace-app .sports-toolbar { left:14px; right:14px; }
+  .is-split .workspace-app .sports-games-section { left:14px; right:14px; }
+  .is-split .workspace-app .sports-game-card { flex-basis:128px; }
+  .is-split .workspace-app .sports-games-heading .sports-eyebrow { display:none; }
+  .is-split .workspace-app .sports-game-meta { top:18%; }
+}
+@container (max-height:500px) {
+  .is-split .workspace-app .sports-team .sports-logo { width:52px; height:52px; }
+  .is-split .workspace-app .sports-team-abbr { font-size:21px; margin-top:8px; }
+  .is-split .workspace-app .sports-team-name { display:none; }
+  .is-split .workspace-app .sports-score { font-size:56px; margin-top:4px; }
+  .is-split .workspace-app .sports-side-label { display:none; }
+  .is-split .workspace-app .sports-game-meta { top:16%; }
+  .is-split .workspace-app .sports-venue { bottom:7%; font-size:9px; }
+  .is-split .workspace-app .sports-situation { gap:4px; }
+  .is-split .workspace-app .sports-live-details { margin-top:0; }
+  .is-split .workspace-app .sports-count { margin-top:6px; }
+  .is-split .workspace-app .sports-bases { transform:scale(.7); margin-bottom:-12px; margin-top:-4px; }
+  .is-split .workspace-app .sports-out-label { font-size:9px; }
+  .is-split .workspace-app .sports-game-phase { font-size:19px; }
+  .is-split .workspace-app .sports-toolbar { top:66px; font-size:10px; }
+  .is-split .workspace-app .sports-games-section { max-height:39%; bottom:24px; padding-top:0; }
+  .is-split .workspace-app .sports-games-heading { display:none; }
+  .is-split .workspace-app .sports-game-card { padding:6px 10px; gap:3px; }
+  .is-split .workspace-app .sports-footer { bottom:5px; font-size:8px; }
+  .workspace-pane .frame-time { font-size:clamp(44px,14cqw,74px); }
+}
+@media(max-width:1099px) {
+  .workspace-island { max-width:calc(100% - 24px); width:max-content; }
+  .workspace-root.has-island .workspace-toolbar { padding-top:72px; }
+  .workspace-root.has-island .workspace-pane-header { top:126px; }
+}
+@media(max-width:620px) {
+  .workspace-toolbar { padding:12px; gap:6px; }
+  .workspace-toolbar nav { gap:5px; }
+  .workspace-toolbar button { padding:9px 11px; font-size:10px; }
+  .workspace-island { top:10px; min-height:42px; border-radius:28px; padding:2px; }
+  .workspace-island-open { gap:5px; padding:6px; }
+  .workspace-island-icon { font-size:18px; width:19px; }
+  .workspace-island-open>img { width:23px; height:23px; }
+  .workspace-island-copy strong { font-size:10px; }
+  .workspace-island-copy small { font-size:8px; }
+  .workspace-island-hide { min-width:22px; width:22px; }
+  .workspace-pane-header { top:62px; left:10px; right:10px; }
+  .workspace-pane-name { font-size:10px; }
+  .workspace-picker { padding:21px; }
+  .workspace-picker-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+
+}
+@media(prefers-reduced-motion:reduce) {
+  .workspace-root *, .workspace-picker * { transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+}
+
+/* Keep Spotify's existing bottom-anchored artwork and details, sized to its pane. */
+@container (max-width:900px) {
+  .is-split .ws-spotify .fs-spotify-art-wrapper { width:clamp(140px,28cqw,260px); height:auto; aspect-ratio:1; }
+  .is-split .ws-spotify .fs-spotify-container { gap:24px; }
+  .is-split .ws-spotify .fs-spotify-title { font-size:clamp(22px,3.5cqw,32px); }
+  .is-split .ws-spotify .fs-spotify-artist { font-size:clamp(15px,2.4cqw,20px); }
+  .is-split .ws-spotify .fs-spotify-controls { gap:20px; }
+  .is-split .ws-spotify .fs-ctrl-btn { width:52px; height:52px; }
+  .is-split .ws-spotify .fs-play-btn { width:64px; height:64px; }
+  .is-split .ws-spotify .fs-spotify-details { transform:translateY(calc(64px + 1.75rem)); }
+}
+@container (max-width:520px) {
+  .is-split .workspace-music-content { left:18px; right:18px; bottom:24px; }
+  .is-split .ws-spotify .fs-spotify-container { flex-direction:column; align-items:flex-start; justify-content:flex-end; gap:22px; }
+  .is-split .ws-spotify .fs-spotify-art-wrapper { width:min(48cqw,220px); }
+  .is-split .ws-spotify .fs-spotify-details { flex:none; width:100%; }
+  .is-split .ws-spotify .fs-spotify-title { font-size:clamp(22px,6cqw,30px); }
+  .is-split .ws-spotify .fs-spotify-controls { gap:24px; }
+}
+@container (max-height:500px) {
+  .is-split .workspace-music-content { top:76px; bottom:18px; }
+  .is-split .ws-spotify .fs-spotify-container { flex-direction:row; align-items:flex-end; gap:18px; }
+  .is-split .ws-spotify .fs-spotify-art-wrapper { width:min(28cqw,36cqh); }
+  .is-split .ws-spotify .fs-spotify-details { flex:1; gap:12px; }
+  .is-split .ws-spotify .fs-spotify-title { font-size:clamp(18px,4cqw,28px); }
+  .is-split .ws-spotify .fs-spotify-artist { font-size:14px; }
+  .is-split .ws-spotify .fs-ctrl-btn { width:40px; height:40px; }
+  .is-split .ws-spotify .fs-play-btn { width:48px; height:48px; }
+  .is-split .ws-spotify .fs-spotify-controls { gap:14px; }
+  .is-split .ws-spotify .fs-spotify-details { transform:translateY(calc(48px + 1.25rem)); }
+}
+
+@container (max-width:600px) {
+  .is-split .workspace-legacy-content { padding:120px 16px 24px; }
+  .is-split .workspace-legacy-content .fs-timer-display { font-size:clamp(56px,18cqw,96px); }
+  .is-split .workspace-legacy-content .fs-counter-digits { font-size:clamp(64px,22cqw,112px); }
+  .is-split .workspace-legacy-content .fs-counter-pads { gap:16px; }
+  .is-split .workspace-legacy-content .counter-pad { width:100px; height:100px; }
+  .is-split .workspace-legacy-content .fs-timer-actions button { padding:12px 22px !important; font-size:18px !important; }
+  .is-split .workspace-legacy-content .ws-temperature { font-size:clamp(48px,20cqw,112px) !important; }
+}

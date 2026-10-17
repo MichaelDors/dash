@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="/wide.css?v=2.0.0" />
   <link rel="stylesheet" href="/frame.css" />
+  <link rel="stylesheet" href="/sports-wide.css" />
+  <link rel="stylesheet" href="/workspace.css" />
 </head>
 
 <body>
@@ -38,6 +40,7 @@
         <div class="frame-caption"><span id="frameConnectionStatus" role="status"></span></div>
         <nav class="frame-nav" aria-label="Dashboard controls">
           <button id="btnOpenApps" class="frame-nav-button" aria-haspopup="dialog"><i class="fa-solid fa-shapes" aria-hidden="true"></i><span>Apps</span></button>
+          <button id="frameSplitScreen" class="frame-nav-button" aria-haspopup="dialog"><span aria-hidden="true">◫</span><span>Split Screen</span></button>
           <button id="btnOpenSettings" class="frame-nav-button"><i class="fa-solid fa-gear" aria-hidden="true"></i><span>Settings</span></button>
         </nav>
       </div>
@@ -58,6 +61,7 @@
             <button id="frameTimerOpen" class="frame-timer-open" aria-label="Open timer"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span><span id="frameTimerLabel" class="frame-eyebrow">TIMER</span><strong id="frameTimerTime"></strong></span></button>
             <button id="frameTimerAction" class="frame-activity-action" aria-label="Pause timer"><i class="fa-solid fa-pause" aria-hidden="true"></i></button>
           </article>
+          <article id="frameSports" class="frame-sports frame-glass" hidden><button id="frameSportsOpen" class="frame-sports-open" aria-label="Open followed game"><i class="fa-solid fa-baseball frame-sports-icon" aria-hidden="true"></i><span><span id="frameSportsStatus" class="frame-eyebrow">LIVE GAME</span><strong id="frameSportsScore"></strong><span id="frameSportsPhase"></span></span></button></article>
         </div>
       </div>
     </main>
@@ -69,10 +73,6 @@
 
   <!-- Full Screen App Overlay View -->
   <div id="appOverlayView" class="app-overlay-view hidden" role="dialog" aria-modal="true" aria-label="App">
-    <div id="spotifyBgStage" class="spotify-bg-stage" aria-hidden="true">
-      <div id="spotifyBgLayerA" class="spotify-bg-layer is-active"></div>
-      <div id="spotifyBgLayerB" class="spotify-bg-layer"></div>
-    </div>
     <header class="overlay-header">
       <button class="touch-btn btn-back" id="btnBackToDash">
         <i class="fa-solid fa-arrow-left"></i>
@@ -460,6 +460,11 @@ export const set = mutation({
     <div id="displayOffOverlay" class="display-off-overlay hidden" aria-hidden="true"></div>
 
     <script src="/frame.js" defer></script>
+    <script src="/sports-wide.js" defer></script>
+    <script src="/workspace-state.js" defer></script>
+    <script src="/workspace-music.js" defer></script>
+    <script src="/workspace-apps.js" defer></script>
+    <script src="/workspace.js" defer></script>
     <script src="/wide.js?v=2.0.3" defer></script>
 </body>
 

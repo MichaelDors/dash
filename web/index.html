@@ -74,6 +74,65 @@
       </form>
     </section>
 
+    <section class="sports-settings" id="sports-settings" aria-labelledby="sportsSettingsHeading">
+      <div class="sports-settings-heading">
+        <div>
+          <p class="eyebrow">Sports</p>
+          <h2 id="sportsSettingsHeading">Your scoreboard</h2>
+        </div>
+        <span class="sports-league-badge">MLB</span>
+      </div>
+      <p class="sports-settings-intro">Follow today’s baseball games on your display. Choose your teams and display options here.</p>
+      <form id="sportsForm">
+        <fieldset id="sportsConfigFields" disabled>
+          <legend class="sports-visually-hidden">Sports display preferences</legend>
+          <div class="sports-preferences-grid">
+            <label class="sports-field" for="sportsGameFilter">
+              <span>Games to show</span>
+              <select id="sportsGameFilter" name="game_filter">
+                <option value="all">All of today’s games</option>
+                <option value="favorites">Favorite teams only</option>
+              </select>
+            </label>
+            <label class="sports-field" for="sportsTimezone">
+              <span>Schedule timezone</span>
+              <select id="sportsTimezone" name="timezone" aria-describedby="sportsTimezoneHelp"></select>
+              <small id="sportsTimezoneHelp">Used for today’s schedule and game start times.</small>
+            </label>
+          </div>
+          <fieldset class="sports-favorites">
+            <legend>Followed teams <span id="sportsFavoriteCount">0 selected</span></legend>
+            <label class="sports-visually-hidden" for="sportsTeamSearch">Find an MLB team</label>
+            <input id="sportsTeamSearch" type="search" placeholder="Find a team…" autocomplete="off" aria-controls="sportsTeamList" />
+            <div id="sportsTeamList" class="sports-team-list"></div>
+            <p id="sportsTeamSearchEmpty" class="sports-field-help" hidden>No teams match your search.</p>
+            <p id="sportsFavoritesHelp" class="sports-field-help">Choose any teams you follow. All games are shown unless you select “Favorite teams only.”</p>
+          </fieldset>
+          <div class="sports-rotation-settings">
+            <label class="sports-checkbox-label" for="sportsAutoPreview">
+              <input id="sportsAutoPreview" name="auto_preview" type="checkbox" checked />
+              <span>Preview live games from teams I follow</span>
+            </label>
+            <p class="sports-field-help">When the displays are idle, show a followed team’s live game until it finishes. You can close it at any time.</p>
+            <label class="sports-checkbox-label" for="sportsAutoRotate">
+              <input id="sportsAutoRotate" name="auto_rotate" type="checkbox" checked />
+              <span>Automatically rotate between games</span>
+            </label>
+            <label class="sports-field sports-rotation-interval" for="sportsRotationSeconds">
+              <span>Seconds per game</span>
+              <input id="sportsRotationSeconds" name="rotation_seconds" type="number" min="5" max="300" step="1" value="15" required />
+            </label>
+          </div>
+          <div class="sports-save-row">
+            <button id="sportsSaveButton" type="submit" class="sports-button sports-save-button">Save sports settings</button>
+            <span class="sports-field-help">On the device, turn the dial to browse games.</span>
+          </div>
+        </fieldset>
+        <p id="sportsSettingsStatus" class="sports-settings-status" role="status" aria-live="polite">Loading sports settings…</p>
+        <button id="sportsRetryButton" type="button" class="sports-button" hidden>Try again</button>
+      </form>
+    </section>
+
     <p class="keyboard-hint">
       Keyboard: Left/Right switch widgets, Space = dial press, hold H = dial hold, + / - adjust timer.
     </p>

@@ -101,7 +101,7 @@ async function main() {
   async function settle(ms=650) { await page.waitForTimeout(ms); }
   async function reloadFrame() { await page.goto(base+'/wide');await settle(1000); }
   async function apps() { await page.locator('#dashboardView').click({position:{x:700,y:260}});await page.locator('#btnOpenApps').click(); }
-  async function closeApp() { await page.locator('#btnBackToDash').click();await settle(); }
+  async function closeApp() { if(await page.locator('#workspaceRoot').isVisible()) {await page.locator('#workspaceRoot').focus();await page.keyboard.press('Enter');await page.locator('[data-workspace="home"]').click();}else await page.locator('#btnBackToDash').click();await settle(); }
   try {
     if (!process.env.FRAME_TEST_DEPTH_ONLY) {
     await reloadFrame();
@@ -117,95 +117,21 @@ async function main() {
     await settle(1600);await shot('02-photo-idle');
     assert.equal(actions.length,0,'Background rendering must not send hardware activity');
 
+    // The workspace suites cover playback takeover, grace, start ordering,
+    // and split panes; this suite keeps Photo Clock card and editor coverage.
     music={...music,track_name:'First song',artist_name:'First artist',album_art_url:'/fixture-landscape.svg',is_playing:true};
     timer={...timer,running:true,minutes:2,seconds:35,time_text:'02:35'};
     await settle();
+    assert.equal(await page.locator('#workspaceRoot').isVisible(),true,'New playback opens the workspace');
+    await closeApp();
     assert.equal(await page.locator('#frameMusic').isVisible(),true);
     assert.equal(await page.locator('#frameTimer').isVisible(),true);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Playback start opens Spotify');
-    assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true);
-    await closeApp();await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Returning to photos is respected during playback');
-    await shot('03-live-activities');
     music={...music,track_name:'Second song',artist_name:'Second artist',album_art_url:'/fixture-portrait.svg'};
     await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Track changes do not reopen Spotify');
+    assert.equal(await page.locator('#workspaceRoot').isVisible(),false,'Home holds the existing playback session');
     assert.equal(await page.locator('#frameMusicTitle').innerText(),'Second song');
-    assert.equal(await page.locator('#frameMusicArtist').innerText(),'Second artist');
-    assert.match(await page.locator('#frameMusicArt').getAttribute('src'),/portrait/);
-    await page.locator('#frameMusicToggle').click();await settle();
-    assert.equal(music.is_playing,false);
-    assert.equal(await page.locator('#frameMusic').isVisible(),true);
-
-    await page.locator('#frameMusicToggle').click();await settle();
-    assert.equal(music.is_playing,true);
-    assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true,'Resuming opens Spotify again');
-    // Advance the monotonic playback clock while letting real network polls settle.
-    await page.evaluate(()=>{
-      window.spotifyClockOffset=0;
-      window.spotifyRealNow=performance.now.bind(performance);
-      performance.now=()=>window.spotifyRealNow()+window.spotifyClockOffset;
-    });
-    async function advanceSpotifyClock(ms) {
-      await page.evaluate(ms=>window.spotifyClockOffset+=ms,ms);await settle();
-    }
-    delete music.is_playing;await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Missing playback data does not close Spotify');
-    music.is_playing=true;await settle();
-    music.is_playing=false;await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Remote pause keeps Spotify open during grace');
-    await advanceSpotifyClock(3000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Pause grace is at least five seconds');
-    music.is_playing=true;await settle();
-    await advanceSpotifyClock(6000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Resuming cancels the pending close');
-    music.is_playing=false;await settle();
-    await advanceSpotifyClock(5000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Longer playback extends the stop grace');
-    await advanceSpotifyClock(300000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Sustained pause eventually returns to the frame');
-    assert.equal(await page.locator('#frameMusic').isVisible(),true,'Music activity uses its own thirty-second grace');
-    // Check the upper bound after a long playing session.
-    music.is_playing=true;await settle();await advanceSpotifyClock(400000);
-    music.is_playing=false;await settle();await advanceSpotifyClock(298000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Long session waits nearly five minutes');
-    await advanceSpotifyClock(3000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'OLED-compatible grace caps at five minutes');
-    await apps();await page.locator('[data-app="spotify"]').click();await settle();
-    await advanceSpotifyClock(400000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Manually opened Spotify does not auto-close');
-    await closeApp();
-    music.is_playing=true;await settle();
-    await page.locator('#appOverlayView').click({position:{x:600,y:250}});await settle();
-    await page.locator('#fsSpotPlay').click();await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Fullscreen pause also gets a grace period');
-    await advanceSpotifyClock(6000);
-    assert.equal(await page.locator('#appOverlayView').isVisible(),false,'Fullscreen pause closes after grace');
-    await page.evaluate(()=>{performance.now=window.spotifyRealNow;});
-    music.is_playing=true;await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Playback can reopen after automatic close');
-    await closeApp();
-    music.is_playing=false;await settle();
-    await page.locator('#btnOpenSettings').click();await settle();
-    music.is_playing=true;await settle();
-    assert.equal(await page.locator('#settingsOverlayView').isVisible(),true,'Playback does not interrupt settings edits');
-    await page.locator('#btnCloseSettings').click();await settle();
-    assert.equal(await page.locator('#appOverlayView').evaluate(el=>el.classList.contains('spotify-active')),true,'Deferred playback opens after leaving settings');
-    await closeApp();
-
-    await page.locator('#frameTimerOpen').click();await settle();
-    music.is_playing=false;await settle();
-    assert.equal(await page.locator('#appOverlayView').isVisible(),true,'Stopped music does not close the Timer app');
-    assert.equal(await page.locator('#appContainer').evaluate(el=>el.inert),true,'Polling preserves modal focus isolation');
-    timer={...timer,minutes:2,seconds:31,time_text:'02:31'};
-    await settle();
-    assert.match(await page.locator('#appOverlayContent').innerText(),/02:31/,'Open timer must update without a Spotify change');
-    timer={...timer,running:false};await settle();await closeApp();
-    if (process.env.FRAME_TEST_SPOTIFY_ONLY) {
-      assert.equal(errors.length,0,errors.join('\n'));
-      console.log('Spotify playback navigation scenarios passed.');
-      return;
-    }
+    await shot('03-live-activities');
+    timer={...timer,running:false};await settle();
     assert.equal(await page.locator('#frameTimer').isVisible(),true);
     timer={...timer,minutes:0,seconds:0,time_text:'00:00'};await settle();
     const beforeDismiss=actions.length;
@@ -224,7 +150,7 @@ async function main() {
     apiOffline=false;frameOffline=false;await settle();
     temperature=81;await page.locator('#frameWeather').click();await settle();
     temperature=84;await settle();
-    assert.match(await page.locator('#appOverlayContent').innerText(),/84/,'Weather must update independently of Spotify');
+    assert.match(await page.locator('.workspace-app.ws-weather').innerText(),/84/,'Weather must update independently of Spotify');
     await closeApp();
 
     for(const [label,photo] of [['portrait',photoSet[1]],['busy',photoSet[2]]]) {
@@ -324,7 +250,7 @@ async function main() {
       music.track_name='';timer={...timer,running:false,minutes:5,seconds:0,time_text:'05:00'};await settle();
       assert.deepEqual(await page.locator('#frameClock').boundingBox(),anchored,'Clock stays anchored when activities disappear');
       await assertComposition(position+' idle');
-      music.track_name='Second song';timer={...timer,running:true,minutes:2,seconds:35,time_text:'02:35'};await settle();
+      music.track_name='Second song';timer={...timer,running:true,minutes:2,seconds:35,time_text:'02:35'};await settle();await page.evaluate(()=>DashWorkspace.home());await settle();
     }
     await page.setViewportSize({width:1280,height:800});
 
@@ -383,7 +309,8 @@ async function main() {
       await page.setViewportSize(size);await settle(800);
       const geometry=await page.evaluate(()=>{
         const surface=document.getElementById('dashboardView').getBoundingClientRect();
-        const preview=document.getElementById('framePreviewImage').getBoundingClientRect();
+        // The cropped image intentionally extends beyond the preview surface.
+        const preview=document.getElementById('framePreviewImage').parentElement.getBoundingClientRect();
         const actual=document.getElementById('frameClock').getBoundingClientRect();
         const mini=document.getElementById('framePreviewClock').getBoundingClientRect();
         const scale=preview.width/surface.width;
@@ -409,7 +336,14 @@ async function main() {
     await page.locator('#frameSavePhoto').click();await settle();await closeApp();await settle(1500);
     assert.equal(prefs[imageId].depth,true,'Crop and clock edits preserve depth');
     await page.setViewportSize({width:1024,height:600});await settle(1500);
-    assert.equal(await foreground.evaluate(el=>el.style.maskPosition),await page.locator('.frame-photo.is-active').evaluate(el=>el.style.objectPosition),'Resize keeps crop and alpha aligned');
+    const aligned=await page.evaluate(()=>{
+      const layer=document.querySelector('#dashboardView>.frame-foreground.is-active');
+      const image=layer.querySelector('img').getBoundingClientRect();
+      const background=document.querySelector('.frame-photo.is-active').getBoundingClientRect();
+      return {mask:layer.style.maskPosition,deltas:['x','y','width','height'].map(k=>Math.abs(image[k]-background[k]))};
+    });
+    assert.equal(aligned.mask,'30% 50%');
+    assert.ok(aligned.deltas.every(delta=>delta<1),'Resize keeps crop pixels and alpha geometry aligned');
     photos=depthPhotos;prefs[secondId]={clock:'top-right',depth:true};activatedAt=Date.now();
     await reloadFrame();await settle(1500);
     await page.locator('#dashboardView').click({position:{x:600,y:260}});await settle(300);
@@ -481,9 +415,13 @@ async function main() {
     assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Apps control must not advance photos');
     await page.keyboard.press('Escape');
     await page.locator('#frameWeather').click();await settle();
+    await page.clock.fastForward(1800000);await settle();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'App overlays pause photo rotation');
     await closeApp();
     assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Weather activity must not advance photos');
     await page.locator('#btnOpenSettings').click();await settle();
+    await page.clock.fastForward(1800000);await settle();
+    assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Settings pause photo rotation');
     await page.locator('#btnCloseSettings').click();await settle();
     assert.match(await page.locator('.frame-photo.is-active').getAttribute('src'),/busy/,'Settings control must not advance photos');
     await page.clock.fastForward(480000);await settle();

@@ -178,6 +178,7 @@ if (globalWeatherForm) {
 
 function render(state) {
   updateStamp();
+  syncSportsSettings(state.sports);
 
   const motion = state.motion || {};
   const active = state.active_widget || null;
@@ -325,7 +326,67 @@ function renderApp(app, exitState) {
   if (app.type === "settings") {
     return renderSettings(app, exitState);
   }
+  if (app.type === "sports") {
+    return renderSports(app, exitState);
+  }
   return `<p class="counter-help">Unsupported app type: ${app.type}</p>`;
+}
+
+function sportsEscape(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[character]));
+}
+
+function sportsStartTime(game, config) {
+  if (!game.start_time) return "Time TBD";
+  const start = new Date(game.start_time);
+  if (!Number.isFinite(start.getTime())) return "Time TBD";
+  try {
+    return start.toLocaleTimeString([], {
+      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+      timeZone: config.timezone || "America/New_York"
+    });
+  } catch (_) {
+    return "Time TBD";
+  }
+}
+
+function renderSports(app, exitState = {}, launcher = false) {
+  const games = Array.isArray(app.games) ? app.games : [];
+  const game = app.selected_game || games.find((item) => item.id === app.selected_game_id) || games[0];
+  const config = app.config || {};
+  const progress = Math.max(0, Math.min(1, Number(exitState.progress) || 0));
+  const notice = app.stale ? "Scores may be out of date. Reconnecting…" : (app.error ? "Unable to update scores. Retrying automatically." : "");
+  let content;
+  if (!game) {
+    const title = app.loading ? "Loading scores…" : (app.error ? "Scores unavailable" : "No games today");
+    const detail = app.loading ? "Getting the latest MLB schedule." : (app.error ? "We’ll keep trying to connect." : (config.favorites_only ? "Your favorite teams are off today." : "Check back for the next game day."));
+    content = `<div class="sports-preview-empty"><strong>${title}</strong><p>${detail}</p></div>`;
+  } else {
+    const live = game.status === "live" || game.status === "in_progress";
+    const scheduled = game.status === "scheduled" || game.status === "preview" || game.status === "pre_game";
+    const inning = live && game.inning ? `${game.inning_half || "Inning"} ${game.inning}` : "";
+    const status = inning || (scheduled ? sportsStartTime(game, config) : (game.status_text || game.status || "Scheduled"));
+    const teams = [game.away || {}, game.home || {}];
+    const rows = teams.map((team, index) => `<div class="sports-preview-team">
+      <span class="sports-preview-abbr">${sportsEscape(team.abbreviation || team.name || "TBD")}</span>
+      <span class="sports-preview-name">${sportsEscape(team.name || "TBD")}<small>${index ? "Home" : "Away"}${team.record ? ` · ${sportsEscape(team.record)}` : ""}</small></span>
+      <strong class="sports-preview-score">${team.score == null ? "–" : sportsEscape(team.score)}</strong>
+    </div>`).join("");
+    const bases = game.bases || {};
+    const occupied = [bases.first && "1st", bases.second && "2nd", bases.third && "3rd"].filter(Boolean);
+    const count = live ? `<p class="sports-preview-count">${sportsEscape(game.balls ?? 0)} ball${game.balls === 1 ? "" : "s"} · ${sportsEscape(game.strikes ?? 0)} strike${game.strikes === 1 ? "" : "s"} · ${sportsEscape(game.outs ?? 0)} out${game.outs === 1 ? "" : "s"}<span>${occupied.length ? `${occupied.join(", ")} occupied` : "Bases empty"}</span></p>` : "";
+    const gameIndex = Math.max(0, games.findIndex((item) => item.id === game.id));
+    content = `<div class="sports-preview-top"><span class="sports-league-badge">MLB</span><span class="sports-preview-status${live ? " is-live" : ""}">${sportsEscape(status)}</span></div>
+      <div class="sports-preview-scoreboard">${rows}</div>${count}
+      <p class="sports-preview-meta">${sportsEscape(game.venue || "")}${game.doubleheader && game.doubleheader !== "N" ? ` · Game ${sportsEscape(game.game_number || 1)}` : ""}${games.length > 1 ? ` · ${gameIndex + 1} of ${games.length} games` : ""}</p>`;
+  }
+  return `<section class="sports-preview" style="--exit-progress:${progress}">
+    ${content}${notice ? `<p class="sports-preview-notice">${notice}</p>` : ""}
+    <p class="sports-preview-hint">${launcher ? "Press the dial to open Sports." : "Turn the dial to browse · Hold for 3 seconds to exit"}</p>
+    ${launcher ? "" : '<div class="pong-exit"></div>'}
+  </section>`;
 }
 
 function renderSettings(app, exitState) {
@@ -635,6 +696,9 @@ function renderWidget(widget, motion) {
   }
 
   if (widget.type === "app_launcher") {
+    if (widget.preview_type === "sports" || widget.app_id === "sports") {
+      return renderSports(widget.preview || latestState?.sports || {}, {}, true);
+    }
     if (widget.preview_type === "spotify" && widget.preview) {
       const preview = widget.preview;
       const trackName = preview.track_name || "Waiting for track...";
@@ -713,7 +777,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   const target = event.target;
-  if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+  if (target && (target.closest("input, textarea, select, button, a, [contenteditable='true']") || target.isContentEditable)) {
     return;
   }
 
@@ -764,6 +828,221 @@ window.addEventListener("keyup", (event) => {
   }
 });
 
+// Keep this form separate from the frequently redrawn device preview. Polling may
+// refresh saved preferences, but it must never replace a user's unfinished edit.
+const sportsForm = document.getElementById("sportsForm");
+const sportsFields = document.getElementById("sportsConfigFields");
+const sportsStatus = document.getElementById("sportsSettingsStatus");
+let sportsConfigInitialized = false;
+let sportsConfigDirty = false;
+let sportsConfigSaving = false;
+let sportsSavedSignature = "";
+let sportsTeamSignature = "";
+let sportsPendingConfig = null;
+
+function sportsConfigValues(config = {}) {
+  return {
+    league: "mlb",
+    favorite_team_ids: [...new Set((config.favorite_team_ids || []).map(Number))].sort((a, b) => a - b),
+    favorites_only: Boolean(config.favorites_only),
+    auto_rotate: config.auto_rotate !== false,
+    auto_preview: config.auto_preview !== false,
+    rotation_seconds: Number(config.rotation_seconds || 15),
+    timezone: config.timezone || "America/New_York"
+  };
+}
+
+function readSportsDraft() {
+  return sportsConfigValues({
+    favorite_team_ids: Array.from(sportsForm.querySelectorAll("[name='favorite_team']:checked"), (input) => Number(input.value)),
+    favorites_only: document.getElementById("sportsGameFilter").value === "favorites",
+    auto_rotate: document.getElementById("sportsAutoRotate").checked,
+    auto_preview: document.getElementById("sportsAutoPreview").checked,
+    rotation_seconds: document.getElementById("sportsRotationSeconds").value,
+    timezone: document.getElementById("sportsTimezone").value
+  });
+}
+
+function setSportsStatus(message, error = false) {
+  sportsStatus.textContent = message;
+  sportsStatus.classList.toggle("is-error", error);
+}
+
+function populateSportsTimezones(selected) {
+  const select = document.getElementById("sportsTimezone");
+  if (!select.options.length) {
+    const common = [
+      ["America/New_York", "Eastern time"], ["America/Chicago", "Central time"],
+      ["America/Denver", "Mountain time"], ["America/Phoenix", "Arizona time"],
+      ["America/Los_Angeles", "Pacific time"], ["America/Anchorage", "Alaska time"],
+      ["Pacific/Honolulu", "Hawaii time"], ["America/Puerto_Rico", "Puerto Rico time"],
+      ["UTC", "UTC"]
+    ];
+    let available = [];
+    try {
+      available = Intl.supportedValuesOf("timeZone");
+    } catch (_) {
+      available = ["America/Toronto", "America/Vancouver", "Europe/London", "Europe/Paris", "Asia/Tokyo", "Australia/Sydney"];
+    }
+    const commonGroup = document.createElement("optgroup");
+    commonGroup.label = "Common timezones";
+    common.forEach(([value, label]) => commonGroup.appendChild(new Option(label, value)));
+    select.appendChild(commonGroup);
+    const otherGroup = document.createElement("optgroup");
+    otherGroup.label = "Other timezones";
+    available.filter((value) => !common.some(([item]) => item === value)).forEach((value) => {
+      otherGroup.appendChild(new Option(value.replace(/_/g, " "), value));
+    });
+    select.appendChild(otherGroup);
+  }
+  if (!Array.from(select.options).some((option) => option.value === selected)) {
+    select.appendChild(new Option(selected.replace(/_/g, " "), selected));
+  }
+  select.value = selected;
+}
+
+function filterSportsTeams() {
+  const query = document.getElementById("sportsTeamSearch").value.trim().toLowerCase();
+  let visible = 0;
+  sportsForm.querySelectorAll(".sports-team-option").forEach((label) => {
+    label.hidden = !label.dataset.search.includes(query);
+    if (!label.hidden) visible += 1;
+  });
+  document.getElementById("sportsTeamSearchEmpty").hidden = visible > 0;
+}
+
+function updateSportsFormDetails() {
+  const count = sportsForm.querySelectorAll("[name='favorite_team']:checked").length;
+  document.getElementById("sportsFavoriteCount").textContent = `${count} selected`;
+  const favoritesOnly = document.getElementById("sportsGameFilter").value === "favorites";
+  document.getElementById("sportsFavoritesHelp").textContent = favoritesOnly
+    ? (count ? "Only games involving your favorite teams will appear on your displays." : "Choose at least one team to show favorite teams only.")
+    : "Choose any teams you follow. All games are shown unless you select “Favorite teams only.”";
+  document.getElementById("sportsGameFilter").setCustomValidity(favoritesOnly && !count ? "Choose at least one favorite team first." : "");
+  document.getElementById("sportsRotationSeconds").disabled = !document.getElementById("sportsAutoRotate").checked;
+}
+
+function applySportsConfig(payload) {
+  if (!sportsForm || !payload) return;
+  const values = sportsConfigValues(payload);
+  const teams = Array.isArray(payload.teams) ? payload.teams : [];
+  const teamSignature = JSON.stringify(teams.map((team) => [team.id, team.name, team.abbreviation]));
+  if (teamSignature !== sportsTeamSignature) {
+    const list = document.getElementById("sportsTeamList");
+    list.replaceChildren();
+    teams.forEach((team) => {
+      const label = document.createElement("label");
+      label.className = "sports-team-option";
+      label.dataset.search = `${team.name} ${team.abbreviation}`.toLowerCase();
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.name = "favorite_team";
+      checkbox.value = team.id;
+      const name = document.createElement("span");
+      name.textContent = team.name;
+      const abbreviation = document.createElement("small");
+      abbreviation.textContent = team.abbreviation;
+      label.append(checkbox, name, abbreviation);
+      list.appendChild(label);
+    });
+    sportsTeamSignature = teamSignature;
+    filterSportsTeams();
+  }
+  sportsForm.querySelectorAll("[name='favorite_team']").forEach((checkbox) => {
+    checkbox.checked = values.favorite_team_ids.includes(Number(checkbox.value));
+  });
+  document.getElementById("sportsGameFilter").value = values.favorites_only ? "favorites" : "all";
+  document.getElementById("sportsAutoRotate").checked = values.auto_rotate;
+  document.getElementById("sportsAutoPreview").checked = values.auto_preview;
+  document.getElementById("sportsRotationSeconds").value = values.rotation_seconds;
+  populateSportsTimezones(values.timezone);
+  sportsSavedSignature = JSON.stringify(values);
+  sportsConfigInitialized = true;
+  sportsConfigDirty = false;
+  sportsFields.disabled = sportsConfigSaving;
+  document.getElementById("sportsRetryButton").hidden = true;
+  updateSportsFormDetails();
+}
+
+function syncSportsSettings(payload) {
+  if (!sportsForm || !payload?.config) return;
+  sportsPendingConfig = { ...payload.config, teams: payload.teams || payload.config.teams || [] };
+  if (sportsConfigSaving || sportsConfigDirty || sportsForm.contains(document.activeElement)) return;
+  if (!sportsPendingConfig.teams.length) return;
+  const signature = JSON.stringify(sportsConfigValues(sportsPendingConfig));
+  if (!sportsConfigInitialized || signature !== sportsSavedSignature) {
+    applySportsConfig(sportsPendingConfig);
+    setSportsStatus("");
+  }
+}
+
+async function loadSportsConfig() {
+  if (!sportsForm) return;
+  document.getElementById("sportsRetryButton").hidden = true;
+  setSportsStatus("Loading sports settings…");
+  try {
+    const response = await fetch("/api/sports/config", { cache: "no-store" });
+    if (!response.ok) throw new Error("Unable to load sports settings.");
+    const payload = await response.json();
+    if (!sportsConfigDirty && !sportsConfigSaving) {
+      applySportsConfig(payload);
+      setSportsStatus("");
+    }
+  } catch (_) {
+    if (!sportsConfigInitialized) {
+      setSportsStatus("Unable to load sports settings. Check the device connection and try again.", true);
+      document.getElementById("sportsRetryButton").hidden = false;
+    }
+  }
+}
+
+if (sportsForm) {
+  document.getElementById("sportsTeamSearch").addEventListener("input", filterSportsTeams);
+  document.getElementById("sportsRetryButton").addEventListener("click", loadSportsConfig);
+  const trackDraft = (event) => {
+    if (event.target.id === "sportsTeamSearch" || !sportsConfigInitialized) return;
+    updateSportsFormDetails();
+    sportsConfigDirty = JSON.stringify(readSportsDraft()) !== sportsSavedSignature;
+    setSportsStatus(sportsConfigDirty ? "Unsaved changes" : "");
+  };
+  sportsForm.addEventListener("input", trackDraft);
+  sportsForm.addEventListener("change", trackDraft);
+  sportsForm.addEventListener("focusout", () => {
+    // Let the browser finish moving focus between controls before applying state.
+    setTimeout(() => {
+      if (sportsPendingConfig) syncSportsSettings({ config: sportsPendingConfig, teams: sportsPendingConfig.teams });
+    }, 0);
+  });
+  sportsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!sportsConfigInitialized || sportsConfigSaving) return;
+    updateSportsFormDetails();
+    if (!sportsForm.reportValidity()) return;
+    const draft = readSportsDraft();
+    sportsConfigSaving = true;
+    sportsFields.disabled = true;
+    setSportsStatus("Saving sports settings…");
+    try {
+      const response = await fetch("/api/sports/config", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft)
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to save sports settings.");
+      applySportsConfig(payload);
+      sportsPendingConfig = payload;
+      setSportsStatus("Sports settings saved.");
+      fetchState();
+    } catch (error) {
+      setSportsStatus(`${error.message || "Unable to save sports settings."} Your changes are still here; try saving again.`, true);
+    } finally {
+      sportsConfigSaving = false;
+      sportsFields.disabled = false;
+      updateSportsFormDetails();
+    }
+  });
+}
+
+loadSportsConfig();
 fetchState();
 pollHandle = window.setInterval(fetchState, POLL_MS);
 

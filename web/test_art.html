@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Dash 2180 — Album Cover & Sheen Studio</title>
+  <link rel="icon" href="/logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
+    rel="stylesheet">
+  <!-- Font Awesome 6.5.1 Vector Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="/wide.css?v=2.0.2" />
+
+  <style>
+    /* Studio Top Navigation */
+    .studio-top-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 52px;
+      background: rgba(10, 14, 22, 0.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 2000;
+    }
+
+    .studio-brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .studio-badge {
+      background: linear-gradient(135deg, #00f2fe, #4facfe);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      text-transform: uppercase;
+    }
+
+    .studio-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin: 0;
+      color: #fff;
+    }
+
+    .studio-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .studio-tab {
+      background: transparent;
+      border: none;
+      color: #8b949e;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .studio-tab.active, .studio-tab:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    /* Views Layout */
+    .studio-viewport {
+      margin-top: 52px;
+      height: calc(100vh - 52px - 72px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .studio-fs-stage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .studio-widget-stage {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #090d16;
+      padding: 20px;
+    }
+
+    .studio-gallery-stage {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      background: #090d16;
+      padding: 30px 30px 100px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .gallery-item-card {
+      background: #121826;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .gallery-item-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--spotify-accent, #00f2fe);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .gallery-label {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+    }
+
+    .gallery-sub {
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+
+    /* Bottom Quick-Switch Drawer */
+    .studio-bottom-drawer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 72px;
+      background: rgba(10, 14, 22, 0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 2000;
+    }
+
+    .drawer-chips-scroll {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      padding-bottom: 2px;
+      flex: 1;
+    }
+
+    .cover-chip-btn {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #e6edf3;
+      padding: 6px 12px;
+      border-radius: 30px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+
+    .cover-chip-btn:hover, .cover-chip-btn.active {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: var(--spotify-accent, #00f2fe);
+      transform: translateY(-1px);
+    }
+
+    .cover-chip-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    /* Floating Inspector / Preset Panel */
+    .studio-inspector {
+      position: fixed;
+      top: 62px;
+      right: 20px;
+      width: 360px;
+      max-height: calc(100vh - 145px);
+      overflow-y: auto;
+      background: rgba(16, 21, 32, 0.96);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 16px;
+      z-index: 2001;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .studio-inspector.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px) scale(0.96);
+    }
+
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .preset-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+
+    .preset-btn:hover, .preset-btn.active {
+      background: var(--spotify-accent, #00f2fe);
+      color: #000;
+      border-color: var(--spotify-accent, #00f2fe);
+    }
+
+    .inspector-section-header {
+      font-size: 0.72rem;
+      color: #00f2fe;
+      text-transform: uppercase;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      margin-top: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 3px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .inspector-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .inspector-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #8b949e;
+    }
+
+    .inspector-val {
+      color: var(--spotify-accent, #00f2fe);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .inspector-slider {
+      width: 100%;
+      accent-color: var(--spotify-accent, #00f2fe);
+      cursor: pointer;
+    }
+
+    .inspector-select {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #fff;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .inspector-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .inspector-toggle-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+
+    .toggle-checkbox {
+      width: 18px;
+      height: 18px;
+      accent-color: #00f2fe;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Top Navigation -->
+  <header class="studio-top-nav">
+    <div class="studio-brand-group">
+      <span class="studio-badge">1:1 Studio</span>
+      <h1 class="studio-title">Album Art & Sheen Test Studio</h1>
+    </div>
+
+    <div class="studio-tabs">
+      <button class="studio-tab active" id="tabFs" onclick="switchView('fs')">
+        <i class="fa-solid fa-expand"></i> Fullscreen View
+      </button>
+      <button class="studio-tab" id="tabWidget" onclick="switchView('widget')">
+        <i class="fa-solid fa-table-cells-large"></i> Widget Card
+      </button>
+      <button class="studio-tab" id="tabGallery" onclick="switchView('gallery')">
+        <i class="fa-solid fa-grip"></i> All Covers Grid
+      </button>
+    </div>
+
+    <div>
+      <button class="cover-chip-btn" onclick="toggleInspector()">
+        <i class="fa-solid fa-sliders"></i> Parameters & Diagonal Fades
+      </button>
+    </div>
+  </header>
+
+  <!-- Viewport Area -->
+  <main class="studio-viewport">
+    <!-- View 1: 1:1 Full Screen Overlay View -->
+    <div id="stageFs" class="studio-fs-stage">
+      <div id="appOverlayView" class="app-overlay-view is-visible spotify-active ui-visible" style="position: absolute; inset: 0; width: 100%; height: 100%;">
+        <!-- Ambient Stage Backdrop -->
+        <div id="spotifyBgStage" class="spotify-bg-stage" style="opacity: 1;" aria-hidden="true">
+          <div id="spotifyBgLayerA" class="spotify-bg-layer is-active"></div>
+          <div id="spotifyBgLayerB" class="spotify-bg-layer"></div>
+        </div>
+
+        <header class="overlay-header">
+          <button class="touch-btn btn-back" id="btnBackToDash">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Dashboard</span>
+          </button>
+          <div class="overlay-title-group">
+            <h2 id="overlayAppTitle">Spotify</h2>
+            <span class="overlay-subtitle" id="overlayAppSubtitle">Now Playing</span>
+          </div>
+          <div class="overlay-header-spacer"></div>
+        </header>
+
+        <section id="appOverlayContent" class="overlay-content">
+          <div class="fs-spotify-container" id="fsSpotifyContainer">
+            <div class="fs-spotify-art-wrapper" id="fsSpotArtWrap">
+              <img src="/testalbumcovers/1900x1900-000000-80-0-0.jpg" class="fs-spotify-art-large" id="fsSpotArtImg" alt="Album Art" />
+              <div class="art-sweep-flash flash-active" id="fsSpotSweep"></div>
+            </div>
+            
+            <div class="fs-spotify-details">
+              <div style="width: 100%; min-width: 0; max-width: 100%;">
+                <div class="marquee-clip-box">
+                  <h1 class="fs-spotify-title" id="fsSpotTitle"><span class="title-text">LOVE SONG</span></h1>
+                </div>
+                <div class="marquee-clip-box" style="margin-top: 0.3rem;">
+                  <h2 class="fs-spotify-artist" id="fsSpotArtist"><span class="artist-text">Justin Bieber</span></h2>
+                </div>
+              </div>
+              
+              <div class="fs-spotify-scrub-wrap">
+                <div class="fs-spotify-progress" id="fsScrubBar" style="cursor: pointer;">
+                  <div class="fs-spotify-progress-fill" id="fs-spotify-progress" style="width: 38%;"></div>
+                </div>
+                <div class="fs-spotify-time-row">
+                  <span id="fs-spotify-time-current">1:08</span>
+                  <span id="fs-spotify-time-duration">2:52</span>
+                </div>
+              </div>
+
+              <div class="fs-spotify-controls">
+                <button class="fs-ctrl-btn" id="fsSpotPrev"><i class="fa-solid fa-backward-step"></i></button>
+                <button class="fs-ctrl-btn fs-play-btn" id="fsSpotPlay">
+                  <i class="fa-solid fa-pause" id="fsSpotPlayIcon"></i>
+                </button>
+                <button class="fs-ctrl-btn" id="fsSpotNext"><i class="fa-solid fa-forward-step"></i></button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- View 2: 1:1 Widget Card View -->
+    <div id="stageWidget" class="studio-widget-stage" style="display: none;">
+      <div style="width: 480px; max-width: 95%;">
+        <article class="widget-card" style="height: 180px; padding: 20px;">
+          <div class="card-glow" style="opacity: 0.18; background: radial-gradient(circle at 80% 20%, var(--spotify-accent), transparent 60%);"></div>
+          <div class="spotify-card-content">
+            <div class="spotify-art-wrapper" id="widgetSpotArtWrap">
+              <img src="/testalbumcovers/1900x1900-000000-80-0-0.jpg" class="spotify-art-thumb" id="widgetSpotArtImg" alt="Album Art" />
+              <div class="art-sweep-flash flash-active" id="widgetSpotSweep"></div>
+            </div>
+
+            <div class="spotify-info">
+              <div class="spotify-header-row">
+                <span class="spotify-badge"><i class="fa-brands fa-spotify"></i> SPOTIFY</span>
+              </div>
+              <h2 class="spotify-track-title" id="widgetSpotTitle">LOVE SONG</h2>
+              <p class="spotify-artist-name" id="widgetSpotArtist"><span class="artist-text">Justin Bieber</span></p>
+              
+              <div class="spotify-progress-container" style="margin-top: 10px;">
+                <div class="spotify-progress-bar" style="width: 38%; height: 4px; border-radius: 2px; background: var(--spotify-accent);"></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- View 3: Side-by-Side Gallery Grid -->
+    <div id="stageGallery" class="studio-gallery-stage" style="display: none;">
+      <!-- Populated dynamically via JS -->
+    </div>
+  </main>
+
+  <!-- Quick Switcher Drawer -->
+  <footer class="studio-bottom-drawer">
+    <div class="drawer-chips-scroll" id="drawerChips">
+      <!-- Chips generated via JS -->
+    </div>
+    <div id="accentIndicator" style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--spotify-accent); white-space: nowrap; flex-shrink: 0;">
+      Accent: #f3a6b6
+    </div>
+  </footer>
+
+  <!-- Tweak & Tune Parameters Panel -->
+  <aside class="studio-inspector hidden" id="inspectorPanel">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+      <h4 style="margin: 0; font-size: 0.88rem;"><i class="fa-solid fa-sliders"></i> Presets & Tuning</h4>
+      <button onclick="toggleInspector()" style="background:none; border:none; color:#fff; cursor:pointer; font-size: 1rem;">✕</button>
+    </div>
+
+    <span style="font-size: 0.72rem; color: #8b949e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Presets</span>
+    <div class="preset-grid">
+      <button class="preset-btn active" id="btnPresetDefault" onclick="applyPreset('default')">★ Diagonal Faded (New)</button>
+      <button class="preset-btn" id="btnPresetUnmasked" onclick="applyPreset('unmasked')">⏹️ Full Edge (Previous)</button>
+      <button class="preset-btn" id="btnPresetSoftFade" onclick="applyPreset('soft_fade')">🪶 Ultra Soft Fade</button>
+      <button class="preset-btn" id="btnPresetLiveOriginal" onclick="applyPreset('live_orig')">⚖️ Live Original</button>
+    </div>
+
+    <!-- SECTION: DIAGONAL CORNER FADES -->
+    <div class="inspector-section-header">
+      <span><i class="fa-solid fa-bezier-curve"></i> Diagonal Corner Fades</span>
+    </div>
+
+    <div class="inspector-toggle-row">
+      <span class="inspector-toggle-label">Enable Diagonal Corner Masking</span>
+      <input type="checkbox" id="toggleMasking" class="toggle-checkbox" checked onchange="updateParam('mask_enabled', this.checked)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Fade Cutoff (Corner falloff)</span>
+        <span class="inspector-val" id="valShadowFadeStart">42%</span>
+      </div>
+      <input type="range" min="10" max="75" value="42" class="inspector-slider" id="inputShadowFadeStart" oninput="updateParam('s_fade_start', this.value)" />
+      <span style="font-size:0.68rem; color:#8b949e;">Higher % = shadow tapers faster before reaching top-right & bottom-left</span>
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Fade Softness</span>
+        <span class="inspector-val" id="valShadowFadeSoft">38%</span>
+      </div>
+      <input type="range" min="10" max="60" value="38" class="inspector-slider" id="inputShadowFadeSoft" oninput="updateParam('s_fade_soft', this.value)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Fade Angle</span>
+        <span class="inspector-val" id="valShadowAngle">135°</span>
+      </div>
+      <input type="range" min="90" max="180" value="135" class="inspector-slider" id="inputShadowAngle" oninput="updateParam('s_angle', this.value)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Highlight Fade Cutoff (Corner falloff)</span>
+        <span class="inspector-val" id="valHighFadeStart">45%</span>
+      </div>
+      <input type="range" min="15" max="80" value="45" class="inspector-slider" id="inputHighFadeStart" oninput="updateParam('h_fade_start', this.value)" />
+      <span style="font-size:0.68rem; color:#8b949e;">Highlight tapers before reaching top-right & bottom-left corners</span>
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Highlight Fade Softness</span>
+        <span class="inspector-val" id="valHighFadeSoft">35%</span>
+      </div>
+      <input type="range" min="10" max="60" value="35" class="inspector-slider" id="inputHighFadeSoft" oninput="updateParam('h_fade_soft', this.value)" />
+    </div>
+
+    <!-- SECTION: CORE SHADOW & SHEEN SETTINGS -->
+    <div class="inspector-section-header">
+      <span><i class="fa-solid fa-circle-half-stroke"></i> Shadow & Highlight Strength</span>
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Accent Mix Ratio</span>
+        <span class="inspector-val" id="valShadowMix">57%</span>
+      </div>
+      <input type="range" min="0" max="100" value="57" class="inspector-slider" id="inputShadowMix" oninput="updateParam('mix', this.value)" />
+      <span style="font-size:0.68rem; color:#8b949e;">57% accent color (#000 43%)</span>
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Opacity</span>
+        <span class="inspector-val" id="valShadowOp">60%</span>
+      </div>
+      <input type="range" min="0" max="100" value="60" class="inspector-slider" id="inputShadowOp" oninput="updateParam('op', this.value)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Blur Radius</span>
+        <span class="inspector-val" id="valShadowBlur">18px</span>
+      </div>
+      <input type="range" min="4" max="30" value="18" class="inspector-slider" id="inputShadowBlur" oninput="updateParam('blur', this.value)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Top-Left Glass Sheen</span>
+        <span class="inspector-val" id="valSheenOp">20%</span>
+      </div>
+      <input type="range" min="0" max="50" value="20" class="inspector-slider" id="inputSheenOp" oninput="updateParam('sheen', this.value)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Top/Left Highlight Edge</span>
+        <span class="inspector-val" id="valBevelHigh">40%</span>
+      </div>
+      <input type="range" min="0" max="70" value="40" class="inspector-slider" id="inputBevelHigh" oninput="updateParam('bevel', this.value)" />
+    </div>
+
+    <div class="inspector-row">
+      <div class="inspector-label">
+        <span>Shadow Blend Mode</span>
+      </div>
+      <select class="inspector-select" id="selectShadowBlend" onchange="updateParam('sblend', this.value)">
+        <option value="multiply" selected>multiply</option>
+        <option value="normal">normal</option>
+        <option value="color-burn">color-burn</option>
+        <option value="overlay">overlay</option>
+      </select>
+    </div>
+
+    <div style="display: flex; gap: 8px; margin-top: 6px;">
+      <button class="cover-chip-btn" style="flex: 1; justify-content: center;" onclick="applyPreset('default')">Reset</button>
+      <button class="cover-chip-btn" style="flex: 1; justify-content: center; background: rgba(0, 242, 254, 0.2); border-color: #00f2fe; color: #00f2fe;" onclick="copyCSS()">Copy CSS</button>
+    </div>
+  </aside>
+
+  <script>
+    const TEST_ITEMS = [
+      {
+        id: "bieber",
+        name: "Justin Bieber — SWAG II",
+        track: "LOVE SONG",
+        artist: "Justin Bieber",
+        type: "image",
+        url: "/testalbumcovers/1900x1900-000000-80-0-0.jpg",
+        bgUrl: "https://i.scdn.co/image/ab6761610000e5eb8ae7f2aaa9817a704a87ea36",
+        color: "#f3a6b6"
+      },
+      {
+        id: "dawn_patrol",
+        name: "Dawn Patrol",
+        track: "Sunset Sessions",
+        artist: "Dawn Patrol",
+        type: "image",
+        url: "/testalbumcovers/ab67616d00001e021ad345f131d9aeb505974e86.jpeg",
+        bgUrl: "/testalbumcovers/ab67616d00001e021ad345f131d9aeb505974e86.jpeg",
+        color: "#d44b24"
+      },
+      {
+        id: "justice",
+        name: "Justice — Hyperdrama",
+        track: "Neverender",
+        artist: "Justice, Tame Impala",
+        type: "image",
+        url: "/testalbumcovers/ab67616d0000b27357adf18c9ddc11c1ee6b4dc3.jpeg",
+        bgUrl: "/testalbumcovers/ab67616d0000b27357adf18c9ddc11c1ee6b4dc3.jpeg",
+        color: "#3876e6"
+      },
+      {
+        id: "mkgee",
+        name: "Mk.gee — Two Star & The Dream Police",
+        track: "Are You Looking Up",
+        artist: "Mk.gee",
+        type: "image",
+        url: "/testalbumcovers/ab67616d0000b273b2ad7cb0524773744103498a.jpeg",
+        bgUrl: "/testalbumcovers/ab67616d0000b273b2ad7cb0524773744103498a.jpeg",
+        color: "#e6e5e8"
+      },
+      // Solid Colors:
+      {
+        id: "solid_pink",
+        name: "Solid Pastel Pink",
+        track: "Pastel Pink (SWAG II tone)",
+        artist: "Color Test",
+        type: "color",
+        color: "#f4a6b6"
+      },
+      {
+        id: "solid_magenta",
+        name: "Solid Hot Magenta",
+        track: "Vivid Magenta",
+        artist: "Color Test",
+        type: "color",
+        color: "#ff2d70"
+      },
+      {
+        id: "solid_cyan",
+        name: "Solid Electric Cyan",
+        track: "Cyan Wave",
+        artist: "Color Test",
+        type: "color",
+        color: "#00d2ff"
+      },
+      {
+        id: "solid_yellow",
+        name: "Solid Solar Gold",
+        track: "Golden Hour",
+        artist: "Color Test",
+        type: "color",
+        color: "#ffbe0b"
+      },
+      {
+        id: "solid_purple",
+        name: "Solid Deep Violet",
+        track: "Midnight Violet",
+        artist: "Color Test",
+        type: "color",
+        color: "#8338ec"
+      },
+      {
+        id: "solid_red",
+        name: "Solid Pure Red",
+        track: "Crimson Pulse",
+        artist: "Color Test",
+        type: "color",
+        color: "#ff0038"
+      },
+      {
+        id: "solid_green",
+        name: "Solid Lime Green",
+        track: "Electric Lime",
+        artist: "Color Test",
+        type: "color",
+        color: "#00f076"
+      },
+      {
+        id: "solid_white",
+        name: "Solid Pure White",
+        track: "Paper White",
+        artist: "Color Test",
+        type: "color",
+        color: "#ffffff"
+      },
+      {
+        id: "solid_charcoal",
+        name: "Solid Dark Charcoal",
+        track: "Obsidian Slate",
+        artist: "Color Test",
+        type: "color",
+        color: "#1e2430"
+      }
+    ];
+
+    let currentItem = TEST_ITEMS[0];
+
+    function createSolidColorDataUrl(colorHex) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 400;
+      canvas.height = 400;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = colorHex;
+      ctx.fillRect(0, 0, 400, 400);
+      return canvas.toDataURL();
+    }
+
+    function rgbToHsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, l = (max + min) / 2;
+      if (max === min) {
+        h = s = 0;
+      } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return [h, s, l];
+    }
+
+    function hslToRgb(h, s, l) {
+      let r, g, b;
+      if (s === 0) {
+        r = g = b = l;
+      } else {
+        const hue2rgb = (p, q, t) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1 / 6) return p + (q - p) * 6 * t;
+          if (t < 1 / 2) return q;
+          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
+      }
+      return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+
+    function ensureHighContrastColor(r, g, b) {
+      let [h, s, l] = rgbToHsl(r, g, b);
+      if (s < 0.50) s = 0.65;
+      if (l < 0.55) l = 0.62;
+      if (l > 0.78) l = 0.70;
+      const [fr, fg, fb] = hslToRgb(h, s, l);
+      return `#${((1 << 24) + (fr << 16) + (fg << 8) + fb).toString(16).slice(1)}`;
+    }
+
+    async function extractMetadata(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const W = 40, H = 40;
+          canvas.width = W; canvas.height = H;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, W, H);
+          const data = ctx.getImageData(0, 0, W, H).data;
+
+          let sumLuminance = 0, edgeCount = 0;
+          for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+              if (x < 2 || x >= W - 2 || y < 2 || y >= H - 2) {
+                const idx = (y * W + x) * 4;
+                sumLuminance += (0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]) / 255;
+                edgeCount++;
+              }
+            }
+          }
+          const edgeLuminance = edgeCount > 0 ? (sumLuminance / edgeCount) : 0.5;
+
+          let bestR = 0, bestG = 242, bestB = 254, bestScore = -1;
+          for (let i = 0; i < data.length; i += 8) {
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            if (max === 0) continue;
+            const sat = (max - min) / max;
+            const lum = (r * 299 + g * 587 + b * 114) / 1000;
+            if (sat < 0.15 || lum < 25 || lum > 235) continue;
+            const score = sat * 0.85 + (lum / 255) * 0.15;
+            if (score > bestScore) {
+              bestScore = score; bestR = r; bestG = g; bestB = b;
+            }
+          }
+          const vibrantColor = bestScore > -1 ? ensureHighContrastColor(bestR, bestG, bestB) : null;
+          resolve({ vibrantColor, edgeLuminance });
+        };
+        img.onerror = () => resolve({ vibrantColor: null, edgeLuminance: 0.5 });
+        img.src = url;
+      });
+    }
+
+    async function selectItem(item) {
+      currentItem = item;
+      const effectiveUrl = item.type === "image" ? item.url : createSolidColorDataUrl(item.color);
+      const effectiveBg = item.bgUrl || effectiveUrl;
+
+      document.getElementById("fsSpotArtImg").src = effectiveUrl;
+      document.getElementById("widgetSpotArtImg").src = effectiveUrl;
+
+      const elFsSweep = document.getElementById("fsSpotSweep");
+      const elWidgetSweep = document.getElementById("widgetSpotSweep");
+      if (elFsSweep) { elFsSweep.classList.remove("flash-active"); void elFsSweep.offsetWidth; elFsSweep.classList.add("flash-active"); }
+      if (elWidgetSweep) { elWidgetSweep.classList.remove("flash-active"); void elWidgetSweep.offsetWidth; elWidgetSweep.classList.add("flash-active"); }
+
+      document.getElementById("fsSpotTitle").querySelector(".title-text").textContent = item.track;
+      document.getElementById("fsSpotArtist").querySelector(".artist-text").textContent = item.artist;
+      document.getElementById("widgetSpotTitle").textContent = item.track;
+      document.getElementById("widgetSpotArtist").querySelector(".artist-text").textContent = item.artist;
+
+      const { vibrantColor, edgeLuminance } = await extractMetadata(effectiveUrl);
+      const accent = item.type === "color" ? item.color : (vibrantColor || item.color || "#00f2fe");
+      const bevelScale = 0.5 + (0.5 * Math.max(0, Math.min(1, edgeLuminance)));
+
+      document.documentElement.style.setProperty("--spotify-accent", accent);
+      document.documentElement.style.setProperty("--art-bevel-scale", bevelScale.toFixed(3));
+      document.getElementById("accentIndicator").textContent = `Accent: ${accent} (Bevel: ${bevelScale.toFixed(2)})`;
+
+      const bgA = document.getElementById("spotifyBgLayerA");
+      if (bgA) {
+        bgA.style.backgroundImage = `url("${effectiveBg}")`;
+      }
+
+      document.querySelectorAll(".cover-chip-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.id === item.id);
+      });
+
+      syncDynamicStyles();
+    }
+
+    function switchView(viewId) {
+      document.getElementById("tabFs").classList.toggle("active", viewId === "fs");
+      document.getElementById("tabWidget").classList.toggle("active", viewId === "widget");
+      document.getElementById("tabGallery").classList.toggle("active", viewId === "gallery");
+
+      document.getElementById("stageFs").style.display = viewId === "fs" ? "block" : "none";
+      document.getElementById("stageWidget").style.display = viewId === "widget" ? "flex" : "none";
+      document.getElementById("stageGallery").style.display = viewId === "gallery" ? "grid" : "none";
+    }
+
+    function toggleInspector() {
+      document.getElementById("inspectorPanel").classList.toggle("hidden");
+    }
+
+    // PRESETS
+    function applyPreset(name) {
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+
+      if (name === "default") {
+        // ★ DIAGONAL FADED (RECOMMENDED)
+        document.getElementById("btnPresetDefault")?.classList.add("active");
+        setFormValues({
+          masking: true,
+          s_fade_start: 42,
+          s_fade_soft: 38,
+          s_angle: 135,
+          h_fade_start: 45,
+          h_fade_soft: 35,
+          mix: 57,
+          op: 60,
+          blur: 18,
+          sheen: 20,
+          bevel: 40,
+          sblend: "multiply"
+        });
+      } else if (name === "unmasked") {
+        // ⏹️ FULL EDGE (Unmasked)
+        document.getElementById("btnPresetUnmasked")?.classList.add("active");
+        setFormValues({
+          masking: false,
+          s_fade_start: 42,
+          s_fade_soft: 38,
+          s_angle: 135,
+          h_fade_start: 45,
+          h_fade_soft: 35,
+          mix: 57,
+          op: 60,
+          blur: 18,
+          sheen: 20,
+          bevel: 40,
+          sblend: "multiply"
+        });
+      } else if (name === "soft_fade") {
+        // 🪶 ULTRA SOFT FADE
+        document.getElementById("btnPresetSoftFade")?.classList.add("active");
+        setFormValues({
+          masking: true,
+          s_fade_start: 50,
+          s_fade_soft: 35,
+          s_angle: 135,
+          h_fade_start: 38,
+          h_fade_soft: 40,
+          mix: 50,
+          op: 45,
+          blur: 16,
+          sheen: 18,
+          bevel: 36,
+          sblend: "multiply"
+        });
+      } else if (name === "live_orig") {
+        // ⚖️ LIVE ORIGINAL
+        document.getElementById("btnPresetLiveOriginal")?.classList.add("active");
+        setFormValues({
+          masking: false,
+          s_fade_start: 0,
+          s_fade_soft: 0,
+          s_angle: 135,
+          h_fade_start: 0,
+          h_fade_soft: 0,
+          mix: 0,
+          op: 28,
+          blur: 12,
+          sheen: 20,
+          bevel: 40,
+          sblend: "normal"
+        });
+      }
+      syncDynamicStyles();
+    }
+
+    function setFormValues({ masking, s_fade_start, s_fade_soft, s_angle, h_fade_start, h_fade_soft, mix, op, blur, sheen, bevel, sblend }) {
+      document.getElementById("toggleMasking").checked = masking;
+      document.getElementById("inputShadowFadeStart").value = s_fade_start;
+      document.getElementById("inputShadowFadeSoft").value = s_fade_soft;
+      document.getElementById("inputShadowAngle").value = s_angle;
+      document.getElementById("inputHighFadeStart").value = h_fade_start;
+      document.getElementById("inputHighFadeSoft").value = h_fade_soft;
+      document.getElementById("inputShadowMix").value = mix;
+      document.getElementById("inputShadowOp").value = op;
+      document.getElementById("inputShadowBlur").value = blur;
+      document.getElementById("inputSheenOp").value = sheen;
+      document.getElementById("inputBevelHigh").value = bevel;
+      if (sblend) document.getElementById("selectShadowBlend").value = sblend;
+
+      document.getElementById("valShadowFadeStart").textContent = s_fade_start + "%";
+      document.getElementById("valShadowFadeSoft").textContent = s_fade_soft + "%";
+      document.getElementById("valShadowAngle").textContent = s_angle + "°";
+      document.getElementById("valHighFadeStart").textContent = h_fade_start + "%";
+      document.getElementById("valHighFadeSoft").textContent = h_fade_soft + "%";
+      document.getElementById("valShadowMix").textContent = mix + "%";
+      document.getElementById("valShadowOp").textContent = op + "%";
+      document.getElementById("valShadowBlur").textContent = blur + "px";
+      document.getElementById("valSheenOp").textContent = sheen + "%";
+      document.getElementById("valBevelHigh").textContent = bevel + "%";
+    }
+
+    function updateParam(type, val) {
+      if (type === "s_fade_start") document.getElementById("valShadowFadeStart").textContent = val + "%";
+      if (type === "s_fade_soft") document.getElementById("valShadowFadeSoft").textContent = val + "%";
+      if (type === "s_angle") document.getElementById("valShadowAngle").textContent = val + "°";
+      if (type === "h_fade_start") document.getElementById("valHighFadeStart").textContent = val + "%";
+      if (type === "h_fade_soft") document.getElementById("valHighFadeSoft").textContent = val + "%";
+      if (type === "mix") document.getElementById("valShadowMix").textContent = val + "%";
+      if (type === "op") document.getElementById("valShadowOp").textContent = val + "%";
+      if (type === "blur") document.getElementById("valShadowBlur").textContent = val + "px";
+      if (type === "sheen") document.getElementById("valSheenOp").textContent = val + "%";
+      if (type === "bevel") document.getElementById("valBevelHigh").textContent = val + "%";
+      syncDynamicStyles();
+    }
+
+    function syncDynamicStyles() {
+      let dynTag = document.getElementById("studioDynamicCss");
+      if (!dynTag) {
+        dynTag = document.createElement("style");
+        dynTag.id = "studioDynamicCss";
+        document.head.appendChild(dynTag);
+      }
+
+      const isMasked = document.getElementById("toggleMasking").checked;
+      const sFadeStart = parseInt(document.getElementById("inputShadowFadeStart").value, 10);
+      const sFadeSoft = parseInt(document.getElementById("inputShadowFadeSoft").value, 10);
+      const sFadeEnd = Math.min(100, sFadeStart + sFadeSoft);
+      const sAngle = document.getElementById("inputShadowAngle").value;
+
+      const hFadeStart = parseInt(document.getElementById("inputHighFadeStart").value, 10);
+      const hFadeSoft = parseInt(document.getElementById("inputHighFadeSoft").value, 10);
+      const hFadeEnd = Math.min(100, hFadeStart + hFadeSoft);
+
+      const mix = document.getElementById("inputShadowMix").value;
+      const op = (document.getElementById("inputShadowOp").value / 100).toFixed(2);
+      const blur = document.getElementById("inputShadowBlur").value;
+      const sheen = (document.getElementById("inputSheenOp").value / 100).toFixed(2);
+      const bevel = (document.getElementById("inputBevelHigh").value / 100).toFixed(2);
+      const sblend = document.getElementById("selectShadowBlend").value;
+
+      const blackPct = 100 - mix;
+
+      // Diagonal mask rules
+      const shadowMaskRule = isMasked ? `
+        -webkit-mask-image: linear-gradient(${sAngle}deg, transparent ${sFadeStart}%, #000 ${sFadeEnd}%);
+        mask-image: linear-gradient(${sAngle}deg, transparent ${sFadeStart}%, #000 ${sFadeEnd}%);
+      ` : `
+        -webkit-mask-image: none;
+        mask-image: none;
+      `;
+
+      const highlightMaskRule = isMasked ? `
+        -webkit-mask-image: linear-gradient(${sAngle}deg, #000 ${hFadeStart}%, transparent ${hFadeEnd}%);
+        mask-image: linear-gradient(${sAngle}deg, #000 ${hFadeStart}%, transparent ${hFadeEnd}%);
+      ` : `
+        -webkit-mask-image: none;
+        mask-image: none;
+      `;
+
+      const shadowColorDef = mix == 0 ? 
+        `rgb(0 0 0 / calc(${op} * var(--art-bevel-scale)))` :
+        `color-mix(in srgb, transparent calc(100% - (${op} * 100% * var(--art-bevel-scale))), color-mix(in srgb, #000000 ${blackPct}%, var(--spotify-accent, #000000)))`;
+
+      const rightShadowColorDef = mix == 0 ? 
+        `rgb(0 0 0 / calc(${(op * 0.7).toFixed(2)} * var(--art-bevel-scale)))` :
+        `color-mix(in srgb, transparent calc(100% - (${(op * 0.7).toFixed(2)} * 100% * var(--art-bevel-scale))), color-mix(in srgb, #000000 ${blackPct}%, var(--spotify-accent, #000000)))`;
+
+      dynTag.innerHTML = `
+        /* Shadows Layer */
+        .fs-spotify-art-wrapper::before {
+          mix-blend-mode: ${sblend} !important;
+          background: none !important;
+          ${shadowMaskRule}
+          box-shadow:
+            inset 0 -5px ${blur}px ${shadowColorDef},
+            inset -5px 0 ${blur}px ${rightShadowColorDef} !important;
+        }
+
+        /* Highlights & Sheen Layer */
+        .fs-spotify-art-wrapper::after {
+          mix-blend-mode: screen !important;
+          ${highlightMaskRule}
+          background: linear-gradient(135deg,
+              rgb(255 255 255 / calc(${sheen} * var(--art-bevel-scale))) 0%,
+              rgb(255 255 255 / calc(${sheen * 0.35} * var(--art-bevel-scale))) 38%,
+              transparent 62%) !important;
+          box-shadow:
+            inset 0 5px 10px rgb(255 255 255 / calc(${bevel} * var(--art-bevel-scale))),
+            inset 5px 0 10px rgb(255 255 255 / calc(${bevel * 0.625} * var(--art-bevel-scale))) !important;
+        }
+
+        .spotify-art-wrapper::before {
+          mix-blend-mode: ${sblend} !important;
+          background: none !important;
+          ${shadowMaskRule}
+          box-shadow:
+            inset 0 -3px ${Math.round(blur * 0.6)}px ${shadowColorDef},
+            inset -3px 0 ${Math.round(blur * 0.6)}px ${rightShadowColorDef} !important;
+        }
+
+        .spotify-art-wrapper::after {
+          mix-blend-mode: screen !important;
+          ${highlightMaskRule}
+          background: linear-gradient(135deg,
+              rgb(255 255 255 / calc(${sheen * 0.9} * var(--art-bevel-scale))) 0%,
+              rgb(255 255 255 / calc(${sheen * 0.3} * var(--art-bevel-scale))) 35%,
+              transparent 60%) !important;
+          box-shadow:
+            inset 0 3px 6px rgb(255 255 255 / calc(${bevel * 0.88} * var(--art-bevel-scale))),
+            inset 3px 0 6px rgb(255 255 255 / calc(${bevel * 0.55} * var(--art-bevel-scale))) !important;
+        }
+      `;
+    }
+
+    function copyCSS() {
+      const isMasked = document.getElementById("toggleMasking").checked;
+      const sFadeStart = parseInt(document.getElementById("inputShadowFadeStart").value, 10);
+      const sFadeSoft = parseInt(document.getElementById("inputShadowFadeSoft").value, 10);
+      const sFadeEnd = Math.min(100, sFadeStart + sFadeSoft);
+      const sAngle = document.getElementById("inputShadowAngle").value;
+
+      const hFadeStart = parseInt(document.getElementById("inputHighFadeStart").value, 10);
+      const hFadeSoft = parseInt(document.getElementById("inputHighFadeSoft").value, 10);
+      const hFadeEnd = Math.min(100, hFadeStart + hFadeSoft);
+
+      const mix = document.getElementById("inputShadowMix").value;
+      const op = (document.getElementById("inputShadowOp").value / 100).toFixed(2);
+      const blur = document.getElementById("inputShadowBlur").value;
+      const sheen = (document.getElementById("inputSheenOp").value / 100).toFixed(2);
+      const bevel = (document.getElementById("inputBevelHigh").value / 100).toFixed(2);
+      const sblend = document.getElementById("selectShadowBlend").value;
+      const blackPct = 100 - mix;
+
+      const maskShadowCode = isMasked ? `  -webkit-mask-image: linear-gradient(${sAngle}deg, transparent ${sFadeStart}%, #000 ${sFadeEnd}%);
+  mask-image: linear-gradient(${sAngle}deg, transparent ${sFadeStart}%, #000 ${sFadeEnd}%);\n` : '';
+
+      const maskHighCode = isMasked ? `  -webkit-mask-image: linear-gradient(${sAngle}deg, #000 ${hFadeStart}%, transparent ${hFadeEnd}%);
+  mask-image: linear-gradient(${sAngle}deg, #000 ${hFadeStart}%, transparent ${hFadeEnd}%);\n` : '';
+
+      const code = `/* Fullscreen Album Art Bevel & Sheen (Diagonally Faded) */
+.fs-spotify-art-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 3;
+  mix-blend-mode: ${sblend};
+${maskShadowCode}  --shadow-color: color-mix(in srgb, #000000 ${blackPct}%, var(--spotify-accent, #000000));
+  box-shadow:
+    inset 0 -5px ${blur}px color-mix(in srgb, transparent calc(100% - (${op} * 100% * var(--art-bevel-scale))), var(--shadow-color)),
+    inset -5px 0 ${blur}px color-mix(in srgb, transparent calc(100% - (${(op * 0.7).toFixed(2)} * 100% * var(--art-bevel-scale))), var(--shadow-color));
+}
+
+.fs-spotify-art-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  mix-blend-mode: screen;
+${maskHighCode}  background: linear-gradient(135deg,
+      rgb(255 255 255 / calc(${sheen} * var(--art-bevel-scale))) 0%,
+      rgb(255 255 255 / calc(${sheen * 0.35} * var(--art-bevel-scale))) 38%,
+      transparent 62%);
+  box-shadow:
+    inset 0 5px 10px rgb(255 255 255 / calc(${bevel} * var(--art-bevel-scale))),
+    inset 5px 0 10px rgb(255 255 255 / calc(${bevel * 0.625} * var(--art-bevel-scale)));
+}`;
+      navigator.clipboard.writeText(code).then(() => {
+        alert("CSS copied to clipboard!");
+      }).catch(() => {
+        prompt("Copy CSS:", code);
+      });
+    }
+
+    function initStudio() {
+      const drawer = document.getElementById("drawerChips");
+      const gallery = document.getElementById("stageGallery");
+
+      TEST_ITEMS.forEach((item) => {
+        const chip = document.createElement("button");
+        chip.className = "cover-chip-btn" + (item.id === currentItem.id ? " active" : "");
+        chip.dataset.id = item.id;
+        const swatch = `<span class="cover-chip-swatch" style="background: ${item.color};"></span>`;
+        chip.innerHTML = `${swatch} <span>${item.name}</span>`;
+        chip.onclick = () => selectItem(item);
+        drawer.appendChild(chip);
+
+        const card = document.createElement("div");
+        card.className = "gallery-item-card";
+        const effectiveUrl = item.type === "image" ? item.url : createSolidColorDataUrl(item.color);
+        
+        card.innerHTML = `
+          <div class="fs-spotify-art-wrapper" style="width: 180px; height: 180px; --spotify-accent: ${item.color};">
+            <img src="${effectiveUrl}" class="fs-spotify-art-large" alt="${item.name}" />
+          </div>
+          <span class="gallery-label">${item.name}</span>
+          <span class="gallery-sub">${item.track}</span>
+        `;
+        card.onclick = () => {
+          selectItem(item);
+          switchView("fs");
+        };
+        gallery.appendChild(card);
+      });
+
+      applyPreset("default");
+      selectItem(TEST_ITEMS[0]);
+    }
+
+    window.addEventListener("DOMContentLoaded", initStudio);
+  </script>
+</body>
+</html>
