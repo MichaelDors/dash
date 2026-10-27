@@ -80,13 +80,17 @@
           <p class="eyebrow">Sports</p>
           <h2 id="sportsSettingsHeading">Your scoreboard</h2>
         </div>
-        <span class="sports-league-badge">MLB</span>
+        <span class="sports-league-badge" id="sportsLeagueBadge">MLB</span>
       </div>
-      <p class="sports-settings-intro">Follow today’s baseball games on your display. Choose your teams and display options here.</p>
+      <p class="sports-settings-intro">Follow today’s MLB and NBA games on your display. Choose your teams and display options here.</p>
       <form id="sportsForm">
         <fieldset id="sportsConfigFields" disabled>
           <legend class="sports-visually-hidden">Sports display preferences</legend>
           <div class="sports-preferences-grid">
+            <label class="sports-field" for="sportsLeague">League
+              <select id="sportsLeague" name="league"><option value="mlb">MLB · Baseball</option><option value="nba">NBA · Basketball</option></select>
+              <small>Choose a league, then follow teams and save.</small>
+            </label>
             <label class="sports-field" for="sportsGameFilter">
               <span>Games to show</span>
               <select id="sportsGameFilter" name="game_filter">
@@ -102,7 +106,7 @@
           </div>
           <fieldset class="sports-favorites">
             <legend>Followed teams <span id="sportsFavoriteCount">0 selected</span></legend>
-            <label class="sports-visually-hidden" for="sportsTeamSearch">Find an MLB team</label>
+            <label class="sports-visually-hidden" for="sportsTeamSearch">Find a team</label>
             <input id="sportsTeamSearch" type="search" placeholder="Find a team…" autocomplete="off" aria-controls="sportsTeamList" />
             <div id="sportsTeamList" class="sports-team-list"></div>
             <p id="sportsTeamSearchEmpty" class="sports-field-help" hidden>No teams match your search.</p>

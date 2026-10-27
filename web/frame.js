@@ -630,7 +630,7 @@
     $('frameSports').hidden = !game || (workspace.split && workspace.visibleApps.includes('sports'));
     if (game) {
       window.DashValueMotion.setText($('frameSportsScore'), `${game.away?.abbreviation || 'MLB'} ${game.away?.score ?? '–'} · ${game.home?.abbreviation || ''} ${game.home?.score ?? '–'}`);
-      window.DashValueMotion.setText($('frameSportsPhase'), game.status === 'live' ? `${game.inning_half || 'Inning'} ${game.inning || ''}` : game.status_text || 'Delayed');
+      window.DashValueMotion.setText($('frameSportsPhase'), game.status === 'live' ? game.league === 'nba' ? game.status_text : `${game.inning_half || 'Inning'} ${game.inning || ''}` : game.status_text || 'Delayed');
       window.DashValueMotion.setText($('frameSportsStatus'), sports.stale || sports.error ? 'LAST SCORE' : game.status === 'live' ? 'LIVE GAME' : 'GAME DELAYED');
     }
     scheduleActivityLayout();

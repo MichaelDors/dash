@@ -25,19 +25,21 @@
           }
         } else if (appId === 'sports') {
           const sports = data.apps?.sports;
-          if (!sports || sports.stale || sports.error || sports.loading) continue;
+          if (!sports) continue;
+          if (old && (old.league || 'mlb') !== (sports.league || sports.config?.league || 'mlb')) this.sessions.delete(appId);
+          if (sports.stale || sports.error || sports.loading) continue;
           if (sports.config?.auto_preview !== false) {
             const game = sports.games?.find(game => game.id === old?.gameId);
             // An omitted game or unknown status is not confirmation that it ended.
             const ended = game && ['final', 'postponed', 'cancelled', 'suspended'].includes(game.status);
-            if (old && !ended) {
+            if (old && !ended && (old.league || 'mlb') === (sports.league || sports.config?.league || 'mlb')) {
               next = old;
               if (game) next.data = game;
             }
             const current = next ? null : sports.live_followed_games?.find(game => game.status === 'live');
             if (current) {
               next = old?.gameId === current.id ? old : this.create(appId, `sports:${current.id}`);
-              next.gameId = current.id; next.data = current;
+              next.gameId = current.id; next.data = current; next.league = sports.league || sports.config?.league || 'mlb';
             }
           }
         } else {

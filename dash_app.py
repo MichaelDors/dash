@@ -1621,14 +1621,15 @@ class App:
 def _sports_oled_summary(payload: Dict[str, Any]) -> Dict[str, str]:
     """One compact presentation shared by hardware and the web OLED preview."""
     game = payload.get("selected_game")
+    league = "NBA" if payload.get("league") == "nba" else "MLB"
     if not game:
         empty = "Loading scores" if payload.get("loading") else "Scores unavailable" if payload.get("error") else "No games today"
         filtered = (payload.get("config") or {}).get("favorites_only")
-        return {"header": "MLB", "empty": empty,
+        return {"header": league, "empty": empty,
                 "empty_detail": "Check web portal" if payload.get("error") else "For your teams" if filtered else "Check back later",
                 "footer": "HOLD DIAL TO EXIT"}
     status = game.get("status")
-    header = str(game.get("status_text") or "MLB").upper()
+    header = str(game.get("status_text") or league).upper()
     if status == "live" and game.get("inning"):
         half = str(game.get("inning_half") or "").upper().replace("BOTTOM", "BOT")
         header = f"{half} {game['inning']}"
@@ -1644,7 +1645,7 @@ def _sports_oled_summary(payload: Dict[str, Any]) -> Dict[str, str]:
             header = "TIME TBD" if not game.get("start_time") else "SCHEDULED"
     games = payload.get("games") or []
     index = next((i + 1 for i, item in enumerate(games) if item.get("id") == game.get("id")), 1)
-    footer = f"MLB  {index}/{len(games) or 1}  TURN DIAL"
+    footer = f"{league}  {index}/{len(games) or 1}  TURN DIAL"
     if payload.get("preview"):
         footer = "FOLLOWING LIVE GAME"
     if payload.get("stale") or payload.get("error"):
@@ -3954,7 +3955,8 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/sports/config":
             self._send_json({**self.controller.sports.get_config(),
-                             "teams": self.controller.sports.get_payload().get("teams", [])})
+                             "teams": self.controller.sports.get_payload().get("teams", []),
+                             "available_teams": self.controller.sports.get_payload().get("available_teams", {})})
             return
         if path == "/api/wide/config":
             self._send_json({"slots": self.controller.get_wide_slots()})
@@ -4067,7 +4069,8 @@ class DashRequestHandler(BaseHTTPRequestHandler):
             except OSError:
                 self._send_json({"error": "Could not save sports settings. Please try again."}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
-            self._send_json({**config, "teams": self.controller.sports.get_payload().get("teams", [])})
+            self._send_json({**config, "teams": self.controller.sports.get_payload().get("teams", []),
+                             "available_teams": self.controller.sports.get_payload().get("available_teams", {})})
             return
 
         if parsed.path == "/api/frame/config":

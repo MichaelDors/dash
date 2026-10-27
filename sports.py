@@ -1,6 +1,6 @@
-"""Cached sports scores, with MLB as the first provider.
+"""Cached MLB and NBA scores without API keys.
 
-Only the background worker calls the public MLB Stats API. Display reads and
+Only the background worker calls the public score providers. Display reads and
 configuration changes remain local, so a slow connection cannot block controls.
 """
 
@@ -165,7 +165,7 @@ class MLBProvider:
             sides[side] = team
         offense = linescore.get("offense") or {}
         return {
-            "id": game_id, "start_time": None if status_data.get("startTimeTBD") else raw.get("gameDate"),
+            "id": game_id, "league": "mlb", "start_time": None if status_data.get("startTimeTBD") else raw.get("gameDate"),
             "official_date": raw.get("officialDate", ""), "status": status,
             "status_text": "Time TBD" if status == "scheduled" and status_data.get("startTimeTBD")
                            else str(status_data.get("detailedState") or "Scheduled"),
@@ -203,12 +203,139 @@ class MLBProvider:
         return sorted(games.values(), key=lambda game: (game["start_time"] or "9999", game["game_number"], game["id"]))
 
 
+_NBA_TEAMS = (
+    (1, 'Atlanta Hawks', 'ATL', '#c8102e'),
+    (2, 'Boston Celtics', 'BOS', '#008348'),
+    (17, 'Brooklyn Nets', 'BKN', '#000000'),
+    (30, 'Charlotte Hornets', 'CHA', '#008ca8'),
+    (4, 'Chicago Bulls', 'CHI', '#ce1141'),
+    (5, 'Cleveland Cavaliers', 'CLE', '#860038'),
+    (6, 'Dallas Mavericks', 'DAL', '#0064b1'),
+    (7, 'Denver Nuggets', 'DEN', '#0e2240'),
+    (8, 'Detroit Pistons', 'DET', '#1d428a'),
+    (9, 'Golden State Warriors', 'GS', '#fdb927'),
+    (10, 'Houston Rockets', 'HOU', '#ce0e2d'),
+    (11, 'Indiana Pacers', 'IND', '#0c2340'),
+    (12, 'LA Clippers', 'LAC', '#12173f'),
+    (13, 'Los Angeles Lakers', 'LAL', '#552583'),
+    (29, 'Memphis Grizzlies', 'MEM', '#5d76a9'),
+    (14, 'Miami Heat', 'MIA', '#98002e'),
+    (15, 'Milwaukee Bucks', 'MIL', '#00471b'),
+    (16, 'Minnesota Timberwolves', 'MIN', '#266092'),
+    (3, 'New Orleans Pelicans', 'NO', '#0a2240'),
+    (18, 'New York Knicks', 'NY', '#1d428a'),
+    (25, 'Oklahoma City Thunder', 'OKC', '#007ac1'),
+    (19, 'Orlando Magic', 'ORL', '#0150b5'),
+    (20, 'Philadelphia 76ers', 'PHI', '#1d428a'),
+    (21, 'Phoenix Suns', 'PHX', '#29127a'),
+    (22, 'Portland Trail Blazers', 'POR', '#e03a3e'),
+    (23, 'Sacramento Kings', 'SAC', '#5a2d81'),
+    (24, 'San Antonio Spurs', 'SA', '#000000'),
+    (28, 'Toronto Raptors', 'TOR', '#d91244'),
+    (26, 'Utah Jazz', 'UTAH', '#4e008e'),
+    (27, 'Washington Wizards', 'WSH', '#e31837'),
+)
+NBA_TEAMS = {
+    team_id: {"id": team_id, "name": name, "abbreviation": abbreviation,
+              "color": color, "league": "nba",
+              "logo_url": f"https://a.espncdn.com/i/teamlogos/nba/500/{team_id}.png"}
+    for team_id, name, abbreviation, color in _NBA_TEAMS
+}
+LEAGUE_TEAMS = {"mlb": MLB_TEAMS, "nba": NBA_TEAMS}
+
+
+class NBAProvider:
+    """ESPN's public, keyless NBA feed (unofficial; may change upstream)."""
+
+    league = "nba"
+
+    @staticmethod
+    def _request(route, params):
+        request = Request("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/"
+                          + route + "?" + urlencode(params),
+                          headers={"Accept": "application/json", "User-Agent": "Dash-Sports/1.0"})
+        with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ValueError("NBA response exceeds the size limit")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("Invalid NBA response")
+        return data
+
+    def fetch_teams(self):
+        # Keep the picker available offline and avoid a separate metadata request.
+        return copy.deepcopy(NBA_TEAMS)
+
+    def normalize_game(self, raw, teams=None):
+        game_id = int(raw["id"])
+        if game_id <= 0:
+            raise ValueError("Invalid NBA game ID")
+        competition = raw["competitions"][0]
+        data = competition.get("status") or raw.get("status") or {}
+        kind = data.get("type") or {}
+        name = str(kind.get("name", "")).lower()
+        status = next((value for token, value in (("postpon", "postponed"),
+            ("cancel", "cancelled"), ("suspend", "suspended"), ("delay", "delayed"))
+            if token in name), None)
+        status = status or ("final" if kind.get("completed") else
+                           {"pre": "scheduled", "in": "live", "post": "final"}.get(kind.get("state"), "other"))
+        period = _number(data.get("period"))
+        clock = str(data.get("displayClock") or "")[:20]
+        phase = f"Q{period}" if period and period <= 4 else f"OT{period - 4}" if period else ""
+        if name in {"status_halftime", "status_end_period"}:
+            phase = str(kind.get("shortDetail") or kind.get("description") or phase)
+        elif phase and clock:
+            phase += f" · {clock}"
+        sides = {}
+        for source in competition["competitors"]:
+            side = source.get("homeAway")
+            if side not in {"away", "home"}:
+                continue
+            team_id = int(source["team"]["id"])
+            team = copy.deepcopy((teams or NBA_TEAMS).get(team_id))
+            if not team:
+                raise ValueError("Unknown NBA team")
+            value = str(source.get("score", ""))
+            team["score"] = int(value) if value.isdigit() and (status in {"live", "final"} or period) else None
+            records = source.get("records") or []
+            team["record"] = next((str(record.get("summary") or "") for record in records
+                                   if record.get("type") == "total" or record.get("name") == "overall"), "")
+            sides[side] = team
+        if set(sides) != {"away", "home"}:
+            raise ValueError("NBA game is missing a team")
+        start = competition.get("date") or raw.get("date")
+        return {"id": game_id, "league": "nba", "start_time": start if competition.get("timeValid", True) else None,
+                "official_date": str(start or "")[:10], "status": status,
+                "status_text": phase if status == "live" else str(kind.get("shortDetail") or kind.get("description") or "Scheduled"),
+                "period": period, "clock": clock, "inning": None, "inning_half": "",
+                "outs": None, "balls": None, "strikes": None, "bases": {},
+                "away": sides["away"], "home": sides["home"],
+                "venue": (competition.get("venue") or {}).get("fullName", ""),
+                "doubleheader": False, "game_number": 1}
+
+    def fetch_schedule(self, date, teams=None):
+        previous = (datetime.fromisoformat(date) - timedelta(days=1)).date().isoformat()
+        games = {}
+        for day in (previous, date):
+            data = self._request("scoreboard", {"dates": day.replace("-", ""), "limit": 100})
+            if not isinstance(data.get("events"), list):
+                raise ValueError("NBA response is missing its games")
+            for raw in data["events"]:
+                game = self.normalize_game(raw, teams)
+                if day == date or game["status"] in {"live", "delayed"}:
+                    games[game["id"]] = game
+        return sorted(games.values(), key=lambda game: (game["start_time"] or "9999", game["id"]))
+
+
 class SportsManager:
     """Own local settings, a last-good scoreboard, and one polling worker."""
 
     def __init__(self, base_dir: Path, *, provider=None, clock=None, monotonic=None):
         self.config_path = Path(base_dir) / "sports_config.json"
-        self._provider = provider or MLBProvider()
+        self._providers = {"mlb": provider or MLBProvider(), "nba": NBAProvider()}
+        self._provider = self._providers["mlb"]
+        self._generation = 0
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._monotonic = monotonic or time.monotonic
         self._lock = threading.RLock()
@@ -234,6 +361,8 @@ class SportsManager:
         self._loading = False
         self._error = None
         self._load_config()
+        self._provider = self._providers[self._config["league"]]
+        self._teams = copy.deepcopy(LEAGUE_TEAMS[self._config["league"]])
 
     @staticmethod
     def _validate_config(config: dict) -> dict:
@@ -241,12 +370,13 @@ class SportsManager:
             raise ValueError("Unknown sports setting")
         result = copy.deepcopy(DEFAULT_CONFIG)
         result.update(config)
-        if result["league"] != "mlb":
-            raise ValueError("MLB is the supported league")
+        if not isinstance(result["league"], str) or result["league"] not in LEAGUE_TEAMS:
+            raise ValueError("Choose MLB or NBA")
+        roster = LEAGUE_TEAMS[result["league"]]
         favorites = result["favorite_team_ids"]
-        if (not isinstance(favorites, list) or len(favorites) > len(MLB_TEAMS)
-                or any(type(team_id) is not int or team_id not in MLB_TEAMS for team_id in favorites)):
-            raise ValueError("Choose valid MLB favorite teams")
+        if (not isinstance(favorites, list) or len(favorites) > len(roster)
+                or any(type(team_id) is not int or team_id not in roster for team_id in favorites)):
+            raise ValueError("Choose valid favorite teams for the selected league")
         result["favorite_team_ids"] = list(dict.fromkeys(favorites))
         for key in ("favorites_only", "auto_rotate", "auto_preview"):
             if not isinstance(result[key], bool):
@@ -286,6 +416,8 @@ class SportsManager:
         if not isinstance(updates, dict):
             raise ValueError("Sports settings must be an object")
         with self._lock:
+            if updates.get("league", self._config["league"]) != self._config["league"]:
+                updates = {"favorite_team_ids": [], **updates}
             config = self._validate_config({**self._config, **updates})
             temporary = self.config_path.with_name(self.config_path.name + "." + uuid.uuid4().hex + ".tmp")
             try:
@@ -298,10 +430,21 @@ class SportsManager:
             finally:
                 temporary.unlink(missing_ok=True)
             previous_zone = self._config["timezone"]
+            league_changed = self._config["league"] != config["league"]
             self._config = config
+            if league_changed:
+                self._provider = self._providers[config["league"]]
+                self._teams = copy.deepcopy(LEAGUE_TEAMS[config["league"]])
+                self._teams_date = self._date = self._selected_game_id = None
+                self._games = []
+                self._last_updated = self._last_success = self._last_attempt = self._last_attempt_date = None
+                self._error = None
+                self._failures = 0
+                self._next_refresh = 0
             self._rotation_started = self._monotonic()
             self._ensure_selection(self._visible_games())
-            if previous_zone != config["timezone"]:
+            if previous_zone != config["timezone"] or league_changed:
+                self._generation += 1
                 self._refresh_requested = True
                 self._wake.set()
             return copy.deepcopy(config)
@@ -362,6 +505,7 @@ class SportsManager:
             return copy.deepcopy({
                 "type": "sports", "id": "sports", "name": "Sports", "league": self._config["league"],
                 "date": self._date or today, "games": games, "selected_game_id": self._selected_game_id,
+                "available_teams": LEAGUE_TEAMS,
                 "selected_game": selected, "teams": sorted(self._teams.values(), key=lambda team: team["name"]),
                 "config": self._config, "loading": self._loading or (self._last_attempt is None and not self._error),
                 "stale": stale, "error": self._error, "last_updated": self._last_updated,
@@ -428,6 +572,8 @@ class SportsManager:
         try:
             with self._lock:
                 date = self._today()
+                generation = self._generation
+                provider = self._provider
                 self._loading = True
                 self._last_attempt = self._monotonic()
                 self._last_attempt_date = date
@@ -436,17 +582,20 @@ class SportsManager:
                 fetch_teams = self._teams_date != date
             if fetch_teams:
                 try:
-                    teams = self._provider.fetch_teams()
+                    teams = provider.fetch_teams()
                     with self._lock:
-                        self._teams = teams
-                        self._teams_date = date
+                        if generation == self._generation:
+                            self._teams = teams
+                            self._teams_date = date
                 except Exception:
                     # A metadata failure must not prevent score updates.
                     pass
             try:
-                games = self._provider.fetch_schedule(date, teams)
+                games = provider.fetch_schedule(date, teams)
             except Exception:
                 with self._lock:
+                    if generation != self._generation:
+                        return False
                     self._failures += 1
                     delay = min(IDLE_REFRESH_SECONDS, LIVE_REFRESH_SECONDS * 2 ** min(self._failures - 1, 4))
                     self._next_refresh = self._monotonic() + delay
@@ -455,7 +604,7 @@ class SportsManager:
             with self._lock:
                 # A timezone edit during an in-flight request must not publish a
                 # scoreboard for a date the user is no longer following.
-                if date != self._today():
+                if date != self._today() or generation != self._generation:
                     self._next_refresh = 0
                     return False
                 self._games = games

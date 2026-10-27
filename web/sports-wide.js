@@ -2,6 +2,7 @@
   'use strict';
 
   const baseball = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5 6c7 2 7 10 0 12M19 6c-7 2-7 10 0 12"/></svg>';
+  const basketball = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5 5c9 1 13 5 14 14M19 5C10 6 6 10 5 19"/></svg>';
   const chevron = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
   const clampCount = (value, max) => Math.min(max, Math.max(0, Number(value) || 0));
   const score = value => value == null || !Number.isFinite(Number(value)) ? '—' : String(Math.max(0, Math.trunc(Number(value))));
@@ -74,13 +75,13 @@
     </section>`;
   }
 
-  function updateLogo(root, team) {
+  function updateLogo(root, team, league = "mlb") {
     const logo = root.querySelector('.sports-logo');
     const img = logo.querySelector('img');
-    text(logo, '.sports-logo-fallback', team.abbreviation || 'MLB');
+    text(logo, '.sports-logo-fallback', team.abbreviation || league.toUpperCase());
     const id = Number(team.id);
-    // Only official numeric MLB team IDs can become external image URLs.
-    const src = Number.isSafeInteger(id) && id > 0 ? `https://www.mlbstatic.com/team-logos/${id}.svg` : '';
+    // Keep logo origins fixed and use only numeric team IDs.
+    const src = Number.isSafeInteger(id) && id > 0 ? (league === "nba" ? `https://a.espncdn.com/i/teamlogos/nba/500/${id}.png` : `https://www.mlbstatic.com/team-logos/${id}.svg`) : '';
     if ((img.dataset.logoSrc || '') === src) return;
     img.dataset.logoSrc = src;
     img.hidden = true;
@@ -94,7 +95,7 @@
   function mount(host, sendAction) {
     host.innerHTML = `<div class="sports-view">
       <button type="button" class="sports-reveal" aria-label="Show game controls" aria-expanded="false"></button>
-      <div class="sports-toolbar"><div class="sports-league">${baseball}<span>MLB</span><span class="sports-toolbar-divider"></span><span class="sports-date"></span></div><a class="sports-settings-link" href="/#sports-settings">Preferences <span aria-hidden="true">↗</span></a></div>
+      <div class="sports-toolbar"><div class="sports-league">${baseball}<span class="sports-league-name">MLB</span><span class="sports-toolbar-divider"></span><span class="sports-date"></span></div><a class="sports-settings-link" href="/#sports-settings">Preferences <span aria-hidden="true">↗</span></a></div>
       <p class="sports-notice" role="status" hidden></p>
       <div class="sports-empty" hidden>${baseball}<h3></h3><p></p><a href="/#sports-settings">Choose your teams <span aria-hidden="true">↗</span></a></div>
       <article class="sports-scoreboard" aria-label="Selected baseball game" hidden>
@@ -109,7 +110,7 @@
         </div><div class="sports-venue"></div>
       </article>
       <section class="sports-games-section" aria-label="Games on this date"><div class="sports-games-heading"><div><span class="sports-eyebrow">THE SCOREBOARD</span><h3 class="sports-games-label"></h3></div><div class="sports-game-nav"><button type="button" data-sports-prev aria-label="Previous game">${chevron}</button><button type="button" data-sports-next aria-label="Next game">${chevron}</button></div></div><div class="sports-games" role="group" aria-label="Choose a game"></div></section>
-      <footer class="sports-footer"><span class="sports-feed-label"></span><span>Scores from MLB</span></footer>
+      <footer class="sports-footer"><span class="sports-feed-label"></span><span class="sports-source">Scores from MLB</span></footer>
       <span class="sports-preview-prompt" hidden>Following live · Tap for game controls</span>
       <span class="sports-announcement" role="status" aria-live="polite" aria-atomic="true"></span>
     </div>`;
@@ -146,7 +147,7 @@
 
   function updateTeam(view, side, team, opponent, game) {
     const root = view.querySelector(`.sports-team-${side}`);
-    updateLogo(root, team);
+    updateLogo(root, team, view.dataset.league);
     text(root, '.sports-team-abbr', team.abbreviation || 'TBD');
     text(root, '.sports-team-name', team.name || 'Team to be decided');
     text(root, '.sports-score', score(team.score));
@@ -180,7 +181,7 @@
       ['away', 'home'].forEach(side => {
         const team = game[side] || {};
         const row = button.querySelector(`.sports-card-${side}`);
-        updateLogo(row, team);
+        updateLogo(row, team, view.dataset.league);
         text(row, '.sports-card-abbr', team.abbreviation || 'TBD');
         text(row, 'b', score(team.score));
       });
@@ -208,6 +209,19 @@
     activeView = view;
     const data = payload || {};
     const config = data.config || {};
+    const nba = (data.league || config.league) === 'nba';
+    const league = nba ? 'NBA' : 'MLB';
+    view.dataset.league = nba ? 'nba' : 'mlb';
+    text(view, '.sports-league-name', league);
+    text(view, '.sports-source', nba ? 'Scores from ESPN' : 'Scores from MLB');
+    for (const selector of ['.sports-league svg', '.sports-empty svg']) {
+      const icon = view.querySelector(selector);
+      if (icon && icon.dataset.league !== league) {
+        icon.outerHTML = nba ? basketball : baseball;
+        view.querySelector(selector).dataset.league = league;
+      }
+    }
+    view.querySelector('.sports-scoreboard').setAttribute('aria-label', nba ? 'Selected basketball game' : 'Selected baseball game');
     const stale = !!(data.stale || data.error);
     const games = Array.isArray(data.games) ? data.games : [];
     const game = data.selected_game || games.find(item => String(item.id) === String(data.selected_game_id)) || games[0];
@@ -219,13 +233,13 @@
     text(view, '.sports-date', date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(data.date ? { timeZone: 'UTC' } : {}) }));
     const notice = view.querySelector('.sports-notice');
     notice.hidden = !stale;
-    text(view, '.sports-notice', data.connection_lost ? game ? 'Connection to Dash was lost. Showing the last available scores.' : 'Connection to Dash was lost. Reconnecting automatically.' : game ? 'Score updates are temporarily unavailable. Showing the last available scores.' : 'We couldn’t reach MLB. Scores will refresh automatically.');
+    text(view, '.sports-notice', data.connection_lost ? game ? 'Connection to Dash was lost. Showing the last available scores.' : 'Connection to Dash was lost. Reconnecting automatically.' : game ? 'Score updates are temporarily unavailable. Showing the last available scores.' : `We couldn’t reach ${nba ? "ESPN" : "MLB"}. Scores will refresh automatically.`);
     const empty = view.querySelector('.sports-empty');
     empty.hidden = !!game;
     view.querySelector('.sports-scoreboard').hidden = !game;
     const isLoading = !payload || data.loading;
     text(empty, 'h3', isLoading ? 'Getting the scoreboard ready' : data.error ? 'Scores are taking a break' : 'No games on the schedule');
-    text(empty, 'p', isLoading ? 'The latest from around the league will appear here.' : data.connection_lost ? 'The scoreboard will return when your device reconnects.' : data.error ? 'The scoreboard will return as soon as MLB is available again.' : config.favorites_only ? 'Your favorite teams aren’t playing today. Check back later or follow more teams in Preferences.' : 'A quiet day at the ballpark. Check back on the next game day.');
+    text(empty, 'p', isLoading ? 'The latest from around the league will appear here.' : data.connection_lost ? 'The scoreboard will return when your device reconnects.' : data.error ? `The scoreboard will return as soon as ${nba ? "ESPN" : "MLB"} is available again.` : config.favorites_only ? 'Your favorite teams aren’t playing today. Check back later or follow more teams in Preferences.' : 'No games today. Check back on the next game day.');
     empty.querySelector('a').hidden = !!isLoading;
     view.querySelector('.sports-games-section').hidden = !games.length;
     text(view, '.sports-games-label', `${games.length} ${games.length === 1 ? 'game' : 'games'}${config.favorites_only ? ' · Your teams' : ' · Around the league'}`);
@@ -246,10 +260,10 @@
     text(view, '.sports-game-status', live ? stale ? 'LAST SCORE' : 'LIVE' : game.status === 'final' ? 'FINAL' : scheduled ? 'UPCOMING' : game.status_text || 'GAME DAY');
     view.querySelector('.sports-game-status').classList.toggle('is-live', live && !stale);
     text(view, '.sports-game-number', game.doubleheader && game.doubleheader !== 'N' ? `Doubleheader · Game ${game.game_number || 1}` : '');
-    text(view, '.sports-game-kicker', live ? stale ? 'LAST INNING' : 'INNING' : scheduled ? 'FIRST PITCH' : game.status === 'final' ? 'BOX SCORE' : 'STATUS');
+    text(view, '.sports-game-kicker', live ? nba ? 'PERIOD · CLOCK' : stale ? 'LAST INNING' : 'INNING' : scheduled ? nba ? 'TIP-OFF' : 'FIRST PITCH' : game.status === 'final' ? 'BOX SCORE' : 'STATUS');
     text(view, '.sports-game-phase', statusLabel(game, config));
-    view.querySelector('.sports-live-details').hidden = !live;
-    text(view, '.sports-game-detail', scheduled ? timeLabel(game, config, true) : game.status === 'final' ? Number(game.inning) > 9 ? `${game.inning} innings` : 'Game complete' : live ? game.status_text && !/in progress/i.test(game.status_text) ? game.status_text : '' : 'Check back for updates');
+    view.querySelector('.sports-live-details').hidden = !live || nba;
+    text(view, '.sports-game-detail', nba && live ? '' : scheduled ? timeLabel(game, config, true) : game.status === 'final' ? Number(game.inning) > 9 ? `${game.inning} innings` : 'Game complete' : live ? game.status_text && !/in progress/i.test(game.status_text) ? game.status_text : '' : 'Check back for updates');
     const outs = clampCount(game.outs, 3);
     [...view.querySelector('.sports-outs').children].forEach((dot, index) => dot.classList.toggle('is-active', index < outs));
     text(view, '.sports-out-label', `${outs} ${outs === 1 ? 'out' : 'outs'}`);

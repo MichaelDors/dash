@@ -3,7 +3,7 @@
   const definitions = [
     { id: 'clock', name: 'Photo Clock', icon: '◷', detail: 'Your photos, time & weather' },
     { id: 'spotify', name: 'Music', icon: '♫', detail: 'Spotify playback' },
-    { id: 'sports', name: 'Sports', icon: '⚾', detail: 'MLB scoreboard' },
+    { id: 'sports', name: 'Sports', icon: '⚾', detail: 'MLB & NBA scoreboard' },
     { id: 'timer', name: 'Timer', icon: '◴', detail: 'Countdown & controls' },
     { id: 'weather', name: 'Weather', icon: '☀', detail: 'Local conditions' },
     { id: 'click_counter', name: 'Counter', icon: '+', detail: 'Keep a tally' },

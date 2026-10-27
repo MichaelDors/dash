@@ -90,7 +90,7 @@
       function renderApp(app, exitState) {
         if (!app) return "";
         if (app.type === "sports") {
-          const s = app.oled || { header: "MLB", empty: "Loading scores", empty_detail: "", footer: "HOLD DIAL TO EXIT" };
+          const s = app.oled || { header: app.league === "nba" ? "NBA" : "MLB", empty: "Loading scores", empty_detail: "", footer: "HOLD DIAL TO EXIT" };
           const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
           const body = s.empty
             ? '<div class="sports-oled-empty">' + esc(s.empty) + '<small>' + esc(s.empty_detail) + '</small></div>'

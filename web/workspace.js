@@ -141,7 +141,7 @@
   function summary(item) {
     const data = item.data;
     if (item.appId === 'spotify') return { icon: '♫', title: data?.track_name || 'Music', detail: data?.is_playing ? data.artist_name || 'Playing' : 'Paused', image: data?.album_art_url };
-    if (item.appId === 'sports') return { icon: '⚾', title: `${data?.away?.abbreviation || 'MLB'} ${data?.away?.score ?? '–'} · ${data?.home?.abbreviation || ''} ${data?.home?.score ?? '–'}`, detail: offline || latest.apps?.sports?.stale || latest.apps?.sports?.error ? 'Last available score' : data?.status === 'live' ? `${data.inning_half || 'Inning'} ${data.inning || ''}` : data?.status_text || 'Live game' };
+    if (item.appId === 'sports') return { icon: data?.league === 'nba' ? '🏀' : '⚾', title: `${data?.away?.abbreviation || 'MLB'} ${data?.away?.score ?? '–'} · ${data?.home?.abbreviation || ''} ${data?.home?.score ?? '–'}`, detail: offline || latest.apps?.sports?.stale || latest.apps?.sports?.error ? 'Last available score' : data?.status === 'live' ? data.league === 'nba' ? data.status_text : `${data.inning_half || 'Inning'} ${data.inning || ''}` : data?.status_text || 'Live game' };
     if (item.appId === 'timer') return { icon: '◴', title: data?.time_text || 'Timer', detail: item.doneAt != null ? 'Time’s up' : data?.running ? 'Timer' : 'Paused' };
     return { icon: definitions.find(app => app.id === item.appId)?.icon || '•', title: name(item.appId), detail: 'Return to app' };
   }

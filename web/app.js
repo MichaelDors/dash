@@ -356,12 +356,14 @@ function renderSports(app, exitState = {}, launcher = false) {
   const games = Array.isArray(app.games) ? app.games : [];
   const game = app.selected_game || games.find((item) => item.id === app.selected_game_id) || games[0];
   const config = app.config || {};
+  const nba = (app.league || config.league) === "nba";
+  const league = nba ? "NBA" : "MLB";
   const progress = Math.max(0, Math.min(1, Number(exitState.progress) || 0));
   const notice = app.stale ? "Scores may be out of date. Reconnecting…" : (app.error ? "Unable to update scores. Retrying automatically." : "");
   let content;
   if (!game) {
     const title = app.loading ? "Loading scores…" : (app.error ? "Scores unavailable" : "No games today");
-    const detail = app.loading ? "Getting the latest MLB schedule." : (app.error ? "We’ll keep trying to connect." : (config.favorites_only ? "Your favorite teams are off today." : "Check back for the next game day."));
+    const detail = app.loading ? `Getting the latest ${league} schedule.` : (app.error ? "We’ll keep trying to connect." : (config.favorites_only ? "Your favorite teams are off today." : "Check back for the next game day."));
     content = `<div class="sports-preview-empty"><strong>${title}</strong><p>${detail}</p></div>`;
   } else {
     const live = game.status === "live" || game.status === "in_progress";
@@ -376,9 +378,9 @@ function renderSports(app, exitState = {}, launcher = false) {
     </div>`).join("");
     const bases = game.bases || {};
     const occupied = [bases.first && "1st", bases.second && "2nd", bases.third && "3rd"].filter(Boolean);
-    const count = live ? `<p class="sports-preview-count">${sportsEscape(game.balls ?? 0)} ball${game.balls === 1 ? "" : "s"} · ${sportsEscape(game.strikes ?? 0)} strike${game.strikes === 1 ? "" : "s"} · ${sportsEscape(game.outs ?? 0)} out${game.outs === 1 ? "" : "s"}<span>${occupied.length ? `${occupied.join(", ")} occupied` : "Bases empty"}</span></p>` : "";
+    const count = live && !nba ? `<p class="sports-preview-count">${sportsEscape(game.balls ?? 0)} ball${game.balls === 1 ? "" : "s"} · ${sportsEscape(game.strikes ?? 0)} strike${game.strikes === 1 ? "" : "s"} · ${sportsEscape(game.outs ?? 0)} out${game.outs === 1 ? "" : "s"}<span>${occupied.length ? `${occupied.join(", ")} occupied` : "Bases empty"}</span></p>` : "";
     const gameIndex = Math.max(0, games.findIndex((item) => item.id === game.id));
-    content = `<div class="sports-preview-top"><span class="sports-league-badge">MLB</span><span class="sports-preview-status${live ? " is-live" : ""}">${sportsEscape(status)}</span></div>
+    content = `<div class="sports-preview-top"><span class="sports-league-badge">${league}</span><span class="sports-preview-status${live ? " is-live" : ""}">${sportsEscape(status)}</span></div>
       <div class="sports-preview-scoreboard">${rows}</div>${count}
       <p class="sports-preview-meta">${sportsEscape(game.venue || "")}${game.doubleheader && game.doubleheader !== "N" ? ` · Game ${sportsEscape(game.game_number || 1)}` : ""}${games.length > 1 ? ` · ${gameIndex + 1} of ${games.length} games` : ""}</p>`;
   }
@@ -839,10 +841,13 @@ let sportsConfigSaving = false;
 let sportsSavedSignature = "";
 let sportsTeamSignature = "";
 let sportsPendingConfig = null;
+let sportsAvailableTeams = {};
+const sportsLeagueDrafts = {};
+let sportsDraftLeague = "mlb";
 
 function sportsConfigValues(config = {}) {
   return {
-    league: "mlb",
+    league: config.league === "nba" ? "nba" : "mlb",
     favorite_team_ids: [...new Set((config.favorite_team_ids || []).map(Number))].sort((a, b) => a - b),
     favorites_only: Boolean(config.favorites_only),
     auto_rotate: config.auto_rotate !== false,
@@ -854,6 +859,7 @@ function sportsConfigValues(config = {}) {
 
 function readSportsDraft() {
   return sportsConfigValues({
+    league: document.getElementById("sportsLeague").value,
     favorite_team_ids: Array.from(sportsForm.querySelectorAll("[name='favorite_team']:checked"), (input) => Number(input.value)),
     favorites_only: document.getElementById("sportsGameFilter").value === "favorites",
     auto_rotate: document.getElementById("sportsAutoRotate").checked,
@@ -924,7 +930,11 @@ function updateSportsFormDetails() {
 
 function applySportsConfig(payload) {
   if (!sportsForm || !payload) return;
+  if (payload.available_teams) sportsAvailableTeams = payload.available_teams;
   const values = sportsConfigValues(payload);
+  sportsDraftLeague = values.league;
+  document.getElementById("sportsLeague").value = values.league;
+  document.getElementById("sportsLeagueBadge").textContent = values.league.toUpperCase();
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const teamSignature = JSON.stringify(teams.map((team) => [team.id, team.name, team.abbreviation]));
   if (teamSignature !== sportsTeamSignature) {
@@ -966,7 +976,7 @@ function applySportsConfig(payload) {
 
 function syncSportsSettings(payload) {
   if (!sportsForm || !payload?.config) return;
-  sportsPendingConfig = { ...payload.config, teams: payload.teams || payload.config.teams || [] };
+  sportsPendingConfig = { ...payload.config, teams: payload.teams || payload.config.teams || [], available_teams: payload.available_teams || sportsAvailableTeams };
   if (sportsConfigSaving || sportsConfigDirty || sportsForm.contains(document.activeElement)) return;
   if (!sportsPendingConfig.teams.length) return;
   const signature = JSON.stringify(sportsConfigValues(sportsPendingConfig));
@@ -997,6 +1007,18 @@ async function loadSportsConfig() {
 }
 
 if (sportsForm) {
+  document.getElementById("sportsLeague").addEventListener("change", () => {
+    const league = document.getElementById("sportsLeague").value;
+    sportsLeagueDrafts[sportsDraftLeague] = { ...readSportsDraft(), league: sportsDraftLeague };
+    const current = readSportsDraft();
+    const draft = sportsLeagueDrafts[league] || { ...current, league, favorite_team_ids: [], favorites_only: false };
+    const saved = sportsSavedSignature;
+    document.getElementById("sportsTeamSearch").value = "";
+    applySportsConfig({ ...draft, teams: Object.values(sportsAvailableTeams[league] || {}) });
+    sportsSavedSignature = saved;
+    sportsConfigDirty = JSON.stringify(readSportsDraft()) !== saved;
+    setSportsStatus(sportsConfigDirty ? "Unsaved changes" : "");
+  });
   document.getElementById("sportsTeamSearch").addEventListener("input", filterSportsTeams);
   document.getElementById("sportsRetryButton").addEventListener("click", loadSportsConfig);
   const trackDraft = (event) => {
